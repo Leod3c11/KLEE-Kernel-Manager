@@ -268,7 +268,8 @@ private fun CpuPolicyCard(
                     }
                 }
             }
-            Text("Disponíveis: ${policy.governors.joinToString().ifBlank { "não informado" }}", style = MaterialTheme.typography.bodySmall)
+            Text("Governors: ${policy.governors.joinToString().ifBlank { "não informado" }}", style = MaterialTheme.typography.bodySmall)
+            Text("Frequências: ${policy.frequenciesKHz.joinToString { (it / 1000).toString() + " MHz" }.ifBlank { "não informadas pelo driver" }}", style = MaterialTheme.typography.bodySmall)
             Button(
                 onClick = { onApply(policy.id, minText, maxText, if (policy.canWriteGovernor) governor else "") },
                 enabled = !busy && policy.canWriteMin && policy.canWriteMax &&
@@ -349,15 +350,16 @@ private fun GpuControlCard(
                     }
                 }
             }
-            Text("Escalas detectadas: ${gpu.frequenciesHz.size} frequências", style = MaterialTheme.typography.bodySmall)
+            Text("OPPs/frequências detectadas: ${gpu.frequenciesHz.size}", style = MaterialTheme.typography.bodySmall)
+            Text("Frequências: ${gpu.frequenciesHz.joinToString { (it / 1_000_000).toString() + " MHz" }.ifBlank { "não informadas pelo driver" }}", style = MaterialTheme.typography.bodySmall)
             Button(
                 onClick = { onApply(minText, maxText, if (gpu.canWriteGovernor) governor else "") },
-                enabled = !busy && gpu.canWriteMin && gpu.canWriteMax &&
+                enabled = !busy && gpu.canWriteMin && gpu.canWriteMax && gpu.frequenciesHz.isNotEmpty() &&
                     minText.toLongOrNull() != null && maxText.toLongOrNull() != null,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Aplicar GPU") }
-            if (!gpu.canWriteMin || !gpu.canWriteMax) {
-                Text("Os nós min_freq/max_freq estão somente leitura ou indisponíveis. Nenhuma escrita será tentada.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            if (!gpu.canWriteMin || !gpu.canWriteMax || gpu.frequenciesHz.isEmpty()) {
+                Text("Nós de controle ou tabela de frequências indisponíveis. A aplicação fica bloqueada para evitar escrita inválida.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
