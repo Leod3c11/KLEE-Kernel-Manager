@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
@@ -38,6 +39,13 @@ class KernelManagerViewModel : ViewModel() {
     val busy = _busy.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
+    private val _thermal = MutableStateFlow(ControlSnapshot(false, message="Toque em Atualizar para ler sensores térmicos."))
+    val thermal = _thermal.asStateFlow()
+    private val _power = MutableStateFlow(ControlSnapshot(false, message="Toque em Atualizar para ler a bateria."))
+    val power = _power.asStateFlow()
+    private val _monitor = MutableStateFlow(ControlSnapshot(false, message="Abra Monitor para iniciar a coleta."))
+    val monitor = _monitor.asStateFlow()
+    private val originalGovernors = mutableMapOf<String, String>()
 
     fun loadCpu() = runTask {
         _cpu.value = withContext(Dispatchers.IO) { repository.readCpu() }
@@ -45,6 +53,25 @@ class KernelManagerViewModel : ViewModel() {
 
     fun loadGpu() = runTask {
         _gpu.value = withContext(Dispatchers.IO) { repository.readGpu() }
+    }
+
+    fun loadThermal() = runTask { _thermal.value = withContext(Dispatchers.IO) { repository.readThermal() } }
+    fun loadPower() = runTask { _power.value = withContext(Dispatchers.IO) { repository.readPower() } }
+    fun loadMonitor() = runTask { _monitor.value = withContext(Dispatchers.IO) { repository.readMonitor() } }
+
+    fun applyGamingProfile(performance: Boolean) = runTask {
+        val snapshot = withContext(Dispatchers.IO) { repository.readCpu() }
+        if (!snapshot.root || snapshot.cpuPolicies.isEmpty()) error("Não foi possível identificar as policies CPU.")
+        snapshot.cpuPolicies.forEach { policy ->
+            if (policy.governor.isNotBlank()) originalGovernors.putIfAbsent(policy.id, policy.governor)
+            val target = if (performance) {
+                if (policy.governors.contains("performance")) "performance" else error("Governor performance indisponível na policy " + policy.id)
+            } else originalGovernors[policy.id] ?: policy.governor
+            val result = withContext(Dispatchers.IO) { repository.applyCpu(policy.id, policy.minKHz, policy.maxKHz, target.takeIf { policy.canWriteGovernor }) }
+            if (!result.contains("OK")) error("Policy " + policy.id + ": " + result)
+        }
+        _cpu.value = withContext(Dispatchers.IO) { repository.readCpu() }
+        _message.value = if (performance) "Perfil Gaming aplicado; limites preservados." else "Governors originais restaurados; limites preservados."
     }
 
     fun applyCpu(id: String, minMHz: String, maxMHz: String, governor: String) = runTask {
@@ -85,6 +112,9 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
     val gpu by vm.gpu.collectAsState()
     val busy by vm.busy.collectAsState()
     val message by vm.message.collectAsState()
+    val thermal by vm.thermal.collectAsState()
+    val power by vm.power.collectAsState()
+    val monitor by vm.monitor.collectAsState()
     var section by remember { mutableStateOf("HOME") }
 
     Scaffold(containerColor = androidx.compose.ui.graphics.Color.Black) { padding ->
@@ -132,6 +162,13 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
                     Spacer(Modifier.height(12.dp))
                 }
             } else {
+                LaunchedEffect(section) {
+                    when (section) {
+                        "THERMAL" -> vm.loadThermal()
+                        "POWER" -> vm.loadPower()
+                        "MONITOR" -> while (true) { vm.loadMonitor(); delay(2500) }
+                    }
+                }
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     TextButton(onClick = { section = "HOME" }) { Text("‹ Início") }
                     Text(sectionTitle(section), color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleLarge)
@@ -144,7 +181,11 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
                 when (section) {
                     "CPU" -> CpuPanel(cpu, busy, vm::loadCpu, vm::applyCpu)
                     "GPU" -> GpuPanel(gpu, busy, vm::loadGpu, vm::applyGpu)
-                    else -> PlaceholderPanel(section)
+                    "THERMAL" -> DiagnosticPanel("Sensores térmicos e cooling", thermal, busy, vm::loadThermal)
+                    "POWER" -> DiagnosticPanel("Bateria e alimentação", power, busy, vm::loadPower)
+                    "MONITOR" -> DiagnosticPanel("Monitoramento ao vivo · 2,5 s", monitor, busy, vm::loadMonitor)
+                    "GAMING" -> GamingPanel(busy, vm::applyGamingProfile)
+                    else -> Text("Seção indisponível.")
                 }
             }
         }
@@ -159,14 +200,6 @@ private fun sectionTitle(section: String): String = when(section) {
     "GAMING" -> "Gaming"
     "MONITOR" -> "Monitor"
     else -> "KLEE"
-}
-
-@Composable
-private fun PlaceholderPanel(section: String) {
-    Column(Modifier.fillMaxSize().padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(sectionTitle(section), style = MaterialTheme.typography.headlineSmall, color = androidx.compose.ui.graphics.Color.White)
-        Text("Esta seção está reservada na interface. A implementação será adicionada após validar os controles de CPU e GPU neste kernel.", color = androidx.compose.ui.graphics.Color.LightGray)
-    }
 }
 
 @Composable
@@ -327,5 +360,58 @@ private fun GpuControlCard(
                 Text("Os nós min_freq/max_freq estão somente leitura ou indisponíveis. Nenhuma escrita será tentada.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
+}
+
+@Composable
+private fun DiagnosticPanel(title: String, state: ControlSnapshot, busy: Boolean, onRefresh: () -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(title, color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleLarge)
+        Button(onClick = onRefresh, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Lendo..." else "Atualizar") }
+        if (!state.root) Text("Acesso root indisponível. Autorize o KLEE no KernelSU.", color = MaterialTheme.colorScheme.error)
+        val lines = state.message.lines().filter { it.isNotBlank() }
+        if (lines.isEmpty()) Text("Aguardando leitura...")
+        lines.forEach { line ->
+            val p = line.split("|")
+            val kind = p.firstOrNull() ?: ""
+            val label = when (kind) {
+                "TEMP" -> p.getOrNull(1) ?: "Sensor"
+                "COOL" -> "Cooling · " + (p.getOrNull(1) ?: "dispositivo")
+                "EXTRA" -> p.getOrNull(1) ?: "MediaTek"
+                "SUPPLY" -> "Fonte · " + (p.getOrNull(1) ?: "")
+                "CPU" -> "CPU " + (p.getOrNull(1) ?: "")
+                "GPU" -> "GPU Mali"
+                "LOAD" -> "Carga do sistema"
+                "STAT" -> "CPU /proc/stat"
+                else -> kind.replace('_', ' ')
+            }
+            val raw = p.getOrNull(2)?.toLongOrNull()
+            val value = when (kind) {
+                "TEMP" -> if (raw != null && raw > 1000) "%.1f °C".format(raw / 1000.0) else (p.getOrNull(2) ?: "")
+                "COOL" -> "Estado " + (p.getOrNull(2) ?: "?") + " / " + (p.getOrNull(3) ?: "?")
+                "EXTRA", "SUPPLY" -> p.getOrNull(2) ?: ""
+                "CPU" -> ((p.getOrNull(2)?.toLongOrNull() ?: 0L) / 1000).toString() + " MHz · " + (p.getOrNull(3) ?: "")
+                "GPU" -> ((p.getOrNull(1)?.toLongOrNull() ?: 0L) / 1000000).toString() + " MHz · " + (p.getOrNull(2) ?: "")
+                "LOAD", "STAT" -> p.getOrNull(1) ?: ""
+                else -> p.drop(1).joinToString(" · ").ifBlank { line }
+            }
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFF242424))) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(label, color = androidx.compose.ui.graphics.Color.LightGray, style = MaterialTheme.typography.labelLarge)
+                    Text(value, color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GamingPanel(busy: Boolean, onApply: (Boolean) -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Perfis de desempenho", color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleLarge)
+        Text("Gaming seleciona o governor performance nas policies que o disponibilizam. Os limites atuais são preservados. Restaurar recupera os governors lidos antes da primeira aplicação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Button(onClick = { onApply(true) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Ativar Gaming") }
+        OutlinedButton(onClick = { onApply(false) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Restaurar governors") }
+        Text("Não altera OPPs, limites térmicos ou nós proprietários da GPU.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
 }
