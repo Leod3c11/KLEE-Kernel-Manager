@@ -56,4 +56,26 @@ class KernelControlRepository(private val shell:RootShell) {
     val s="[ -w '$d/min_freq' ] && [ -w '$d/max_freq' ] || exit 2; oldmin=\$(cat '$d/min_freq'); oldmax=\$(cat '$d/max_freq'); freqs=\$(cat '$d/available_frequencies' 2>/dev/null); case \" \$freqs \" in *' "+minHz+" '*) ;; *) exit 3;; esac; case \" \$freqs \" in *' "+maxHz+" '*) ;; *) exit 3;; esac; rollback(){ echo \$oldmin > '$d/min_freq'; echo \$oldmax > '$d/max_freq'; }; echo "+minHz+" > '$d/min_freq' && echo "+maxHz+" > '$d/max_freq' || { rollback; exit 4; }; "+gov+"a=\$(cat '$d/min_freq'); b=\$(cat '$d/max_freq'); [ \$a = "+minHz+" ] && [ \$b = "+maxHz+" ] || { rollback; exit 5; }; echo OK"
     return result(shell.runRoot(s),"Falha ao aplicar GPU.")
   }
+
+  fun readThermal(): ControlSnapshot {
+    if (!shell.rootCheck()) return ControlSnapshot(false, message="Autorize o KLEE no KernelSU.")
+    val script = "for d in /sys/class/thermal/thermal_zone[0-9]*; do [ -d \"\$d\" ] || continue; t=\$(cat \"\$d/type\" 2>/dev/null); v=\$(cat \"\$d/temp\" 2>/dev/null); [ -n \"\$t\" ] && [ -n \"\$v\" ] && printf 'TEMP|%s|%s\\n' \"\$t\" \"\$v\"; done; for d in /sys/class/thermal/cooling_device[0-9]*; do [ -d \"\$d\" ] || continue; t=\$(cat \"\$d/type\" 2>/dev/null); v=\$(cat \"\$d/cur_state\" 2>/dev/null); m=\$(cat \"\$d/max_state\" 2>/dev/null); printf 'COOL|%s|%s|%s\\n' \"\$t\" \"\$v\" \"\$m\"; done; for f in /sys/kernel/thermal/thermal_message/board_sensor_temp /sys/kernel/thermal/thermal_message/display_therm_temp /sys/kernel/thermal/thermal_message/temp_state /sys/kernel/thermal/thermal_message/balance_mode; do [ -r \"\$f\" ] && printf 'EXTRA|%s|%s\\n' \"\$(basename \"\$f\")\" \"\$(cat \"\$f\" 2>/dev/null)\"; done"
+    val r=shell.runReadOnly(script)
+    return ControlSnapshot(true, message=if(r.success && r.stdout.isNotEmpty()) r.stdout.joinToString("\n") else "Nenhuma zona térmica legível foi encontrada.")
+  }
+
+  fun readPower(): ControlSnapshot {
+    if (!shell.rootCheck()) return ControlSnapshot(false, message="Autorize o KLEE no KernelSU.")
+    val script = "d=/sys/class/power_supply/battery; for n in status capacity voltage_now current_now temp charge_counter; do [ -r \"\$d/\$n\" ] && printf '%s|%s\\n' \"\$n\" \"\$(cat \"\$d/\$n\" 2>/dev/null)\"; done; echo SUPPLIES; for d in /sys/class/power_supply/*; do [ -d \"\$d\" ] || continue; printf 'SUPPLY|%s|%s\\n' \"\$(basename \"\$d\")\" \"\$(cat \"\$d/type\" 2>/dev/null)\"; done"
+    val r=shell.runReadOnly(script)
+    return ControlSnapshot(true, message=if(r.success && r.stdout.isNotEmpty()) r.stdout.joinToString("\n") else "Não foi possível ler /sys/class/power_supply/battery.")
+  }
+
+  fun readMonitor(): ControlSnapshot {
+    if (!shell.rootCheck()) return ControlSnapshot(false, message="Autorize o KLEE no KernelSU.")
+    val script = "for d in /sys/devices/system/cpu/cpufreq/policy[0-9]*; do [ -d \"\$d\" ] || continue; printf 'CPU|%s|%s|%s\\n' \"\$(basename \"\$d\")\" \"\$(cat \"\$d/scaling_cur_freq\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_governor\" 2>/dev/null)\"; done; for d in /sys/class/devfreq/13000000.mali /sys/class/devfreq/*mali*; do [ -d \"\$d\" ] || continue; printf 'GPU|%s|%s\\n' \"\$(cat \"\$d/cur_freq\" 2>/dev/null)\" \"\$(cat \"\$d/governor\" 2>/dev/null)\"; break; done; printf 'LOAD|%s\\n' \"\$(cat /proc/loadavg 2>/dev/null)\"; printf 'STAT|%s\\n' \"\$(head -n 1 /proc/stat 2>/dev/null)\""
+    val r=shell.runReadOnly(script)
+    return ControlSnapshot(true, message=if(r.success && r.stdout.isNotEmpty()) r.stdout.joinToString("\n") else "Não foi possível coletar métricas do sistema.")
+  }
+
 }
