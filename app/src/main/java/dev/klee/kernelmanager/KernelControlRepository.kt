@@ -1,42 +1,22 @@
 package dev.klee.kernelmanager
 
 data class CpuPolicy(
-    val id: String,
-    val cpus: String,
-    val currentKHz: Long,
-    val minKHz: Long,
-    val maxKHz: Long,
-    val hardwareMinKHz: Long,
-    val hardwareMaxKHz: Long,
-    val governor: String,
-    val governors: List<String>,
-    val frequenciesKHz: List<Long>,
-    val canWriteMin: Boolean,
-    val canWriteMax: Boolean,
-    val canWriteGovernor: Boolean
+    val id: String, val cpus: String, val currentKHz: Long,
+    val minKHz: Long, val maxKHz: Long, val hardwareMinKHz: Long, val hardwareMaxKHz: Long,
+    val governor: String, val governors: List<String>, val frequenciesKHz: List<Long>,
+    val canWriteMin: Boolean, val canWriteMax: Boolean, val canWriteGovernor: Boolean
 )
 
 data class GpuControl(
-    val path: String,
-    val name: String,
-    val currentHz: Long,
-    val minHz: Long,
-    val maxHz: Long,
-    val hardwareMinHz: Long,
-    val hardwareMaxHz: Long,
-    val governor: String,
-    val governors: List<String>,
-    val frequenciesHz: List<Long>,
-    val canWriteMin: Boolean,
-    val canWriteMax: Boolean,
-    val canWriteGovernor: Boolean
+    val path: String, val name: String, val currentHz: Long, val minHz: Long, val maxHz: Long,
+    val hardwareMinHz: Long, val hardwareMaxHz: Long, val governor: String,
+    val governors: List<String>, val frequenciesHz: List<Long>,
+    val canWriteMin: Boolean, val canWriteMax: Boolean, val canWriteGovernor: Boolean
 )
 
 data class ControlSnapshot(
-    val root: Boolean,
-    val cpuPolicies: List<CpuPolicy> = emptyList(),
-    val gpu: GpuControl? = null,
-    val message: String = ""
+    val root: Boolean, val cpuPolicies: List<CpuPolicy> = emptyList(),
+    val gpu: GpuControl? = null, val message: String = ""
 )
 
 class KernelControlRepository(private val shell: RootShell) {
@@ -72,7 +52,8 @@ class KernelControlRepository(private val shell: RootShell) {
                 canWriteMin = p[11] == "1", canWriteMax = p[12] == "1", canWriteGovernor = p[13] == "1"
             )
         }
-        return ControlSnapshot(true, cpuPolicies = policies, message = if (policies.isEmpty()) "Nenhuma policy CPUFreq foi encontrada." else "")
+        return ControlSnapshot(true, cpuPolicies = policies,
+            message = if (policies.isEmpty()) "Nenhuma policy CPUFreq foi encontrada." else "")
     }
 
     fun readGpu(): ControlSnapshot {
@@ -94,21 +75,20 @@ class KernelControlRepository(private val shell: RootShell) {
         val line = result.stdout.firstOrNull { it.startsWith("GPU|") }
             ?: return ControlSnapshot(true, message = "Não foi possível consultar o controlador devfreq da Mali.")
         val p = line.split("|")
-        if (p.getOrNull(1) == "MISSING") {
-            return ControlSnapshot(true, message = "O nó $path não existe neste kernel. Os caminhos GED/gpufreqv2 serão tratados separadamente quando a interface exata de escrita estiver confirmada.")
-        }
-        if (p.size < 13) return ControlSnapshot(true, message = "Resposta incompleta do controlador GPU.")
+        if (p.getOrNull(1) == "MISSING") return ControlSnapshot(true,
+            message = "O nó $path não existe. A interface GED/gpufreqv2 ainda precisa de identificação específica antes de habilitar escrita.")
+        if (p.size < 14) return ControlSnapshot(true, message = "Resposta incompleta do controlador GPU.")
         fun n(i: Int) = p.getOrNull(i)?.trim()?.toLongOrNull() ?: 0L
         val gpu = GpuControl(
             path = p[1], name = p[2].trim().ifBlank { "Mali-G720" }, currentHz = n(3),
-            minHz = n(4), maxHz = n(5), hardwareMinHz = n(6), hardwareMaxHz = n(7),
+            minHz = n(4), maxHz = n(5), hardwareMinHz = 0, hardwareMaxHz = 0,
             governor = p[8].trim(),
             governors = p[9].trim().split(Regex("\\s+")).filter(String::isNotBlank),
             frequenciesHz = p[10].trim().split(Regex("\\s+")).mapNotNull(String::toLongOrNull).distinct().sorted(),
-            canWriteMin = p[11] == "1", canWriteMax = p[12] == "1",
-            canWriteGovernor = p.getOrNull(13) == "1"
+            canWriteMin = p[11] == "1", canWriteMax = p[12] == "1", canWriteGovernor = p[13] == "1"
         )
-        return ControlSnapshot(true, gpu = gpu)
+        return ControlSnapshot(true, gpu = gpu,
+            message = if (gpu.frequenciesHz.isEmpty()) "O kernel não expôs available_frequencies; por segurança, os controles de frequência da GPU ficam bloqueados." else "")
     }
 
     fun applyCpu(id: String, minKHz: Long, maxKHz: Long, governor: String?): String {
@@ -117,7 +97,7 @@ class KernelControlRepository(private val shell: RootShell) {
         require(governor == null || governor.matches(Regex("[A-Za-z0-9_]+")))
         val d = "/sys/devices/system/cpu/cpufreq/policy$id"
         val govLine = if (governor == null) "" else
-            "case \" \$(cat \"\$d/scaling_available_governors\" 2>/dev/null) \" in *\" $governor \"*) ;; *) echo 'Governor não disponível'; exit 8;; esac; echo '$governor' > \"\$d/scaling_governor\" || exit 9; "
+            "case \" \$(cat \"\$d/scaling_available_governors\" 2>/dev/null) \" in *\" $governor \"*) ;; *) rollback; echo 'Governor não disponível'; exit 8;; esac; echo '$governor' > \"\$d/scaling_governor\" || { rollback; echo 'Falha ao alterar governor'; exit 9; }; "
         val script = """
             d='$d'
             [ -d "${'$'}d" ] || { echo 'Policy não encontrada'; exit 2; }
@@ -149,14 +129,17 @@ class KernelControlRepository(private val shell: RootShell) {
         require(governor == null || governor.matches(Regex("[A-Za-z0-9_]+")))
         val d = "/sys/class/devfreq/13000000.mali"
         val govLine = if (governor == null) "" else
-            "echo '$governor' > \"\$d/governor\" || exit 9; "
+            "case \" \$(cat \"\$d/available_governors\" 2>/dev/null) \" in *\" $governor \"*) ;; *) rollback; echo 'Governor GPU não disponível'; exit 8;; esac; echo '$governor' > \"\$d/governor\" || { rollback; echo 'Falha ao alterar governor GPU'; exit 9; }; "
         val script = """
             d='$d'
             [ -d "${'$'}d" ] || exit 2
             [ -w "${'$'}d/min_freq" ] && [ -w "${'$'}d/max_freq" ] || { echo 'Os limites devfreq da GPU não são graváveis'; exit 3; }
             oldmin=$(cat "${'$'}d/min_freq"); oldmax=$(cat "${'$'}d/max_freq")
-            hwmin=$(cat "${'$'}d/min_freq"); hwmax=$(cat "${'$'}d/max_freq")
             [ $minHz -le $maxHz ] || exit 4
+            freqs=$(cat "${'$'}d/available_frequencies" 2>/dev/null)
+            [ -n "${'$'}freqs" ] || { echo 'Tabela OPP da GPU indisponível; escrita bloqueada'; exit 4; }
+            case " ${'$'}freqs " in *" $minHz "*) ;; *) echo 'Mínimo não pertence aos OPPs disponíveis'; exit 4;; esac
+            case " ${'$'}freqs " in *" $maxHz "*) ;; *) echo 'Máximo não pertence aos OPPs disponíveis'; exit 4;; esac
             rollback() { echo "${'$'}oldmin" > "${'$'}d/min_freq"; echo "${'$'}oldmax" > "${'$'}d/max_freq"; }
             if [ $maxHz -lt "${'$'}oldmin" ]; then
               echo $minHz > "${'$'}d/min_freq" && echo $maxHz > "${'$'}d/max_freq" || { rollback; exit 5; }
