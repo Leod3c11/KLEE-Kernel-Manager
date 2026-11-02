@@ -178,7 +178,7 @@ private fun CpuPolicyCard(
             }
             Text("Disponíveis: ${policy.governors.joinToString().ifBlank { "não informado" }}", style = MaterialTheme.typography.bodySmall)
             Button(
-                onClick = { onApply(policy.id, minText, maxText, governor) },
+                onClick = { onApply(policy.id, minText, maxText, if (policy.canWriteGovernor) governor else "") },
                 enabled = !busy && policy.canWriteMin && policy.canWriteMax &&
                     minText.toLongOrNull() != null && maxText.toLongOrNull() != null,
                 modifier = Modifier.fillMaxWidth()
@@ -259,7 +259,7 @@ private fun GpuControlCard(
             }
             Text("Escalas detectadas: ${gpu.frequenciesHz.size} frequências", style = MaterialTheme.typography.bodySmall)
             Button(
-                onClick = { onApply(minText, maxText, governor) },
+                onClick = { onApply(minText, maxText, if (gpu.canWriteGovernor) governor else "") },
                 enabled = !busy && gpu.canWriteMin && gpu.canWriteMax &&
                     minText.toLongOrNull() != null && maxText.toLongOrNull() != null,
                 modifier = Modifier.fillMaxWidth()
