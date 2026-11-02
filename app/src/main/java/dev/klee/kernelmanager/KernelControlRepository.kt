@@ -5,7 +5,9 @@ data class GpuControl(val path:String,val name:String,val currentHz:Long,val min
 data class ControlSnapshot(val root:Boolean,val cpuPolicies:List<CpuPolicy> = emptyList(),val gpu:GpuControl? = null,val message:String = "")
 
 class KernelControlRepository(private val shell:RootShell) {
-  private fun result(r:CommandResult, fallback:String):String = if(r.success) r.stdout.joinToString("\n") else r.stderr.plus(r.stdout).joinToString("\n").ifBlank { fallback }
+  private fun result(r:CommandResult, fallback:String):String =
+    if (r.success) r.stdout.joinToString("\n").ifBlank { "OK" }
+    else "ERRO (exit=${r.code}): " + r.stderr.plus(r.stdout).joinToString("\n").ifBlank { fallback }
   fun readCpu():ControlSnapshot {
     if(!shell.rootCheck()) return ControlSnapshot(false,message="Autorize o KLEE no KernelSU.")
     val s = "for d in /sys/devices/system/cpu/cpufreq/policy[0-9]*; do [ -d \"\$d\" ] || continue; id=\${d##*policy}; printf 'CPU|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\\n' \"\$id\" \"\$(cat \"\$d/related_cpus\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_cur_freq\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_min_freq\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_max_freq\" 2>/dev/null)\" \"\$(cat \"\$d/cpuinfo_min_freq\" 2>/dev/null)\" \"\$(cat \"\$d/cpuinfo_max_freq\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_governor\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_available_governors\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_available_frequencies\" 2>/dev/null)\" \"\$( [ -w \"\$d/scaling_min_freq\" ] && echo 1 || echo 0 )\" \"\$( [ -w \"\$d/scaling_max_freq\" ] && echo 1 || echo 0 )\" \"\$( [ -w \"\$d/scaling_governor\" ] && echo 1 || echo 0 )\"; done"
