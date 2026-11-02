@@ -257,7 +257,7 @@ private fun GpuPanel(
     onApply: (String, String, String) -> Unit
 ) {
     Column(
-        Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 12.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Mali-G720 MC8", style = MaterialTheme.typography.titleLarge)
