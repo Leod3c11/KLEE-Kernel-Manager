@@ -85,29 +85,87 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
     val gpu by vm.gpu.collectAsState()
     val busy by vm.busy.collectAsState()
     val message by vm.message.collectAsState()
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var section by remember { mutableStateOf("HOME") }
 
-    Scaffold { padding ->
+    Scaffold(containerColor = androidx.compose.ui.graphics.Color.Black) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            Text("KLEE", style = MaterialTheme.typography.headlineLarge)
-            Text("KERNEL MANAGER • POCO X8 PRO / MT6899", style = MaterialTheme.typography.labelMedium)
-            Spacer(Modifier.height(12.dp))
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("CPU") })
-                Tab(selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("GPU") })
-            }
-            message?.let {
-                Card(Modifier.fillMaxWidth().padding(top = 10.dp)) {
-                    Text(it, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+            if (section == "HOME") {
+                Text("KLEE Kernel Manager", style = MaterialTheme.typography.headlineLarge, color = androidx.compose.ui.graphics.Color.White)
+                Text("POCO X8 Pro · MT6899", style = MaterialTheme.typography.titleMedium, color = androidx.compose.ui.graphics.Color.LightGray)
+                Spacer(Modifier.height(24.dp))
+                val items = listOf(
+                    Triple("CPU Control", "3 clusters, frequências e governors", "CPU"),
+                    Triple("GPU Control", "Mali-G720 e DVFS", "GPU"),
+                    Triple("Thermal", "Sensores e throttling", "THERMAL"),
+                    Triple("Power", "Energia e desempenho", "POWER"),
+                    Triple("Gaming", "Perfis de jogos", "GAMING"),
+                    Triple("Monitor", "Temperatura, carga e clocks", "MONITOR")
+                )
+                for (row in 0..2) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        for (col in 0..1) {
+                            val item = items[row * 2 + col]
+                            Card(
+                                onClick = { section = item.third },
+                                modifier = Modifier.weight(1f).height(166.dp),
+                                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFF242424)),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
+                            ) {
+                                Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    val icon = when(item.third) {
+                                        "CPU" -> "▣"
+                                        "GPU" -> "◉"
+                                        "THERMAL" -> "♨"
+                                        "POWER" -> "ϟ"
+                                        "GAMING" -> "🎮"
+                                        else -> "▤"
+                                    }
+                                    Text(icon, color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.headlineMedium)
+                                    Text(item.first, color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleLarge)
+                                    Text(item.second, color = androidx.compose.ui.graphics.Color.LightGray, style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+            } else {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    TextButton(onClick = { section = "HOME" }) { Text("‹ Início") }
+                    Text(sectionTitle(section), color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleLarge)
+                }
+                message?.let {
+                    Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        Text(it, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                when (section) {
+                    "CPU" -> CpuPanel(cpu, busy, vm::loadCpu, vm::applyCpu)
+                    "GPU" -> GpuPanel(gpu, busy, vm::loadGpu, vm::applyGpu)
+                    else -> PlaceholderPanel(section)
                 }
             }
-            when (selectedTab) {
-                0 -> CpuPanel(cpu, busy, vm::loadCpu, vm::applyCpu)
-                else -> GpuPanel(gpu, busy, vm::loadGpu, vm::applyGpu)
-            }
         }
+    }
+}
+
+private fun sectionTitle(section: String): String = when(section) {
+    "CPU" -> "CPU Control"
+    "GPU" -> "GPU Control"
+    "THERMAL" -> "Thermal"
+    "POWER" -> "Power"
+    "GAMING" -> "Gaming"
+    "MONITOR" -> "Monitor"
+    else -> "KLEE"
+}
+
+@Composable
+private fun PlaceholderPanel(section: String) {
+    Column(Modifier.fillMaxSize().padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(sectionTitle(section), style = MaterialTheme.typography.headlineSmall, color = androidx.compose.ui.graphics.Color.White)
+        Text("Esta seção está reservada na interface. A implementação será adicionada após validar os controles de CPU e GPU neste kernel.", color = androidx.compose.ui.graphics.Color.LightGray)
     }
 }
 
@@ -119,7 +177,7 @@ private fun CpuPanel(
     onApply: (String, String, String, String) -> Unit
 ) {
     Column(
-        Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 12.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Controle dos clusters", style = MaterialTheme.typography.titleLarge)
