@@ -78,6 +78,7 @@ class KernelManagerViewModel : ViewModel() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
     val cpu by vm.cpu.collectAsState()
