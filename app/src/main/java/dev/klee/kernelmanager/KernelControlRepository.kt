@@ -10,7 +10,26 @@ class KernelControlRepository(private val shell:RootShell) {
     if(!shell.rootCheck()) return ControlSnapshot(false,message="Autorize o KLEE no KernelSU.")
     val s = "for d in /sys/devices/system/cpu/cpufreq/policy[0-9]*; do [ -d \"\$d\" ] || continue; id=\${d##*policy}; printf 'CPU|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\\n' \"\$id\" \"\$(cat \"\$d/related_cpus\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_cur_freq\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_min_freq\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_max_freq\" 2>/dev/null)\" \"\$(cat \"\$d/cpuinfo_min_freq\" 2>/dev/null)\" \"\$(cat \"\$d/cpuinfo_max_freq\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_governor\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_available_governors\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_available_frequencies\" 2>/dev/null)\" \"\$( [ -w \"\$d/scaling_min_freq\" ] && echo 1 || echo 0 )\" \"\$( [ -w \"\$d/scaling_max_freq\" ] && echo 1 || echo 0 )\" \"\$( [ -w \"\$d/scaling_governor\" ] && echo 1 || echo 0 )\"; done"
     val r=shell.runReadOnly(s); if(!r.success) return ControlSnapshot(true,message=r.stderr.joinToString("\n"))
-    val list=r.stdout.mapNotNull { line -> val p=line.split("|"); if(p.size<14 || p[0]!="CPU") return@mapNotNull null; fun n(i:Int)=p[i].trim().toLongOrNull()?:0L; CpuPolicy(p[1],p[2],n(3),n(4),n(5),n(6),n(7),p[8],p[9].split(Regex("\\s+")).filter(String::isNotBlank),p[10].split(Regex("\\s+")).mapNotNull(String::toLongOrNull).sorted(),p[11]=="1",p[12]=="1",p[13]=="1") }
+    val list = r.stdout.mapNotNull { line ->
+      val p = line.split("|")
+      if (p.size < 14 || p[0] != "CPU") return@mapNotNull null
+      fun number(index: Int): Long = p[index].trim().toLongOrNull() ?: 0L
+      CpuPolicy(
+        id = p[1],
+        cpus = p[2],
+        currentKHz = number(3),
+        minKHz = number(4),
+        maxKHz = number(5),
+        hardwareMinKHz = number(6),
+        hardwareMaxKHz = number(7),
+        governor = p[8],
+        governors = p[9].split(Regex("\\s+")).filter(String::isNotBlank),
+        frequenciesKHz = p[10].split(Regex("\\s+")).mapNotNull(String::toLongOrNull).sorted(),
+        canWriteMin = p[11] == "1",
+        canWriteMax = p[12] == "1",
+        canWriteGovernor = p[13] == "1"
+      )
+    }
     return ControlSnapshot(true,cpuPolicies=list,message=if(list.isEmpty()) "Nenhuma policy CPUFreq encontrada." else "")
   }
   fun readGpu():ControlSnapshot {
