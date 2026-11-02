@@ -25,17 +25,17 @@ class KernelControlRepository(private val shell: RootShell) {
         val script = """
             for d in /sys/devices/system/cpu/cpufreq/policy[0-9]*; do
               [ -d "$d" ] || continue
-              id=${'$'}{d##*policy}
-              val() { [ -r "$d/$1" ] && tr '\n' ' ' < "$d/$1" 2>/dev/null || printf ''; }
+              id=${'${'$'}'}{d##*policy}
+              val() { [ -r "$d/${'$'}1" ] && tr '\n' ' ' < "$d/${'$'}1" 2>/dev/null || printf ''; }
               printf 'CPU|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
-                "$id" "$(val related_cpus)" "$(val scaling_cur_freq)" \
-                "$(val scaling_min_freq)" "$(val scaling_max_freq)" \
-                "$(val cpuinfo_min_freq)" "$(val cpuinfo_max_freq)" \
-                "$(val scaling_governor)" "$(val scaling_available_governors)" \
-                "$(val scaling_available_frequencies)" \
-                "$( [ -w "$d/scaling_min_freq" ] && echo 1 || echo 0 )" \
-                "$( [ -w "$d/scaling_max_freq" ] && echo 1 || echo 0 )" \
-                "$( [ -w "$d/scaling_governor" ] && echo 1 || echo 0 )"
+                "$id" "${'$'}(val related_cpus)" "${'$'}(val scaling_cur_freq)" \
+                "${'$'}(val scaling_min_freq)" "${'$'}(val scaling_max_freq)" \
+                "${'$'}(val cpuinfo_min_freq)" "${'$'}(val cpuinfo_max_freq)" \
+                "${'$'}(val scaling_governor)" "${'$'}(val scaling_available_governors)" \
+                "${'$'}(val scaling_available_frequencies)" \
+                "${'$'}( [ -w "$d/scaling_min_freq" ] && echo 1 || echo 0 )" \
+                "${'$'}( [ -w "$d/scaling_max_freq" ] && echo 1 || echo 0 )" \
+                "${'$'}( [ -w "$d/scaling_governor" ] && echo 1 || echo 0 )"
             done
         """.trimIndent()
         val result = shell.runReadOnly(script)
@@ -62,14 +62,14 @@ class KernelControlRepository(private val shell: RootShell) {
         val script = """
             d='$path'
             if [ ! -d "$d" ]; then echo 'GPU|MISSING'; exit 0; fi
-            val() { [ -r "$d/$1" ] && tr '\n' ' ' < "$d/$1" 2>/dev/null || printf ''; }
+            val() { [ -r "$d/${'$'}1" ] && tr '\n' ' ' < "$d/${'$'}1" 2>/dev/null || printf ''; }
             printf 'GPU|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
-              "$d" "$(val name)" "$(val cur_freq)" "$(val min_freq)" "$(val max_freq)" \
-              "$(val min_freq)" "$(val max_freq)" "$(val governor)" \
-              "$(val available_governors)" "$(val available_frequencies)" \
-              "$( [ -w "$d/min_freq" ] && echo 1 || echo 0 )" \
-              "$( [ -w "$d/max_freq" ] && echo 1 || echo 0 )" \
-              "$( [ -w "$d/governor" ] && echo 1 || echo 0 )"
+              "$d" "${'$'}(val name)" "${'$'}(val cur_freq)" "${'$'}(val min_freq)" "${'$'}(val max_freq)" \
+              "${'$'}(val min_freq)" "${'$'}(val max_freq)" "${'$'}(val governor)" \
+              "${'$'}(val available_governors)" "${'$'}(val available_frequencies)" \
+              "${'$'}( [ -w "$d/min_freq" ] && echo 1 || echo 0 )" \
+              "${'$'}( [ -w "$d/max_freq" ] && echo 1 || echo 0 )" \
+              "${'$'}( [ -w "$d/governor" ] && echo 1 || echo 0 )"
         """.trimIndent()
         val result = shell.runReadOnly(script)
         val line = result.stdout.firstOrNull { it.startsWith("GPU|") }
@@ -100,25 +100,25 @@ class KernelControlRepository(private val shell: RootShell) {
             "case \" \$(cat \"\$d/scaling_available_governors\" 2>/dev/null) \" in *\" $governor \"*) ;; *) rollback; echo 'Governor não disponível'; exit 8;; esac; echo '$governor' > \"\$d/scaling_governor\" || { rollback; echo 'Falha ao alterar governor'; exit 9; }; "
         val script = """
             d='$d'
-            [ -d "${'$'}d" ] || { echo 'Policy não encontrada'; exit 2; }
-            oldmin=$(cat "${'$'}d/scaling_min_freq") || exit 3
-            oldmax=$(cat "${'$'}d/scaling_max_freq") || exit 3
-            hwmin=$(cat "${'$'}d/cpuinfo_min_freq" 2>/dev/null || echo 1)
-            hwmax=$(cat "${'$'}d/cpuinfo_max_freq" 2>/dev/null || echo 999999999)
-            [ $minKHz -ge "${'$'}hwmin" ] && [ $maxKHz -le "${'$'}hwmax" ] || { echo 'Frequência fora dos limites de hardware'; exit 4; }
+            [ -d "${'${'$'}'}d" ] || { echo 'Policy não encontrada'; exit 2; }
+            oldmin=${'$'}(cat "${'${'$'}'}d/scaling_min_freq") || exit 3
+            oldmax=${'$'}(cat "${'${'$'}'}d/scaling_max_freq") || exit 3
+            hwmin=${'$'}(cat "${'${'$'}'}d/cpuinfo_min_freq" 2>/dev/null || echo 1)
+            hwmax=${'$'}(cat "${'${'$'}'}d/cpuinfo_max_freq" 2>/dev/null || echo 999999999)
+            [ $minKHz -ge "${'${'$'}'}hwmin" ] && [ $maxKHz -le "${'${'$'}'}hwmax" ] || { echo 'Frequência fora dos limites de hardware'; exit 4; }
             [ $minKHz -le $maxKHz ] || exit 5
-            rollback() { echo "${'$'}oldmin" > "${'$'}d/scaling_min_freq"; echo "${'$'}oldmax" > "${'$'}d/scaling_max_freq"; }
-            if [ $maxKHz -lt "${'$'}oldmin" ]; then
-              echo $minKHz > "${'$'}d/scaling_min_freq" && echo $maxKHz > "${'$'}d/scaling_max_freq" || { rollback; echo 'Falha ao aplicar limites'; exit 6; }
-            elif [ $minKHz -gt "${'$'}oldmax" ]; then
-              echo $maxKHz > "${'$'}d/scaling_max_freq" && echo $minKHz > "${'$'}d/scaling_min_freq" || { rollback; echo 'Falha ao aplicar limites'; exit 6; }
+            rollback() { echo "${'${'$'}'}oldmin" > "${'${'$'}'}d/scaling_min_freq"; echo "${'${'$'}'}oldmax" > "${'${'$'}'}d/scaling_max_freq"; }
+            if [ $maxKHz -lt "${'${'$'}'}oldmin" ]; then
+              echo $minKHz > "${'${'$'}'}d/scaling_min_freq" && echo $maxKHz > "${'${'$'}'}d/scaling_max_freq" || { rollback; echo 'Falha ao aplicar limites'; exit 6; }
+            elif [ $minKHz -gt "${'${'$'}'}oldmax" ]; then
+              echo $maxKHz > "${'${'$'}'}d/scaling_max_freq" && echo $minKHz > "${'${'$'}'}d/scaling_min_freq" || { rollback; echo 'Falha ao aplicar limites'; exit 6; }
             else
-              echo $minKHz > "${'$'}d/scaling_min_freq" && echo $maxKHz > "${'$'}d/scaling_max_freq" || { rollback; echo 'Falha ao aplicar limites'; exit 6; }
+              echo $minKHz > "${'${'$'}'}d/scaling_min_freq" && echo $maxKHz > "${'${'$'}'}d/scaling_max_freq" || { rollback; echo 'Falha ao aplicar limites'; exit 6; }
             fi
             $govLine
-            actualmin=$(cat "${'$'}d/scaling_min_freq"); actualmax=$(cat "${'$'}d/scaling_max_freq")
-            [ "${'$'}actualmin" = '$minKHz' ] && [ "${'$'}actualmax" = '$maxKHz' ] || { rollback; echo 'Read-back divergiu; limites restaurados'; exit 7; }
-            echo "OK|MIN=${'$'}actualmin|MAX=${'$'}actualmax|GOV=$(cat "${'$'}d/scaling_governor")"
+            actualmin=${'$'}(cat "${'${'$'}'}d/scaling_min_freq"); actualmax=${'$'}(cat "${'${'$'}'}d/scaling_max_freq")
+            [ "${'${'$'}'}actualmin" = '$minKHz' ] && [ "${'${'$'}'}actualmax" = '$maxKHz' ] || { rollback; echo 'Read-back divergiu; limites restaurados'; exit 7; }
+            echo "OK|MIN=${'${'$'}'}actualmin|MAX=${'${'$'}'}actualmax|GOV=${'$'}(cat "${'${'$'}'}d/scaling_governor")"
         """.trimIndent()
         val r = shell.runRoot(script)
         return if (r.success) r.stdout.joinToString("\n") else r.stderr.plus(r.stdout).joinToString("\n").ifBlank { "Falha ao aplicar configuração (código ${r.code})." }
@@ -132,26 +132,26 @@ class KernelControlRepository(private val shell: RootShell) {
             "case \" \$(cat \"\$d/available_governors\" 2>/dev/null) \" in *\" $governor \"*) ;; *) rollback; echo 'Governor GPU não disponível'; exit 8;; esac; echo '$governor' > \"\$d/governor\" || { rollback; echo 'Falha ao alterar governor GPU'; exit 9; }; "
         val script = """
             d='$d'
-            [ -d "${'$'}d" ] || exit 2
-            [ -w "${'$'}d/min_freq" ] && [ -w "${'$'}d/max_freq" ] || { echo 'Os limites devfreq da GPU não são graváveis'; exit 3; }
-            oldmin=$(cat "${'$'}d/min_freq"); oldmax=$(cat "${'$'}d/max_freq")
-            [ $minHz -le $maxHz ] || exit 4
-            freqs=$(cat "${'$'}d/available_frequencies" 2>/dev/null)
-            [ -n "${'$'}freqs" ] || { echo 'Tabela OPP da GPU indisponível; escrita bloqueada'; exit 4; }
-            case " ${'$'}freqs " in *" $minHz "*) ;; *) echo 'Mínimo não pertence aos OPPs disponíveis'; exit 4;; esac
-            case " ${'$'}freqs " in *" $maxHz "*) ;; *) echo 'Máximo não pertence aos OPPs disponíveis'; exit 4;; esac
-            rollback() { echo "${'$'}oldmin" > "${'$'}d/min_freq"; echo "${'$'}oldmax" > "${'$'}d/max_freq"; }
-            if [ $maxHz -lt "${'$'}oldmin" ]; then
-              echo $minHz > "${'$'}d/min_freq" && echo $maxHz > "${'$'}d/max_freq" || { rollback; exit 5; }
-            elif [ $minHz -gt "${'$'}oldmax" ]; then
-              echo $maxHz > "${'$'}d/max_freq" && echo $minHz > "${'$'}d/min_freq" || { rollback; exit 5; }
+            [ -d "${'${'$'}'}d" ] || exit 2
+            [ -w "${'${'$'}'}d/min_freq" ] && [ -w "${'${'$'}'}d/max_freq" ] || { echo 'Os limites devfreq da GPU não são graváveis'; exit 3; }
+            oldmin=${'$'}(cat "${'${'$'}'}d/min_freq"); oldmax=${'$'}(cat "${'${'$'}'}d/max_freq")
+            [ $minHz -le ${'$'}maxHz ] || exit 4
+            freqs=${'$'}(cat "${'${'$'}'}d/available_frequencies" 2>/dev/null)
+            [ -n "${'${'$'}'}freqs" ] || { echo 'Tabela OPP da GPU indisponível; escrita bloqueada'; exit 4; }
+            case " ${'${'$'}'}freqs " in *" $minHz "*) ;; *) echo 'Mínimo não pertence aos OPPs disponíveis'; exit 4;; esac
+            case " ${'${'$'}'}freqs " in *" ${'$'}maxHz "*) ;; *) echo 'Máximo não pertence aos OPPs disponíveis'; exit 4;; esac
+            rollback() { echo "${'${'$'}'}oldmin" > "${'${'$'}'}d/min_freq"; echo "${'${'$'}'}oldmax" > "${'${'$'}'}d/max_freq"; }
+            if [ ${'$'}maxHz -lt "${'${'$'}'}oldmin" ]; then
+              echo $minHz > "${'${'$'}'}d/min_freq" && echo ${'$'}maxHz > "${'${'$'}'}d/max_freq" || { rollback; exit 5; }
+            elif [ $minHz -gt "${'${'$'}'}oldmax" ]; then
+              echo ${'$'}maxHz > "${'${'$'}'}d/max_freq" && echo $minHz > "${'${'$'}'}d/min_freq" || { rollback; exit 5; }
             else
-              echo $minHz > "${'$'}d/min_freq" && echo $maxHz > "${'$'}d/max_freq" || { rollback; exit 5; }
+              echo $minHz > "${'${'$'}'}d/min_freq" && echo ${'$'}maxHz > "${'${'$'}'}d/max_freq" || { rollback; exit 5; }
             fi
             $govLine
-            actualmin=$(cat "${'$'}d/min_freq"); actualmax=$(cat "${'$'}d/max_freq")
-            [ "${'$'}actualmin" = '$minHz' ] && [ "${'$'}actualmax" = '$maxHz' ] || { rollback; echo 'Read-back divergiu; limites restaurados'; exit 6; }
-            echo "OK|MIN=${'$'}actualmin|MAX=${'$'}actualmax|GOV=$(cat "${'$'}d/governor" 2>/dev/null)"
+            actualmin=${'$'}(cat "${'${'$'}'}d/min_freq"); actualmax=${'$'}(cat "${'${'$'}'}d/max_freq")
+            [ "${'${'$'}'}actualmin" = '$minHz' ] && [ "${'${'$'}'}actualmax" = '${'$'}maxHz' ] || { rollback; echo 'Read-back divergiu; limites restaurados'; exit 6; }
+            echo "OK|MIN=${'${'$'}'}actualmin|MAX=${'${'$'}'}actualmax|GOV=${'$'}(cat "${'${'$'}'}d/governor" 2>/dev/null)"
         """.trimIndent()
         val r = shell.runRoot(script)
         return if (r.success) r.stdout.joinToString("\n") else r.stderr.plus(r.stdout).joinToString("\n").ifBlank { "Falha ao aplicar GPU (código ${r.code})." }
