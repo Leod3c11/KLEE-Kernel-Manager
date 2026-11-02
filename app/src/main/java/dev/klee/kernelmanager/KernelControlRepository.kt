@@ -38,7 +38,8 @@ class KernelControlRepository(private val shell:RootShell) {
     val r=shell.runReadOnly(s); if (r.stdout.any { it.contains("GPU_MISSING") }) {
       val diag = shell.runReadOnly("for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index; do [ -r \"\$f\" ] && { echo \"NODE|$(basename \"\$f\")\"; cat \"\$f\" 2>/dev/null; }; done")
       return ControlSnapshot(true,message="Devfreq Mali ausente. Diagnóstico gpufreqv2:\n" + diag.stdout.joinToString("\n").ifBlank { "Os nós gpufreqv2 listados no relatório não estão legíveis." })
-    } val p=r.stdout.firstOrNull{it.startsWith("GPU|")}?.split("|")?:return ControlSnapshot(true,message="Falha ao consultar Mali devfreq: "+result(r,"sem saída"))
+    }
+    val p=r.stdout.firstOrNull { it.startsWith("GPU|") }?.split("|") ?: return ControlSnapshot(true, message="Falha ao consultar Mali devfreq: " + result(r, "sem saída"))
     if(p.getOrNull(1)=="MISSING") return ControlSnapshot(true,message="Nó devfreq não encontrado; GED/gpufreqv2 ainda requer identificação específica.")
     if(p.size<14) return ControlSnapshot(true,message="Resposta GPU incompleta.")
     fun n(i:Int)=p[i].trim().toLongOrNull()?:0L
