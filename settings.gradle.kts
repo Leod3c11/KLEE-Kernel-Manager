@@ -10,8 +10,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven(url = "https://jitpack.io")
+        maven("https://jitpack.io")
     }
 }
-rootProject.name = "KLEE-Kernel-Manager"
+rootProject.name = "MT6899Manager"
 include(":app")
