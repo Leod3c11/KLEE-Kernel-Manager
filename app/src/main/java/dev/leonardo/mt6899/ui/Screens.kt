@@ -392,6 +392,19 @@ fun ProfilesScreen(ui: UiState, vm: MainViewModel) {
                 vm.setPref("interval", it.toString())
             }
         }
+        Section(
+            "Monitor flutuante de CPU/GPU",
+            "Mostra as frequências atuais por cima de outros apps. Arraste pela barra superior; o serviço continua ativo ao fechar o MT6899 Manager."
+        ) {
+            val overlayRunning = ui.prefs["overlay_monitor"] == "1"
+            Button(
+                onClick = { if (overlayRunning) vm.stopOverlayMonitor() else vm.startOverlayMonitor() },
+                enabled = ui.phase == dev.leonardo.mt6899.Phase.Ready
+            ) {
+                Text(if (overlayRunning) "Parar monitor" else "Iniciar monitor flutuante")
+            }
+            Hint("Na primeira vez, permita 'Exibir sobre outros apps'. Um aviso permanente permite parar o monitor.")
+        }
         Section("Snapshot e padrão", "O snapshot é o estado de quando o app abriu pela primeira vez (não necessariamente o de fábrica).") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { vm.captureSnapshot() }, enabled = !ui.busy) { Text("Capturar agora") }

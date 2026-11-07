@@ -250,6 +250,8 @@ class Engine(
             paths += "${pol(pc.id)}/scaling_governor"
         }
         paths += listOf(GED_CUR, GED_UTIL, GED_UP, GED_BOOST, GPU_STATUS, GPU_LIMIT_TABLE, "$BATT/capacity", "$BATT/temp")
+        val gpuDevfreqCurrentPath = i.gpuDevfreq?.path?.let { "$it/cur_freq" }
+        if (gpuDevfreqCurrentPath != null) paths += gpuDevfreqCurrentPath
         val tz = TEMP_ZONES.mapNotNull { name -> i.zones[name]?.let { name to "/sys/class/thermal/thermal_zone$it/temp" } }
         paths += tz.map { it.second }
         val flagNames = listOf("is_cpu_limit", "is_gpu_limit", "is_apu_limit")
@@ -266,6 +268,9 @@ class Engine(
             )
         }
         val cur = Parse.gedCurrent(r[GED_CUR])
+        val gpuDevfreqKHz = gpuDevfreqCurrentPath
+            ?.let { Parse.intOf(r[it]) }
+            ?.let { if (it > 10_000_000L) it / 1000L else it }
         val status = r[GPU_STATUS]
         val ceil = Parse.ppmCeiling(status)
         val floor = Parse.ppmFloor(status)
@@ -281,7 +286,7 @@ class Engine(
             ts = System.currentTimeMillis(),
             cpu = cpu,
             gpuIdx = cur?.first,
-            gpuKHz = cur?.second,
+            gpuKHz = cur?.second ?: gpuDevfreqKHz,
             gpuUtil = Parse.intOf(r[GED_UTIL])?.toInt(),
             gpuUpIdx = Parse.intOf(r[GED_UP])?.toInt(),
             gpuBoostIdx = Parse.intOf(r[GED_BOOST])?.toInt(),

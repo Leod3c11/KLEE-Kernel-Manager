@@ -5,9 +5,12 @@ Aplicativo Android para gerenciamento do POCO X8 Pro (codinome `klee`, plataform
 ## Recursos
 
 - Painéis para CPU, GPU, temperatura e informações do sistema.
+- Monitor flutuante de frequência de CPU e GPU, atualizando a cada segundo sobre outros aplicativos. Funciona em serviço em primeiro plano depois que a interface do manager é fechada.
 - Perfis de desempenho com leitura e aplicação das configurações compatíveis com o kernel instalado.
 - Opções de reaplicação após reinicialização e monitoramento em segundo plano.
 - Registro das operações executadas pelo app.
+
+Para usar o monitor flutuante, abra **Perfis**, toque em **Iniciar monitor flutuante** e autorize **Exibir sobre outros apps**. O aparelho também precisa conceder acesso root ao app para ler as frequências. A janela pode ser arrastada pelo cabeçalho e fechada pelo botão × ou pela notificação persistente.
 
 A disponibilidade de controles depende do kernel e do firmware do aparelho. Revise cada perfil e os valores exibidos antes de aplicá-los.
 

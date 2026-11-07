@@ -73,6 +73,11 @@ class MainActivity : ComponentActivity() {
         vm.setVisible(false)
         super.onStop()
     }
+
+    override fun onResume() {
+        super.onResume()
+        vm.handleOverlayPermissionReturn()
+    }
 }
 
 @Composable

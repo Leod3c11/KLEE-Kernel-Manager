@@ -2,6 +2,8 @@ package dev.leonardo.mt6899
 
 import android.app.Application
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -93,6 +95,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         "g_batt" to (store.get("g_batt") ?: "42"),
         "interval" to (store.get("interval") ?: "10"),
         "thermal_paused" to (store.get("thermal_paused") ?: "0"),
+        "overlay_monitor" to (store.get("overlay_monitor") ?: "0"),
         "snapshot" to (if (engine.hasSnapshot()) "1" else "0")
     )
 
@@ -266,6 +269,44 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val ctx = getApplication<Application>()
             val i = Intent(ctx, GuardService::class.java)
             if (v == "1") ContextCompat.startForegroundService(ctx, i) else ctx.stopService(i)
+        }
+        _ui.update { it.copy(prefs = readPrefs()) }
+    }
+
+    fun startOverlayMonitor() {
+        val app = getApplication<Application>()
+        if (!Settings.canDrawOverlays(app)) {
+            store.put("overlay_pending", "1")
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:${app.packageName}")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            app.startActivity(intent)
+            _ui.update { it.copy(message = "Permita 'Exibir sobre outros apps'; o monitor iniciará ao voltar.") }
+            return
+        }
+        store.put("overlay_pending", "0")
+        store.put("overlay_monitor", "1")
+        ContextCompat.startForegroundService(app, Intent(app, OverlayMonitorService::class.java))
+        _ui.update { it.copy(prefs = readPrefs(), message = "Monitor flutuante iniciado") }
+    }
+
+    fun stopOverlayMonitor() {
+        val app = getApplication<Application>()
+        app.stopService(Intent(app, OverlayMonitorService::class.java))
+        store.put("overlay_pending", "0")
+        store.put("overlay_monitor", "0")
+        _ui.update { it.copy(prefs = readPrefs(), message = "Monitor flutuante encerrado") }
+    }
+
+    fun handleOverlayPermissionReturn() {
+        val app = getApplication<Application>()
+        if (store.get("overlay_pending") == "1") {
+            if (Settings.canDrawOverlays(app)) {
+                startOverlayMonitor()
+            } else {
+                store.put("overlay_pending", "0")
+            }
         }
         _ui.update { it.copy(prefs = readPrefs()) }
     }
