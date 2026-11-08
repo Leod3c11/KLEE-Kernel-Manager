@@ -330,6 +330,43 @@ fun ThermalScreen(ui: UiState, vm: MainViewModel) {
 }
 
 // =====================================================================================
+// INVENTÁRIO DO KERNEL
+// =====================================================================================
+
+@Composable
+fun InventoryScreen(ui: UiState, vm: MainViewModel, onExport: () -> Unit) {
+    val info = ui.info
+    Page {
+        Section("Inventário das interfaces do kernel", "Coleta somente leitura. Nenhum clock, governor, tensão, limite térmico ou parâmetro será alterado.") {
+            KV("Dispositivo", info?.marketName ?: "—")
+            KV("Plataforma", info?.socModel ?: "—")
+            KV("Kernel", info?.kernel ?: "—")
+            KV("Nós reconhecidos", info?.nodes?.size?.toString() ?: "—")
+            KV("Clusters CPU", info?.policies?.size?.toString() ?: "—")
+            KV("OPPs GPU", info?.gpuOpps?.size?.toString() ?: "—")
+            KV("GPU devfreq", info?.gpuDevfreq?.path ?: "não detectado")
+            Button(onClick = onExport, enabled = !ui.busy, modifier = Modifier.fillMaxWidth()) {
+                Text(if (ui.busy) "Coletando inventário…" else "Coletar e exportar inventário (.txt)")
+            }
+            Hint("O arquivo inclui parâmetros de módulos, interfaces devfreq, subsistemas APU/NPU/DSP, memória/zRAM, drivers e permissões observadas.")
+        }
+        Section("Interfaces já reconhecidas pelo app") {
+            info?.nodes.orEmpty().forEach { node ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(node.label, fontWeight = FontWeight.SemiBold)
+                    Hint(node.path)
+                    Hint("Grupo: " + node.group + " · tipo: " + node.kind)
+                }
+            }
+            if (info?.nodes.isNullOrEmpty()) Hint("Nenhum nó ajustável reconhecido nesta leitura.")
+        }
+        Section("Como interpretar") {
+            Hint("Permissão de escrita observada não significa que o kernel aceite a gravação nem que o controle seja seguro. Cada interface precisa ser validada antes de virar um controle.")
+            Hint("Interfaces térmicas, de potência e proteções críticas permanecem somente leitura.")
+        }
+    }
+}
+// =====================================================================================
 // SISTEMA
 // =====================================================================================
 
