@@ -838,7 +838,7 @@ class Engine(
             echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
             echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
             echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
-        """.replace("§","§").trimIndent())
+        """.trimIndent())
 
         section("GPU MALI / DEVFREQ / GED / GPUFREQ", """
             for p in /sys/class/devfreq/*mali* /sys/devices/platform/soc/13000000.mali /sys/devices/platform/soc/13f50000.gpufreq /sys/devices/platform/soc/13c00000.gpueb /sys/kernel/ged /sys/kernel/ged/hal; do
