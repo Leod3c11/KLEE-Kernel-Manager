@@ -95,7 +95,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun readPrefs(): Map<String, String> = mapOf(
         "lock" to (store.get("lock") ?: "0"),
-        "boot" to (store.get("boot") ?: "1"),
+        "boot" to (store.get("boot") ?: "0"),
         "watchdog" to (store.get("watchdog") ?: "0"),
         "appprof" to (store.get("appprof") ?: "0"),
         "guard" to (store.get("guard") ?: "1"),
