@@ -192,6 +192,15 @@ fun Stepper(label: String, value: Int, unit: String, min: Int, max: Int, step: I
 fun NodeRow(spec: NodeSpec, value: String?, onApply: (String) -> Unit) {
     var text by remember(value) { mutableStateOf(value ?: "") }
     var pending by remember { mutableStateOf<String?>(null) }
+    if (!spec.editable) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(spec.label, fontWeight = FontWeight.SemiBold)
+            Hint(value?.takeIf { it.isNotBlank() } ?: "sem leitura")
+            Hint(spec.path)
+            Hint("Somente leitura · edição ainda não validada")
+        }
+        return
+    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(spec.label, Modifier.weight(1f))
