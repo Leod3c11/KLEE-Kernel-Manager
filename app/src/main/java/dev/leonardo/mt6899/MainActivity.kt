@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.leonardo.mt6899.ui.AppTheme
 import dev.leonardo.mt6899.ui.CpuScreen
+import dev.leonardo.mt6899.ui.ApuScreen
 import dev.leonardo.mt6899.ui.DashboardScreen
 import dev.leonardo.mt6899.ui.GpuScreen
 import dev.leonardo.mt6899.ui.InventoryScreen
@@ -168,6 +169,7 @@ private fun AppRoot(vm: MainViewModel) {
                         Tab.Home -> DashboardScreen(ui, vm)
                         Tab.Cpu -> CpuScreen(ui, vm)
                         Tab.Gpu -> GpuScreen(ui, vm)
+                        Tab.Apu -> ApuScreen(ui)
                         Tab.Thermal -> ThermalScreen(ui, vm)
                         Tab.System -> SystemScreen(ui, vm)
                         Tab.Profiles -> ProfilesScreen(ui, vm)
