@@ -315,7 +315,8 @@ fun ApuScreen(ui: UiState) {
 @Composable
 fun ThermalScreen(ui: UiState, vm: MainViewModel) {
     val live = ui.live
-    var confirmPause by remember { mutableStateOf(false) }
+    data class ThermalConfirmation(val title: String, val message: String, val apply: () -> Unit)
+    var pendingThermal by remember { mutableStateOf<ThermalConfirmation?>(null) }
     Page {
         Section("Sensores") {
             if (live == null) Hint("sem leitura") else {
@@ -334,33 +335,73 @@ fun ThermalScreen(ui: UiState, vm: MainViewModel) {
         }
         Section(
             "Serviços térmicos",
-            "Pausar mi_thermald e thermald tira a camada de software que reduz clock e brilho. O driver do kernel e o hardware continuam protegendo o chip."
+            "Pausar mi_thermald e thermald remove a camada de software que reduz clock e brilho. O driver do kernel e o hardware continuam protegendo o chip. Toda mudança exige confirmação."
         ) {
-            SwitchRow(
-                "Pausar mi_thermald / thermald",
-                ui.prefs["thermal_paused"] == "1",
-                enabled = !ui.busy
-            ) { on -> if (on) confirmPause = true else vm.pauseThermal(false) }
+            val paused = ui.prefs["thermal_paused"] == "1"
+            SwitchRow("Pausar mi_thermald / thermald", paused, enabled = !ui.busy) { next ->
+                pendingThermal = ThermalConfirmation(
+                    if (next) "Pausar serviços térmicos?" else "Retomar serviços térmicos?",
+                    "Estado atual: ${if (paused) "pausados" else "ativos"}\\nNovo estado: ${if (next) "pausados" else "ativos"}.\\n${if (next) "Isso reduz a proteção térmica em espaço de usuário. Mantenha a guarda e o serviço em segundo plano ativos." else "Retomar os serviços restaura a camada térmica de software."}",
+                    { vm.pauseThermal(next) }
+                )
+            }
         }
         NodeGroup(ui, vm, "Térmica", "Driver térmico / FPSGO")
-        Section("Guarda térmica", "Se um limite for passado com proteções enfraquecidas, volta ao padrão seguro sozinha (app aberto ou serviço ligado).") {
-            SwitchRow("Guarda ligada", ui.prefs["guard"] != "0") { vm.setPref("guard", if (it) "1" else "0") }
-            Stepper("SoC", ui.prefs["g_soc"]?.toIntOrNull() ?: 80, "°C", 60, 100) { vm.setPref("g_soc", it.toString()) }
-            Stepper("Superfície", ui.prefs["g_skin"]?.toIntOrNull() ?: 44, "°C", 36, 52) { vm.setPref("g_skin", it.toString()) }
-            Stepper("Bateria", ui.prefs["g_batt"]?.toIntOrNull() ?: 42, "°C", 36, 50) { vm.setPref("g_batt", it.toString()) }
+        Section(
+            "Guarda térmica",
+            "Cada alteração pede confirmação antes de ser gravada. Estes valores configuram a guarda do app; não alteram diretamente os sensores nem os trip points do hardware."
+        ) {
+            val guardEnabled = ui.prefs["guard"] != "0"
+            SwitchRow("Guarda ligada", guardEnabled, enabled = !ui.busy) { enabled ->
+                pendingThermal = ThermalConfirmation(
+                    "Alterar guarda térmica?",
+                    "Estado atual: ${if (guardEnabled) "ligada" else "desligada"}\\nNovo estado: ${if (enabled) "ligada" else "desligada"}.",
+                    { vm.setPref("guard", if (enabled) "1" else "0") }
+                )
+            }
+            val soc = ui.prefs["g_soc"]?.toIntOrNull() ?: 80
+            Stepper("SoC", soc, "°C", 60, 100) { next ->
+                pendingThermal = ThermalConfirmation(
+                    "Alterar limite da guarda · SoC?",
+                    "Valor atual: $soc°C\\nNovo valor: $next°C\\nÉ um limite de atuação da guarda do aplicativo, não o limite de desligamento do hardware.",
+                    { vm.setPref("g_soc", next.toString()) }
+                )
+            }
+            val skin = ui.prefs["g_skin"]?.toIntOrNull() ?: 44
+            Stepper("Superfície", skin, "°C", 36, 52) { next ->
+                pendingThermal = ThermalConfirmation(
+                    "Alterar limite da guarda · superfície?",
+                    "Valor atual: $skin°C\\nNovo valor: $next°C\\nÉ um limite da guarda do aplicativo, não uma calibração do sensor.",
+                    { vm.setPref("g_skin", next.toString()) }
+                )
+            }
+            val batt = ui.prefs["g_batt"]?.toIntOrNull() ?: 42
+            Stepper("Bateria", batt, "°C", 36, 50) { next ->
+                pendingThermal = ThermalConfirmation(
+                    "Alterar limite da guarda · bateria?",
+                    "Valor atual: $batt°C\\nNovo valor: $next°C\\nElevar esse limite pode permitir temperaturas maiores antes da reação da guarda.",
+                    { vm.setPref("g_batt", next.toString()) }
+                )
+            }
+        }
+        Section(
+            "Segurança dos sensores e trip points",
+            "Leituras físicas permanecem somente leitura. Trip points críticos, desligamento térmico e estados de cooling devices não serão editáveis até validar tipo, unidade, faixa e comportamento real de cada driver."
+        ) {
+            Hint("A confirmação não torna um parâmetro seguro por si só. Só serão oferecidos controles cuja interface e valores tenham sido identificados.")
         }
     }
-    if (confirmPause) {
+    val confirmation = pendingThermal
+    if (confirmation != null) {
         ConfirmDialog(
-            "Pausar serviços térmicos?",
-            "Mantenha a guarda térmica ligada e o serviço em segundo plano ativo (aba Perfis).",
-            onConfirm = { vm.pauseThermal(true) },
-            onDismiss = { confirmPause = false }
+            confirmation.title,
+            confirmation.message,
+            onConfirm = confirmation.apply,
+            onDismiss = { pendingThermal = null }
         )
     }
 }
 
-// =====================================================================================
 // INVENTÁRIO DO KERNEL
 // =====================================================================================
 
