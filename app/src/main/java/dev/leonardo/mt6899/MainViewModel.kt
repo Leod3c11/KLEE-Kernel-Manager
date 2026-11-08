@@ -23,6 +23,8 @@ import kotlinx.coroutines.withContext
 
 enum class Phase { Loading, NoRoot, Ready }
 
+data class AppInfo(val label: String, val pkg: String)
+
 enum class Tab(val title: String, val glyph: String) {
     Home("Painel", "◉"),
     Cpu("CPU", "▦"),
@@ -43,6 +45,8 @@ data class UiState(
     val profiles: List<Profile> = emptyList(),
     val active: String? = null,
     val prefs: Map<String, String> = emptyMap(),
+    val appRules: Map<String, String> = emptyMap(),
+    val apps: List<AppInfo> = emptyList(),
     val log: List<String> = emptyList(),
     val busy: Boolean = false,
     val message: String? = null
@@ -90,6 +94,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         "lock" to (store.get("lock") ?: "0"),
         "boot" to (store.get("boot") ?: "1"),
         "watchdog" to (store.get("watchdog") ?: "0"),
+        "appprof" to (store.get("appprof") ?: "0"),
         "guard" to (store.get("guard") ?: "1"),
         "g_soc" to (store.get("g_soc") ?: "80"),
         "g_skin" to (store.get("g_skin") ?: "44"),
@@ -116,7 +121,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _ui.update {
                 it.copy(
                     phase = Phase.Ready, info = info, profiles = engine.allProfiles(),
-                    active = store.get("active"), prefs = readPrefs()
+                    active = store.get("active"), prefs = readPrefs(), appRules = engine.appRules()
                 )
             }
             refreshLive()
@@ -302,9 +307,51 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (k == "watchdog") {
             val ctx = getApplication<Application>()
             val i = Intent(ctx, GuardService::class.java)
-            if (v == "1") ContextCompat.startForegroundService(ctx, i) else ctx.stopService(i)
+            if (v == "1") ContextCompat.startForegroundService(ctx, i)
+            else if (!engine.appProfilesOn()) ctx.stopService(i)
+        }
+        if (k == "appprof") {
+            if (v == "1") startGuard() else engine.clearAppOverride() // o serviço encerra sozinho se nada mais o exige
         }
         _ui.update { it.copy(prefs = readPrefs()) }
+    }
+
+    private fun startGuard() {
+        val ctx = getApplication<Application>()
+        ContextCompat.startForegroundService(ctx, Intent(ctx, GuardService::class.java))
+    }
+
+    /** Apps com ícone no launcher, para o seletor de "Perfil por app". */
+    fun loadApps() {
+        if (_ui.value.apps.isNotEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val pm = getApplication<Application>().packageManager
+                val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                val apps = pm.queryIntentActivities(launcher, 0)
+                    .map { AppInfo(it.loadLabel(pm).toString(), it.activityInfo.packageName) }
+                    .distinctBy { it.pkg }
+                    .sortedBy { it.label.lowercase() }
+                _ui.update { it.copy(apps = apps) }
+            } catch (e: Throwable) {
+                LogBuffer.add("Lista de apps: ${e.message}")
+            }
+        }
+    }
+
+    fun addAppRule(pkg: String, profile: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = engine.setAppRule(pkg, profile)
+            if (ok && store.get("appprof") == "1") startGuard()
+            _ui.update { it.copy(appRules = engine.appRules(), message = if (ok) "Regra salva" else "Regra recusada") }
+        }
+    }
+
+    fun removeAppRule(pkg: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            engine.setAppRule(pkg, null)
+            _ui.update { it.copy(appRules = engine.appRules(), message = "Regra removida") }
+        }
     }
 
     fun startOverlayMonitor() {

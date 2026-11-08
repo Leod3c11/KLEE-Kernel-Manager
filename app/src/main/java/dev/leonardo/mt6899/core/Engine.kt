@@ -759,6 +759,98 @@ class Engine(
         return applyProfile(pr)
     }
 
+    // ------------------------------------------------------------------ perfil por app
+
+    /** Janelas do sistema que não contam como "sair do app" (gaveta de notificações, barras). */
+    private val fgIgnored = setOf("android", "com.android.systemui", "com.miui.systemui")
+    private var appMiss = 0
+
+    fun appRules(): Map<String, String> = AppRules.decode(store.get("app_rules"))
+
+    fun appProfilesOn(): Boolean = store.get("appprof") == "1" && appRules().isNotEmpty()
+
+    /** Perfis marcados com ⚠ desligam proteções térmicas: nunca são aplicados sozinhos por app. */
+    fun appRuleAllowed(profile: String): Boolean = !profile.endsWith("⚠")
+
+    /** Cria/atualiza a regra ([profile] = nome) ou remove ([profile] = null). false = recusada. */
+    fun setAppRule(pkg: String, profile: String?): Boolean {
+        if (!AppRules.isPackage(pkg)) return false
+        val m = LinkedHashMap(appRules())
+        if (profile == null) {
+            m.remove(pkg)
+        } else {
+            if (!appRuleAllowed(profile) || allProfiles().none { it.name == profile }) return false
+            m[pkg] = profile
+        }
+        if (m.isEmpty()) store.remove("app_rules") else store.put("app_rules", AppRules.encode(m))
+        return true
+    }
+
+    /** Esquece que há um perfil de app em vigor (sem desfazê-lo). */
+    fun clearAppOverride() {
+        appMiss = 0
+        store.remove("app_base")
+        store.remove("app_cur")
+        store.remove("app_want")
+    }
+
+    /** Pacote do app em primeiro plano (precisa de root), ou null se não deu para descobrir. */
+    fun foregroundPackage(): String? {
+        val a = sh.exec("dumpsys activity activities 2>/dev/null | grep -m1 -E 'topResumedActivity|mResumedActivity'")
+        Parse.foregroundPackage(a.out)?.let { return it }
+        return Parse.foregroundPackage(sh.exec("dumpsys window 2>/dev/null | grep -m1 mCurrentFocus").out)
+    }
+
+    /**
+     * Chamado a cada ciclo do serviço com a tela ligada. Ao entrar num app com regra aplica o perfil dele
+     * (guardando o que estava ativo); ao sair, depois de 2 leituras seguidas fora do app, volta ao anterior.
+     * [ignore] = pacotes que não contam (o próprio gerenciador). Devolve o perfil aplicado, ou null.
+     */
+    fun autoSwitchByApp(ignore: Set<String> = emptySet()): String? {
+        val rules = appRules()
+        if (rules.isEmpty()) return null
+        val fg = foregroundPackage() ?: return null
+        if (fg in fgIgnored || fg in ignore) return null
+        val want = rules[fg]
+        val cur = store.get("app_cur")
+        if (want != null) {
+            appMiss = 0
+            if (cur == fg) return null // já aplicado; não briga com uma troca manual feita depois
+            if (!appRuleAllowed(want) || allProfiles().none { it.name == want }) {
+                log("Perfil por app: '$want' indisponível para $fg")
+                return null
+            }
+            if (store.get("app_base") == null) store.put("app_base", store.get("active") ?: "")
+            log("Perfil por app: $fg → '$want'")
+            applyByName(want)
+            store.put("app_cur", fg)
+            store.put("app_want", want)
+            return want
+        }
+        if (cur == null) return null
+        if (++appMiss < 2) return null // debounce: uma leitura fora do app pode ser só uma janela do sistema
+        val base = store.get("app_base").orEmpty()
+        // se o perfil ativo não é mais o do app (modo seguro ou troca manual), não desfaz por cima
+        val untouched = store.get("active") == store.get("app_want")
+        clearAppOverride()
+        if (!untouched) {
+            log("Perfil por app: saiu de $cur; o perfil mudou nesse meio tempo, mantido")
+            return null
+        }
+        log("Perfil por app: saiu de $cur → " + base.ifEmpty { "estado salvo" })
+        return when {
+            base.isNotEmpty() && allProfiles().any { it.name == base } -> {
+                applyByName(base)
+                base
+            }
+            hasSnapshot() -> {
+                restoreSnapshot()
+                "snapshot"
+            }
+            else -> null
+        }
+    }
+
     /** Valores esperados (caminho -> valor) do perfil ativo, usados para detectar "deriva". */
     private fun expected(i: SocInfo, pr: Profile): Map<String, String> {
         val m = LinkedHashMap<String, String>()
@@ -856,6 +948,7 @@ class Engine(
         // o snapshot é o estado "de fábrica": serviços térmicos parados pelo app voltam junto
         if (store.get("thermal_paused") == "1") res += pauseThermal(false)
         restoreModes()
+        clearAppOverride()
         store.remove("active")
         return res
     }

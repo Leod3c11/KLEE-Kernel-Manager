@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import dev.leonardo.mt6899.core.Engine
@@ -86,9 +87,11 @@ class GuardService : Service() {
             }
         }
         var lastSafe = 0L
+        val power = getSystemService(PowerManager::class.java)
         while (scope.isActive) {
-            // Sem "manter perfil" e sem proteções enfraquecidas não há motivo para ficar rodando.
-            if (store.get("watchdog") != "1" && !engine.isRisky()) {
+            val appMode = engine.appProfilesOn()
+            // Sem "manter perfil", sem perfil por app e sem proteções enfraquecidas não há o que fazer.
+            if (store.get("watchdog") != "1" && !engine.isRisky() && !appMode) {
                 LogBuffer.add("Serviço: nada a vigiar, encerrando")
                 stopSelf()
                 return
@@ -102,13 +105,18 @@ class GuardService : Service() {
                 } else if (store.get("watchdog") == "1") {
                     engine.enforce()
                 }
+                // em modo seguro (trip) o perfil do app não pode voltar a subir os limites; tela apagada: nada a fazer
+                if (trip == null && appMode && power?.isInteractive != false) {
+                    engine.autoSwitchByApp(setOf(packageName))
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
                 LogBuffer.add("Serviço: ${e.message}")
             }
             val s = (store.get("interval")?.toLongOrNull() ?: 10L).coerceIn(3L, 120L)
-            delay(s * 1000)
+            // trocar de perfil ao abrir um app precisa de resposta rápida
+            delay((if (appMode) minOf(s, 3L) else s) * 1000)
         }
     }
 
@@ -122,7 +130,7 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         val s = PrefsStore(context)
         val wantsBoot = s.get("active") != null && s.get("boot") != "0"
-        if (wantsBoot || s.get("watchdog") == "1") {
+        if (wantsBoot || s.get("watchdog") == "1" || s.get("appprof") == "1") {
             ContextCompat.startForegroundService(context, Intent(context, GuardService::class.java))
         }
     }

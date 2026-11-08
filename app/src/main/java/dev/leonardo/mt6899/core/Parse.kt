@@ -56,6 +56,11 @@ object Parse {
         return active to ws.map { it.trim('[', ']') }
     }
 
+    private val fgRe = Regex("\\bu\\d+\\s+([A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+)/")
+
+    /** "...ActivityRecord{1a2b u0 com.app/.Main t5}" ou "mCurrentFocus=Window{1a2b u0 com.app/com.app.Main}" -> "com.app" */
+    fun foregroundPackage(raw: String?): String? = fgRe.find(raw ?: "")?.groupValues?.get(1)
+
     /** "48 260000" -> (48, 260000) */
     fun gedCurrent(raw: String?): Pair<Int, Long>? {
         val l = longs(firstLine(raw))

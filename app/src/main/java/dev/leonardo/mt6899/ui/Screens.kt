@@ -425,6 +425,7 @@ fun ProfilesScreen(ui: UiState, vm: MainViewModel) {
                 vm.setPref("interval", it.toString())
             }
         }
+        AppProfilesSection(ui, vm)
         Section(
             "Monitor flutuante de CPU/GPU",
             "Mostra as frequências atuais por cima de outros apps. Arraste pela barra superior; o serviço continua ativo ao fechar o MT6899 Manager."
