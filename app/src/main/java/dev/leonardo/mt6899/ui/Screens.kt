@@ -178,7 +178,6 @@ fun GpuScreen(ui: UiState, vm: MainViewModel) {
     val info = ui.info ?: return
     val live = ui.live
     val freqs = info.gpuOpps.map { it.kHz }.sorted()
-    var confirmLimit by remember { mutableStateOf<Pair<Int, String>?>(null) }
     Page {
         Section("Estado", info.gpuName) {
             KV("Frequência", live?.gpuKHz?.let { mhz(it) } ?: "—")
@@ -210,25 +209,17 @@ fun GpuScreen(ui: UiState, vm: MainViewModel) {
             OutlinedButton(onClick = { vm.fixGpu(null) }, enabled = !ui.busy) { Text("Liberar (DVFS normal)") }
         }
         Section(
-            "Limitadores do driver (limit_table)",
-            "Cada linha é um cliente que limita a GPU. O interruptor liga/desliga o teto dele. Desligar THERMAL_*, PEAK_POWER ou BATT_* remove proteção do hardware."
+            "Limitadores do driver (PPM - somente leitura)",
+            "A tabela é exibida para identificar quem está impondo teto/piso. A escrita foi desativada porque o protocolo deste kernel ainda não foi validado; proteções térmicas e de potência não serão alteradas."
         ) {
             val limits = live?.limits ?: emptyList()
             if (limits.isEmpty()) Hint("limit_table indisponível")
             limits.forEach { lim ->
-                val risky = lim.name.startsWith("THERMAL") || lim.name.startsWith("PEAK") || lim.name.startsWith("BATT") ||
-                    lim.name == "LOW_BATT" || lim.name == "PBM" || lim.name == "SEGMENT"
                 val ck = if (lim.ceiling >= 0) info.gpuOpps.firstOrNull { it.idx == lim.ceiling }?.kHz else null
-                SwitchRow(
-                    label = lim.name + if (risky) "  ⚠" else "",
-                    checked = lim.cEnable,
-                    hint = "prioridade ${lim.priority} · teto " + (if (ck != null) "${mhz(ck)} (idx ${lim.ceiling})" else "—") + " · piso idx ${lim.floor}",
-                    enabled = !ui.busy
-                ) { on ->
-                    if (!on && risky) confirmLimit = lim.id to lim.name else vm.setLimit(lim.id, on)
-                }
+                val fk = if (lim.floor >= 0) info.gpuOpps.firstOrNull { it.idx == lim.floor }?.kHz else null
+                KV(lim.name, "prioridade ${lim.priority} · teto " + (ck?.let { mhz(it) } ?: "sem teto") + " · piso " + (fk?.let { mhz(it) } ?: "sem piso"))
+                Hint("ceiling idx=${lim.ceiling} (${if (lim.cEnable) "ativo" else "inativo"}) · floor idx=${lim.floor} (${if (lim.fEnable) "ativo" else "inativo"})")
             }
-            Hint("Formato de escrita usado: \"id c f\". Se o driver ignorar, o log mostra a falha.")
         }
         val devfreq = info.gpuDevfreq
         if (devfreq != null) {
@@ -270,15 +261,7 @@ fun GpuScreen(ui: UiState, vm: MainViewModel) {
         }
         NodeGroup(ui, vm, "GPU · GED", "Ajuste fino do DVFS (GED)")
     }
-    val cl = confirmLimit
-    if (cl != null) {
-        ConfirmDialog(
-            "Desligar ${cl.second}?",
-            "Isso remove uma proteção. A GPU pode esquentar bem mais. A guarda térmica volta tudo ao normal se os limites forem passados, mas só enquanto o app ou o serviço estiver ativo.",
-            onConfirm = { vm.setLimit(cl.first, false) },
-            onDismiss = { confirmLimit = null }
-        )
-    }
+
 }
 
 // =====================================================================================
