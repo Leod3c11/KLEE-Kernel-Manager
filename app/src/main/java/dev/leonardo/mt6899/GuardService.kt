@@ -81,7 +81,7 @@ class GuardService : Service() {
         engine.detect()
         delay(20_000) // deixa o sistema assentar depois do boot
         store.get("active")?.let {
-            if (store.get("boot") != "0") {
+            if (store.get("boot") == "1") {
                 LogBuffer.add("Serviço: aplicando '$it'")
                 engine.applyByName(it)
             }
@@ -129,7 +129,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         val s = PrefsStore(context)
-        val wantsBoot = s.get("active") != null && s.get("boot") != "0"
+        // Boot apply must be explicit opt-in. Missing preference is OFF (fail-safe).\n        val wantsBoot = s.get("active") != null && s.get("boot") == "1"
         if (wantsBoot || s.get("watchdog") == "1" || s.get("appprof") == "1") {
             ContextCompat.startForegroundService(context, Intent(context, GuardService::class.java))
         }
