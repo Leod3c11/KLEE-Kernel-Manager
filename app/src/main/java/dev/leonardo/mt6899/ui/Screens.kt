@@ -230,8 +230,45 @@ fun GpuScreen(ui: UiState, vm: MainViewModel) {
             }
             Hint("Formato de escrita usado: \"id c f\". Se o driver ignorar, o log mostra a falha.")
         }
+        val devfreq = info.gpuDevfreq
+        if (devfreq != null) {
+            val minNode = info.node("gpu.dev.min")
+            val maxNode = info.node("gpu.dev.max")
+            val govNode = info.node("gpu.dev.gov")
+            val minHz = ui.nodeValues["gpu.dev.min"]?.toLongOrNull()
+            val maxHz = ui.nodeValues["gpu.dev.max"]?.toLongOrNull()
+            Section(
+                "Controle direto · Mali Devfreq",
+                "${devfreq.freqs.size} OPPs detectados. A tabela do aparelho vai de ${devfreq.freqs.firstOrNull()?.div(1_000_000L) ?: 0} a ${devfreq.freqs.lastOrNull()?.div(1_000_000L) ?: 0} MHz. O driver ainda pode impor limites térmicos ou de potência."
+            ) {
+                KV("Mínimo aplicado", minHz?.let { "${it / 1_000_000L} MHz" } ?: "—")
+                KV("Máximo aplicado", maxHz?.let { "${it / 1_000_000L} MHz" } ?: "—")
+                FreqSlider(
+                    "Limite mínimo",
+                    devfreq.freqs,
+                    minHz,
+                    fmt = { "${it / 1_000_000L} MHz" },
+                    enabled = !ui.busy
+                ) { hz -> minNode?.let { vm.writeNode(it, hz.toString()) } }
+                FreqSlider(
+                    "Limite máximo",
+                    devfreq.freqs,
+                    maxHz,
+                    fmt = { "${it / 1_000_000L} MHz" },
+                    enabled = !ui.busy
+                ) { hz -> maxNode?.let { vm.writeNode(it, hz.toString()) } }
+                if (govNode != null && devfreq.governors.isNotEmpty()) {
+                    ChipChoice(
+                        "Governor Devfreq",
+                        devfreq.governors,
+                        ui.nodeValues["gpu.dev.gov"],
+                        enabled = !ui.busy
+                    ) { governor -> vm.writeNode(govNode, governor) }
+                }
+                Hint("Os limites são escritos em Hz nos nós reais min_freq/max_freq. Se o kernel rejeitar ou normalizar o valor, a interface informa a falha.")
+            }
+        }
         NodeGroup(ui, vm, "GPU · GED", "Ajuste fino do DVFS (GED)")
-        NodeGroup(ui, vm, "GPU · devfreq", "devfreq da GPU")
     }
     val cl = confirmLimit
     if (cl != null) {
