@@ -278,6 +278,34 @@ fun GpuScreen(ui: UiState, vm: MainViewModel) {
 }
 
 // =====================================================================================
+// APU / NPU / DSP
+// =====================================================================================
+
+@Composable
+fun ApuScreen(ui: UiState) {
+    val values = ui.apuTelemetry
+    Page {
+        Section("APU / NPU / DSP", "Telemetria lida dos nós publicados pelo firmware MediaTek. Esta tela não altera parâmetros do acelerador.") {
+            val apuLimit = values["Limite APU"]
+            KV("Limitação APU", when (apuLimit) { "0" -> "não sinalizada"; "1" -> "sinalizada"; null -> "nó indisponível"; else -> apuLimit })
+            values.forEach { (label, value) ->
+                if (label != "Limite APU") KV(label, value)
+            }
+            if (values.isEmpty()) Hint("Nenhum nó de telemetria APU/GED respondeu nesta leitura.")
+        }
+        Section("Blocos detectados no inventário", "A presença de um driver ou dispositivo não comprova que a NPU esteja executando uma carga neste momento.") {
+            listOf("APUSYS", "APU TOP", "MDLA", "MVPU", "APU MMU / IOMMU", "VPU", "SCP").forEach {
+                KV(it, "interface/driver detectado")
+            }
+        }
+        Section("Controles de frequência", "O inventário não mostrou um domínio devfreq próprio da APU nem uma tabela OPP utilizável para esse acelerador. Por isso, frequência, tensão e power limit da APU permanecem somente leitura.") {
+            Hint("Não vou criar controles fictícios nem escrever em nós de diagnóstico como apu_info ou apu_atc.")
+        }
+    }
+}
+
+
+// =====================================================================================
 // TÉRMICA
 // =====================================================================================
 
