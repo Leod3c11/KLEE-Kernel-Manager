@@ -790,7 +790,7 @@ class Engine(
      */
     fun diagnosticReport(appLog: List<String>, appState: String): String {
         val out = StringBuilder()
-        fun line(s: String = "") { out.append(s).append('\\n') }
+        fun line(s: String = "") { out.append(s).append('\n') }
         fun section(title: String, command: String) {
             line()
             line("========== " + title + " ==========")
