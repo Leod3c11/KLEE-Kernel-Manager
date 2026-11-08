@@ -34,7 +34,8 @@ data class NodeSpec(
     val kind: Kind = Kind.INT,
     val risk: Risk = Risk.SAFE,
     val hint: String = "",
-    val choices: List<String> = emptyList()
+    val choices: List<String> = emptyList(),
+    val editable: Boolean = true
 )
 
 // ---------- Hardware detectado ----------
