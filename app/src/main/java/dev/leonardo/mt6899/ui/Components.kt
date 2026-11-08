@@ -241,9 +241,9 @@ fun NodeRow(spec: NodeSpec, value: String?, onApply: (String) -> Unit) {
         ConfirmDialog(
             title = "Alterar ${spec.label}?",
             text = buildString {
-                append("Valor atual: ${value ?: "indisponível"}\\n")
-                append("Novo valor: $p\\n")
-                append("Interface: ${spec.path}\\n")
+                append("Valor atual: ${value ?: "indisponível"}\n")
+                append("Novo valor: $p\n")
+                append("Interface: ${spec.path}\n")
                 append(if (spec.group == "Térmica") "Alteração térmica: pode mudar a resposta de desempenho e temperatura. " else "Este ajuste é marcado como de risco. ")
                 append(spec.hint.ifEmpty { "Sem detalhes adicionais." })
             },
