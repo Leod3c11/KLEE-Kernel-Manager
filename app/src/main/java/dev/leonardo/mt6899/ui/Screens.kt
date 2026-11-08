@@ -259,7 +259,20 @@ fun GpuScreen(ui: UiState, vm: MainViewModel) {
                 Hint("Os limites são escritos em Hz nos nós reais min_freq/max_freq. Se o kernel rejeitar ou normalizar o valor, a interface informa a falha.")
             }
         }
-        NodeGroup(ui, vm, "GPU · GED", "Ajuste fino do DVFS (GED)")
+        Section(
+            "Desativar funções do GED",
+            "Ajuste em tempo real dos parâmetros publicados pelo kernel. 0 desativa a função; 1 reativa. Isso não descarrega o módulo GED."
+        ) {
+            val gedControls = info.nodes.filter { it.group == "GED · controle" }
+            if (gedControls.isEmpty()) {
+                Hint("Este kernel não expõe gpu_dvfs_enable / ged_boost_enable em /sys/module/ged/parameters.")
+            } else {
+                gedControls.forEach { node ->
+                    NodeRow(node, ui.nodeValues[node.id]) { value -> vm.writeNode(node, value) }
+                }
+            }
+        }
+                NodeGroup(ui, vm, "GPU · GED", "Ajuste fino do DVFS (GED)")
     }
 
 }
