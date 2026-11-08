@@ -201,9 +201,12 @@ class Engine(
         ged("gpu.fwidle", "Fallback window", "fallback_window_size", "Visto: 1")
         if (gpuDev != null) {
             val ch = gpuDev.freqs.map { it.toString() }
-            l.add(NodeSpec("gpu.dev.max", "devfreq max_freq (Hz)", gpuDev.path + "/max_freq", "GPU · devfreq", Kind.CHOICE, Risk.CAUTION,
-                "Teto do devfreq; o limitador térmico AP também o altera", ch))
-            l.add(NodeSpec("gpu.dev.min", "devfreq min_freq (Hz)", gpuDev.path + "/min_freq", "GPU · devfreq", Kind.CHOICE, Risk.CAUTION, "", ch))
+            l.add(NodeSpec("gpu.dev.max", "Limite máximo Devfreq (Hz)", gpuDev.path + "/max_freq", "GPU · devfreq", Kind.CHOICE, Risk.CAUTION,
+                "Teto da interface Mali Devfreq. O driver ou a política térmica ainda podem impor um teto menor.", ch))
+            l.add(NodeSpec("gpu.dev.min", "Limite mínimo Devfreq (Hz)", gpuDev.path + "/min_freq", "GPU · devfreq", Kind.CHOICE, Risk.CAUTION,
+                "Piso da interface Mali Devfreq.", ch))
+            l.add(NodeSpec("gpu.dev.gov", "Governor Devfreq", gpuDev.path + "/governor", "GPU · devfreq", Kind.CHOICE, Risk.CAUTION,
+                "Disponibilidade e aceitação dependem do driver MediaTek.", gpuDev.governors))
         }
         if (ddr != null) {
             val ch = ddr.freqs.map { it.toString() }
@@ -268,9 +271,12 @@ class Engine(
             )
         }
         val cur = Parse.gedCurrent(r[GED_CUR])
+        // O cur_freq desta ROM pode reportar 26 MHz fora da tabela real.
+        // Só aceitamos o fallback Devfreq se corresponder exatamente a um OPP anunciado.
         val gpuDevfreqKHz = gpuDevfreqCurrentPath
             ?.let { Parse.intOf(r[it]) }
-            ?.let { if (it > 10_000_000L) it / 1000L else it }
+            ?.takeIf { rawHz -> i.gpuDevfreq?.freqs?.contains(rawHz) == true }
+            ?.div(1000L)
         val status = r[GPU_STATUS]
         val ceil = Parse.ppmCeiling(status)
         val floor = Parse.ppmFloor(status)
@@ -368,7 +374,14 @@ class Engine(
         return WriteResult(path, value, shown, ok, note).also { log(it.line()) }
     }
 
-    fun writeNode(spec: NodeSpec, value: String): WriteResult = write(spec.path, value)
+    fun writeNode(spec: NodeSpec, value: String): WriteResult = when (spec.id) {
+        "gpu.dev.max" -> value.toLongOrNull()?.let { setGpuDevfreqLimits(maxHz = it) }
+            ?: WriteResult(spec.path, value, "", false, "frequência inválida")
+        "gpu.dev.min" -> value.toLongOrNull()?.let { setGpuDevfreqLimits(minHz = it) }
+            ?: WriteResult(spec.path, value, "", false, "frequência inválida")
+        "gpu.dev.gov" -> setGpuDevfreqGovernor(value)
+        else -> write(spec.path, value)
+    }
 
     // --- CPU
 
@@ -427,6 +440,75 @@ class Engine(
 
     /** kHz = 0 (ou ≤ mínimo) remove o piso. */
     fun setGpuFloorKHz(kHz: Long): WriteResult = write(GED_BOOST, gpuIdxForFloor(kHz).toString())
+
+    /**
+     * Ajusta os limites Devfreq em Hz. Se um novo teto ficar abaixo do piso atual,
+     * reduz o piso junto; se um novo piso ultrapassar o teto, eleva o teto junto.
+     * A ordem das escritas evita a rejeição por min > max. Em falha parcial,
+     * tenta restaurar o primeiro nó alterado.
+     */
+    fun setGpuDevfreqLimits(minHz: Long? = null, maxHz: Long? = null): WriteResult {
+        val dev = info?.gpuDevfreq
+            ?: return WriteResult("gpu-devfreq", "", "", false, "Devfreq da Mali não detectado")
+        if (minHz == null && maxHz == null)
+            return WriteResult(dev.path, "", "", false, "nenhum limite solicitado")
+
+        val available = dev.freqs.toSet()
+        if (minHz != null && minHz !in available)
+            return WriteResult("${dev.path}/min_freq", minHz.toString(), "", false, "valor fora de available_frequencies")
+        if (maxHz != null && maxHz !in available)
+            return WriteResult("${dev.path}/max_freq", maxHz.toString(), "", false, "valor fora de available_frequencies")
+
+        val minPath = "${dev.path}/min_freq"
+        val maxPath = "${dev.path}/max_freq"
+        val oldMin = readOne(minPath)?.trim()?.toLongOrNull()
+            ?: return WriteResult(minPath, minHz?.toString() ?: "", "", false, "não foi possível ler o limite mínimo")
+        val oldMax = readOne(maxPath)?.trim()?.toLongOrNull()
+            ?: return WriteResult(maxPath, maxHz?.toString() ?: "", "", false, "não foi possível ler o limite máximo")
+
+        var nextMin = minHz ?: oldMin
+        var nextMax = maxHz ?: oldMax
+        if (maxHz != null && nextMax < nextMin) nextMin = nextMax
+        if (minHz != null && nextMin > nextMax) nextMax = nextMin
+        if (nextMin > nextMax)
+            return WriteResult(dev.path, "$nextMin..$nextMax", "$oldMin..$oldMax", false, "min_freq não pode superar max_freq")
+
+        val changes = when {
+            nextMax < oldMin -> listOf(minPath to nextMin, maxPath to nextMax)
+            nextMin > oldMax -> listOf(maxPath to nextMax, minPath to nextMin)
+            else -> buildList {
+                if (nextMax != oldMax) add(maxPath to nextMax)
+                if (nextMin != oldMin) add(minPath to nextMin)
+            }
+        }
+        if (changes.isEmpty())
+            return WriteResult(dev.path, "$nextMin..$nextMax", "$oldMin..$oldMax", true, "limites já estavam aplicados")
+
+        var firstPath: String? = null
+        for ((path, value) in changes) {
+            val result = write(path, value.toString())
+            if (!result.ok) {
+                if (firstPath != null) {
+                    val original = if (firstPath == minPath) oldMin else oldMax
+                    write(firstPath!!, original.toString())
+                }
+                return WriteResult(dev.path, "$nextMin..$nextMax", "min=${readOne(minPath)} max=${readOne(maxPath)}", false,
+                    "falha em ${path.substringAfterLast('/')}: ${result.note.ifBlank { "kernel não confirmou o valor" }}")
+                    .also { log(it.line()) }
+            }
+            if (firstPath == null) firstPath = path
+        }
+        return WriteResult(dev.path, "$nextMin..$nextMax", "min=${readOne(minPath)} max=${readOne(maxPath)}", true)
+            .also { log(it.line()) }
+    }
+
+    fun setGpuDevfreqGovernor(governor: String): WriteResult {
+        val dev = info?.gpuDevfreq
+            ?: return WriteResult("gpu-devfreq/governor", governor, "", false, "Devfreq da Mali não detectado")
+        if (governor !in dev.governors)
+            return WriteResult("${dev.path}/governor", governor, "", false, "governor não anunciado pelo driver")
+        return write("${dev.path}/governor", governor)
+    }
 
     fun fixGpuOpp(idx: Int?): WriteResult {
         val v = (idx ?: -1).toString()
