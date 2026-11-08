@@ -37,15 +37,18 @@ class PrefsStore(ctx: Context) : Store {
 }
 
 object LogBuffer {
-    private val fmt = SimpleDateFormat("HH:mm:ss", Locale.US)
+    private val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
     private val _flow = MutableStateFlow<List<String>>(emptyList())
     val flow: StateFlow<List<String>> = _flow
 
     @Synchronized
     fun add(s: String) {
         val l = _flow.value + "${fmt.format(Date())} $s"
-        _flow.value = if (l.size > 400) l.takeLast(400) else l
+        _flow.value = if (l.size > 2000) l.takeLast(2000) else l
     }
+
+    @Synchronized
+    fun snapshot(): List<String> = _flow.value.toList()
 
     @Synchronized
     fun clear() {
