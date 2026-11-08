@@ -1202,6 +1202,257 @@ class Engine(
             logcat -b main -b system -b crash -d -t 1800 -v threadtime 2>&1 | grep -iE 'mt6899|klee|mtk|mali|gpu|ged|gpufreq|gpueb|devfreq|cpufreq|thermal|avc: denied|fatal exception|permission denied|write failed' | tail -n 900
         """.trimIndent())
 
+
+        section("INVENTÁRIO DE INTERFACES DO KERNEL - SOMENTE LEITURA", """
+            echo '[identificação de drivers e subsistemas]'
+            for root in /sys/bus/platform/devices /sys/class/devfreq /sys/class/remoteproc /sys/class/misc /sys/class/ dma /sys/kernel; do
+              [ -d "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}root" ] || continue
+              echo "### ${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}root"
+              find "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}root" -mindepth 1 -maxdepth 2 \\( -type d -o -type l \\) 2>/dev/null | head -n 220
+            done
+            echo '[parâmetros publicados por módulos do kernel]'
+            count=0
+            for f in /sys/module/*/parameters/*; do
+              [ -e "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}f" ] || continue
+              count=$((count+1)); [ "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}count" -le 300 ] || break
+              if [ -r "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}f" ]; then
+                value=$(head -c 1000 "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}f" 2>/dev/null | tr '\\n' ' ')
+              else value='<sem leitura>'; fi
+              if [ -w "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}f" ]; then writable=yes; else writable=no; fi
+              stat -c '%n | mode=%a | owner=%U:%G' "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}f" 2>/dev/null
+              echo "value=${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}value | root_writable=${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}writable"
+            done
+            echo '[interfaces APU / NPU / DSP / VPU / MDLA]'
+            for root in /sys/class/devfreq /sys/class/remoteproc /sys/class/misc /sys/bus/platform/devices /sys/kernel /sys/module; do
+              [ -d "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}root" ] || continue
+              find "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}root" -mindepth 1 -maxdepth 3 2>/dev/null | grep -iE 'apu|npu|neural|mdla|vpu|dsp|iommu|scp|edma|apusys|mali|ged' | head -n 250
+            done
+            echo '[devfreq e nós publicados]'
+            for p in /sys/class/devfreq/*; do
+              [ -d "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}p" ] || continue
+              echo "----- ${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}p -----"
+              for f in name governor available_governors available_frequencies min_freq max_freq cur_freq target_freq polling_interval; do
+                [ -r "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}p/${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}f" ] && { printf '%s=' "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}f"; head -c 4000 "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}p/${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}f" 2>&1; echo; }
+              done
+              stat -c 'directory=%n mode=%a owner=%U:%G' "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}p" 2>/dev/null
+            done
+            echo '[zram e interfaces de memória]'
+            for root in /sys/block/zram* /sys/kernel/mm /sys/devices/system/node /sys/fs/cgroup; do
+              [ -e "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}root" ] || continue
+              echo "----- ${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}root -----"
+              find "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}root" -mindepth 1 -maxdepth 2 -type f 2>/dev/null | head -n 180
+            done
+            echo '[drivers vinculados a dispositivos platform]'
+            for d in /sys/bus/platform/devices/*; do
+              [ -e "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}d" ] || continue
+              drv=$(readlink -f "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}d/driver" 2>/dev/null)
+              [ -n "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}drv" ] && echo "${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}d -> ${'
+        line("Total de caracteres: " + out.length)
+        return out.toString()
+    }
+
+
+}
+}drv"
+            done | head -n 300
+        """.trimIndent())
+
         line()
         line("========== FIM DO DIAGNÓSTICO ==========")
         line("Total de caracteres: " + out.length)
