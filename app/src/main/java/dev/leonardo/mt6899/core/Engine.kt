@@ -337,7 +337,10 @@ class Engine(
             ?.let { Parse.intOf(r[it]) }
             ?.takeIf { rawHz -> i.gpuDevfreq?.freqs?.contains(rawHz) == true }
             ?.div(1000L)
-        val status = r[GPU_STATUS]
+        val status = r[GPU_STATUS].orEmpty()
+        val fmeterKHz = Regex("FmeterFreq:\\s*(\\d+)").find(status)?.groupValues?.getOrNull(1)?.toLongOrNull()
+        val outKHz = Regex("OutFreq:\\s*(\\d+)").find(status)?.groupValues?.getOrNull(1)?.toLongOrNull()
+        val powerActive = Regex("Active:\\s*(\\d+)").find(status)?.groupValues?.getOrNull(1)?.let { it == "1" }
         val ceil = Parse.ppmCeiling(status)
         val floor = Parse.ppmFloor(status)
         val temps = LinkedHashMap<String, Float>()
@@ -364,7 +367,10 @@ class Engine(
             temps = temps,
             battPct = Parse.intOf(r["$BATT/capacity"])?.toInt(),
             battTempC = bt?.let { it / 10f },
-            flags = flags
+            flags = flags,
+            gpuFmeterKHz = fmeterKHz,
+            gpuOutKHz = outKHz,
+            gpuPowerActive = powerActive
         )
     }
 
