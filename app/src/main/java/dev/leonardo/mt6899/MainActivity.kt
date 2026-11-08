@@ -53,6 +53,7 @@ import dev.leonardo.mt6899.ui.AppTheme
 import dev.leonardo.mt6899.ui.CpuScreen
 import dev.leonardo.mt6899.ui.DashboardScreen
 import dev.leonardo.mt6899.ui.GpuScreen
+import dev.leonardo.mt6899.ui.InventoryScreen
 import dev.leonardo.mt6899.ui.ProfilesScreen
 import dev.leonardo.mt6899.ui.SystemScreen
 import dev.leonardo.mt6899.ui.ThermalScreen
@@ -170,6 +171,12 @@ private fun AppRoot(vm: MainViewModel) {
                         Tab.Thermal -> ThermalScreen(ui, vm)
                         Tab.System -> SystemScreen(ui, vm)
                         Tab.Profiles -> ProfilesScreen(ui, vm)
+                        Tab.Inventory -> InventoryScreen(ui, vm) {
+                            vm.prepareDiagnosticExport { report ->
+                                pendingDiagnostic = report
+                                exportLauncher.launch("KLEE_Inventario_Kernel_" + System.currentTimeMillis() + ".txt")
+                            }
+                        }
                     }
                 }
             }
