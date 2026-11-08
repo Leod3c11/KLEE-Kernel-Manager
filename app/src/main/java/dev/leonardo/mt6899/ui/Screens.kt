@@ -341,7 +341,7 @@ fun ThermalScreen(ui: UiState, vm: MainViewModel) {
             SwitchRow("Pausar mi_thermald / thermald", paused, enabled = !ui.busy) { next ->
                 pendingThermal = ThermalConfirmation(
                     if (next) "Pausar serviços térmicos?" else "Retomar serviços térmicos?",
-                    "Estado atual: ${if (paused) "pausados" else "ativos"}\\nNovo estado: ${if (next) "pausados" else "ativos"}.\\n${if (next) "Isso reduz a proteção térmica em espaço de usuário. Mantenha a guarda e o serviço em segundo plano ativos." else "Retomar os serviços restaura a camada térmica de software."}",
+                    "Estado atual: ${if (paused) "pausados" else "ativos"}\nNovo estado: ${if (next) "pausados" else "ativos"}.\n${if (next) "Isso reduz a proteção térmica em espaço de usuário. Mantenha a guarda e o serviço em segundo plano ativos." else "Retomar os serviços restaura a camada térmica de software."}",
                     { vm.pauseThermal(next) }
                 )
             }
@@ -355,7 +355,7 @@ fun ThermalScreen(ui: UiState, vm: MainViewModel) {
             SwitchRow("Guarda ligada", guardEnabled, enabled = !ui.busy) { enabled ->
                 pendingThermal = ThermalConfirmation(
                     "Alterar guarda térmica?",
-                    "Estado atual: ${if (guardEnabled) "ligada" else "desligada"}\\nNovo estado: ${if (enabled) "ligada" else "desligada"}.",
+                    "Estado atual: ${if (guardEnabled) "ligada" else "desligada"}\nNovo estado: ${if (enabled) "ligada" else "desligada"}.",
                     { vm.setPref("guard", if (enabled) "1" else "0") }
                 )
             }
@@ -363,7 +363,7 @@ fun ThermalScreen(ui: UiState, vm: MainViewModel) {
             Stepper("SoC", soc, "°C", 60, 100) { next ->
                 pendingThermal = ThermalConfirmation(
                     "Alterar limite da guarda · SoC?",
-                    "Valor atual: $soc°C\\nNovo valor: $next°C\\nÉ um limite de atuação da guarda do aplicativo, não o limite de desligamento do hardware.",
+                    "Valor atual: $soc°C\nNovo valor: $next°C\nÉ um limite de atuação da guarda do aplicativo, não o limite de desligamento do hardware.",
                     { vm.setPref("g_soc", next.toString()) }
                 )
             }
@@ -371,7 +371,7 @@ fun ThermalScreen(ui: UiState, vm: MainViewModel) {
             Stepper("Superfície", skin, "°C", 36, 52) { next ->
                 pendingThermal = ThermalConfirmation(
                     "Alterar limite da guarda · superfície?",
-                    "Valor atual: $skin°C\\nNovo valor: $next°C\\nÉ um limite da guarda do aplicativo, não uma calibração do sensor.",
+                    "Valor atual: $skin°C\nNovo valor: $next°C\nÉ um limite da guarda do aplicativo, não uma calibração do sensor.",
                     { vm.setPref("g_skin", next.toString()) }
                 )
             }
@@ -379,7 +379,7 @@ fun ThermalScreen(ui: UiState, vm: MainViewModel) {
             Stepper("Bateria", batt, "°C", 36, 50) { next ->
                 pendingThermal = ThermalConfirmation(
                     "Alterar limite da guarda · bateria?",
-                    "Valor atual: $batt°C\\nNovo valor: $next°C\\nElevar esse limite pode permitir temperaturas maiores antes da reação da guarda.",
+                    "Valor atual: $batt°C\nNovo valor: $next°C\nElevar esse limite pode permitir temperaturas maiores antes da reação da guarda.",
                     { vm.setPref("g_batt", next.toString()) }
                 )
             }
