@@ -183,6 +183,10 @@ private fun AppRoot(vm: MainViewModel) {
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(
+                        "O diagnóstico inclui hardware, nós sysfs, permissões, controles e logs filtrados do kernel/Android. Revise antes de compartilhar.",
+                        fontSize = 12.sp
+                    )
+                    Text(
                         ui.log.asReversed().joinToString("\n").ifEmpty { "(vazio)" },
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp
@@ -190,7 +194,20 @@ private fun AppRoot(vm: MainViewModel) {
                 }
             },
             confirmButton = { TextButton(onClick = { showLog = false }) { Text("Fechar") } },
-            dismissButton = { TextButton(onClick = { vm.clearLog() }) { Text("Limpar") } }
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { vm.clearLog() }) { Text("Limpar") }
+                    TextButton(
+                        onClick = {
+                            vm.prepareDiagnosticExport { report ->
+                                pendingDiagnostic = report
+                                exportLauncher.launch("KLEE_Diagnostico_" + System.currentTimeMillis() + ".txt")
+                            }
+                        },
+                        enabled = !ui.busy
+                    ) { Text(if (ui.busy) "Coletando…" else "Exportar .txt") }
+                }
+            }
         )
     }
 }
