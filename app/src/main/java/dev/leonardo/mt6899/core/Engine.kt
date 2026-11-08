@@ -240,6 +240,25 @@ class Engine(
         ged("gpu.loadmode", "Modo de loading", "dvfs_loading_mode", "Visto: 6")
         ged("gpu.boostlevel", "Boost level", "gpu_boost_level", "-1 = sem boost forçado")
         ged("gpu.fwidle", "Fallback window", "fallback_window_size", "Visto: 1")
+
+        // Parâmetros GED confirmados no inventário deste aparelho.
+        val gedParams = "/sys/module/ged/parameters"
+        val oppKHz = gpuDev?.freqs?.map { it / 1000L }?.distinct()?.sorted().orEmpty()
+        fun gedToggle(id: String, label: String, file: String, hint: String) {
+            l.add(NodeSpec(id, label, "$gedParams/$file", gG, Kind.CHOICE, Risk.CAUTION, hint, listOf("0", "1")))
+        }
+        gedToggle("ged.boost_gpu", "GED · Boost GPU", "boost_gpu_enable", "Parâmetro boost_gpu_enable publicado pelo módulo GED.")
+        gedToggle("ged.smart_boost", "GED · Smart Boost", "ged_smart_boost", "Ativa/desativa a política GED Smart Boost.")
+        gedToggle("ged.opp_logs", "GED · Logs de OPP", "gpu_opp_logs_enable", "Ativa/desativa somente os logs de OPP do GED.")
+        if (oppKHz.isNotEmpty()) {
+            val choices = oppKHz.map { it.toString() }
+            l.add(NodeSpec("gpu.cust_upbound", "GED · Teto personalizado (kHz)", "$gedParams/gpu_cust_upbound_freq", gG, Kind.CHOICE, Risk.CAUTION,
+                "Teto personalizado em kHz. Deve permanecer acima do piso GED.", choices))
+            l.add(NodeSpec("gpu.cust_boost", "GED · Frequência de boost (kHz)", "$gedParams/gpu_cust_boost_freq", gG, Kind.CHOICE, Risk.CAUTION,
+                "Frequência solicitada para boost. Aceita somente OPPs presentes na tabela do aparelho.", choices))
+            l.add(NodeSpec("gpu.bottom", "GED · Frequência inferior (kHz)", "$gedParams/gpu_bottom_freq", gG, Kind.CHOICE, Risk.CAUTION,
+                "Piso inferior do GED. Não ultrapasse o teto personalizado.", choices))
+        }
         if (gpuDev != null) {
             val ch = gpuDev.freqs.map { it.toString() }
             l.add(NodeSpec("gpu.dev.max", "Limite máximo Devfreq (Hz)", gpuDev.path + "/max_freq", "GPU · devfreq", Kind.CHOICE, Risk.CAUTION,
@@ -416,12 +435,32 @@ class Engine(
     }
 
     fun writeNode(spec: NodeSpec, value: String): WriteResult = when (spec.id) {
+        "gpu.cust_upbound" -> writeGedGpuOpp(spec.path, value, "/sys/module/ged/parameters/gpu_bottom_freq", true)
+        "gpu.bottom" -> writeGedGpuOpp(spec.path, value, "/sys/module/ged/parameters/gpu_cust_upbound_freq", false)
+        "gpu.cust_boost" -> writeGedGpuOpp(spec.path, value, null, null)
         "gpu.dev.max" -> value.toLongOrNull()?.let { setGpuDevfreqLimits(maxHz = it) }
             ?: WriteResult(spec.path, value, "", false, "frequência inválida")
         "gpu.dev.min" -> value.toLongOrNull()?.let { setGpuDevfreqLimits(minHz = it) }
             ?: WriteResult(spec.path, value, "", false, "frequência inválida")
         "gpu.dev.gov" -> setGpuDevfreqGovernor(value)
         else -> write(spec.path, value)
+    }
+
+    private fun writeGedGpuOpp(path: String, value: String, pairedPath: String?, isUpper: Boolean?): WriteResult {
+        val requested = value.toLongOrNull()
+            ?: return WriteResult(path, value, "", false, "frequência inválida")
+        val valid = info?.gpuOpps?.map { it.kHz }?.toSet().orEmpty()
+        if (requested !in valid)
+            return WriteResult(path, value, "", false, "valor não corresponde a uma OPP publicada pelo driver")
+        if (pairedPath != null) {
+            val paired = readOne(pairedPath)?.trim()?.toLongOrNull()
+                ?: return WriteResult(path, value, "", false, "não foi possível validar o limite GED relacionado")
+            val conflict = if (isUpper == true) requested < paired else requested > paired
+            if (conflict)
+                return WriteResult(path, value, paired.toString(), false,
+                    if (isUpper == true) "teto não pode ficar abaixo do piso GED" else "piso não pode superar o teto GED")
+        }
+        return write(path, requested.toString())
     }
 
     // --- CPU
