@@ -519,18 +519,15 @@ class Engine(
             .also { log(it.line()) }
     }
 
+    /**
+     * PPM limit_table é telemetria somente leitura até validar o protocolo
+     * de escrita específico deste kernel. Evita comandos especulativos ao driver.
+     */
     fun setLimit(id: Int, enabled: Boolean): WriteResult {
-        val v = if (enabled) "$id 1 1" else "$id 0 0"
-        val w = write(GPU_LIMIT_TABLE, v, verify = false)
         val row = Parse.limitTable(readOne(GPU_LIMIT_TABLE)).firstOrNull { it.id == id }
-        val ok = w.ok && row != null && row.cEnable == enabled
-        if (ok) {
-            val set = (store.get("disabled_limits") ?: "").split(",").filter { it.isNotBlank() }.toMutableSet()
-            if (enabled) set.remove("$id") else set.add("$id")
-            store.put("disabled_limits", set.joinToString(","))
-        }
-        return WriteResult(GPU_LIMIT_TABLE, v, row?.let { "${it.name}: c=${if (it.cEnable) 1 else 0} f=${if (it.fEnable) 1 else 0}" } ?: "?", ok,
-            if (!w.ok) w.note else if (!ok) "o driver ignorou o comando (formato id c f)" else "").also { log(it.line()) }
+        val current = row?.let { it.name + ": c=" + (if (it.cEnable) 1 else 0) + " f=" + (if (it.fEnable) 1 else 0) } ?: "linha ausente"
+        return WriteResult(GPU_LIMIT_TABLE, if (enabled) "enable $id" else "disable $id", current, false,
+            "limit_table está em modo somente leitura até validar o protocolo do driver").also { log(it.line()) }
     }
 
     // --- Display / serviços
@@ -631,11 +628,7 @@ class Engine(
         pr.values["gpu.min_khz"]?.toLongOrNull()?.let { res += setGpuFloorKHz(it) }
         for ((k, v) in pr.values) {
             when {
-                k.startsWith("gpu.limit.") -> {
-                    val name = k.removePrefix("gpu.limit.")
-                    val lim = Parse.limitTable(readOne(GPU_LIMIT_TABLE)).firstOrNull { it.name == name }
-                    if (lim != null) res += setLimit(lim.id, v != "off")
-                }
+                k.startsWith("gpu.limit.") -> log("Perfil ignorado: limit_table é somente leitura até validar o protocolo do driver")
                 k.startsWith("node:") -> i.node(k.removePrefix("node:"))?.let { res += writeNode(it, v) }
                 k == "display.hz" -> res += setRefresh(v.toIntOrNull())
                 k == "thermal.pause" -> res += pauseThermal(v == "1")
@@ -773,7 +766,7 @@ class Engine(
         log("⚠ MODO SEGURO: $reason")
         val res = ArrayList<WriteResult>()
         if (store.get("thermal_paused") == "1") res += pauseThermal(false)
-        (store.get("disabled_limits") ?: "").split(",").mapNotNull { it.toIntOrNull() }.forEach { res += setLimit(it, true) }
+        if (!(store.get("disabled_limits") ?: "").isBlank()) log("AVISO: preferência antiga registra limitadores desativados; tabela PPM não será alterada por segurança")
         res += applyByName("Equilibrado")
         return res
     }
