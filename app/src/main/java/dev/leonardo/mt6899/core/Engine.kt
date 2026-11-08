@@ -189,6 +189,13 @@ class Engine(
         l.add(NodeSpec("sched.eas", "Energy Aware Scheduling", "/proc/sys/kernel/sched_energy_aware", "Scheduler",
             Kind.CHOICE, Risk.CAUTION, "", listOf("0", "1")))
 
+        // Parâmetros de módulo do GED: só serão expostos se o kernel realmente os publicar.
+        // 0 desativa a função correspondente; não descarrega o módulo GED.
+        l.add(NodeSpec("ged.dvfs", "GED · GPU DVFS", "/sys/module/ged/parameters/gpu_dvfs_enable", "GED · controle",
+            Kind.CHOICE, Risk.CAUTION, "0 = desativado · 1 = ativado. Depende de o kernel expor o parâmetro como gravável.", listOf("0", "1")))
+        l.add(NodeSpec("ged.boost", "GED · GPU Boost", "/sys/module/ged/parameters/ged_boost_enable", "GED · controle",
+            Kind.CHOICE, Risk.CAUTION, "0 = desativado · 1 = ativado. Não desativa o driver Mali nem as proteções térmicas.", listOf("0", "1")))
+
         val gG = "GPU · GED"
         fun ged(id: String, lbl: String, f: String, hint: String, risk: Risk = Risk.CAUTION) =
             l.add(NodeSpec(id, lbl, "$GED/$f", gG, Kind.INT, risk, hint))
