@@ -372,7 +372,9 @@ fun InventoryScreen(ui: UiState, vm: MainViewModel, onExport: () -> Unit) {
             KV("Dispositivo", info?.marketName ?: "—")
             KV("Plataforma", info?.socModel ?: "—")
             KV("Kernel", info?.kernel ?: "—")
-            KV("Nós reconhecidos", info?.nodes?.size?.toString() ?: "—")
+            KV("Interfaces mapeadas", info?.nodes?.size?.toString() ?: "—")
+            KV("Parâmetros de módulos", info?.nodes?.count { it.group == "Inventário · parâmetros de módulos" }?.toString() ?: "—")
+            KV("Controles editáveis", info?.nodes?.count { it.editable }?.toString() ?: "—")
             KV("Clusters CPU", info?.policies?.size?.toString() ?: "—")
             KV("OPPs GPU", info?.gpuOpps?.size?.toString() ?: "—")
             KV("GPU devfreq", info?.gpuDevfreq?.path ?: "não detectado")
@@ -381,15 +383,16 @@ fun InventoryScreen(ui: UiState, vm: MainViewModel, onExport: () -> Unit) {
             }
             Hint("O arquivo inclui parâmetros de módulos, interfaces devfreq, subsistemas APU/NPU/DSP, memória/zRAM, drivers e permissões observadas.")
         }
-        Section("Interfaces já reconhecidas pelo app") {
-            info?.nodes.orEmpty().forEach { node ->
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(node.label, fontWeight = FontWeight.SemiBold)
-                    Hint(node.path)
-                    Hint("Grupo: " + node.group + " · tipo: " + node.kind)
-                }
+        Section("Controles com escrita validada") {
+            info?.nodes.orEmpty().filter { it.editable }.forEach { node ->
+                NodeRow(node, ui.nodeValues[node.id]) { value -> vm.writeNode(node, value) }
             }
-            if (info?.nodes.isNullOrEmpty()) Hint("Nenhum nó ajustável reconhecido nesta leitura.")
+            if (info?.nodes.orEmpty().none { it.editable }) Hint("Nenhum controle editável reconhecido nesta leitura.")
+        }
+        Section("Todos os parâmetros de módulos detectados", "Leitura automática de /sys/module/*/parameters/*, sem filtro por nome. Parâmetros sem semântica validada ficam bloqueados para escrita.") {
+            val moduleNodes = info?.nodes.orEmpty().filter { it.group == "Inventário · parâmetros de módulos" }
+            moduleNodes.forEach { node -> NodeRow(node, ui.nodeValues[node.id]) { } }
+            if (moduleNodes.isEmpty()) Hint("Nenhum parâmetro de módulo foi publicado pelo kernel.")
         }
         Section("Como interpretar") {
             Hint("Permissão de escrita observada não significa que o kernel aceite a gravação nem que o controle seja seguro. Cada interface precisa ser validada antes de virar um controle.")
