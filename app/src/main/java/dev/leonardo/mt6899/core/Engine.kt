@@ -250,6 +250,13 @@ class Engine(
         gedToggle("ged.boost_gpu", "GED · Boost GPU", "boost_gpu_enable", "Parâmetro boost_gpu_enable publicado pelo módulo GED.")
         gedToggle("ged.smart_boost", "GED · Smart Boost", "ged_smart_boost", "Ativa/desativa a política GED Smart Boost.")
         gedToggle("ged.opp_logs", "GED · Logs de OPP", "gpu_opp_logs_enable", "Ativa/desativa somente os logs de OPP do GED.")
+        // Opções adicionais encontradas no inventário real do módulo GED.
+        // São ferramentas de diagnóstico; podem aumentar logs ou overhead e ficam desligadas por padrão.
+        gedToggle("ged.perf_trace", "GED · Performance trace", "ged_log_perf_trace_enable", "Ativa o rastreamento de desempenho do GED; pode gerar overhead.")
+        gedToggle("ged.gpu_debug", "GED · GPU debug", "gpu_debug_enable", "Habilita o modo de depuração da GPU; usar somente durante diagnóstico.")
+        gedToggle("ged.kpi", "GED · KPI", "is_GED_KPI_enabled", "Habilita coleta de métricas KPI do GED; pode adicionar overhead.")
+        gedToggle("ged.fence_debug", "GED · Fence debug", "ged_monitor_3D_fence_debug", "Ativa diagnóstico de fences 3D; pode aumentar logs.")
+        gedToggle("ged.fence_trace", "GED · Fence systrace", "ged_monitor_3D_fence_systrace", "Publica eventos de fences no Systrace; usar apenas durante análise.")
         if (oppKHz.isNotEmpty()) {
             val choices = oppKHz.map { it.toString() }
             l.add(NodeSpec("gpu.cust_upbound", "GED · Teto personalizado (kHz)", "$gedParams/gpu_cust_upbound_freq", gG, Kind.CHOICE, Risk.CAUTION,
