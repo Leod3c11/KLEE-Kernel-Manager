@@ -129,7 +129,8 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         val s = PrefsStore(context)
-        // Boot apply must be explicit opt-in. Missing preference is OFF (fail-safe).\n        val wantsBoot = s.get("active") != null && s.get("boot") == "1"
+        // Boot apply must be explicit opt-in. Missing preference is OFF (fail-safe).
+        val wantsBoot = s.get("active") != null && s.get("boot") == "1"
         if (wantsBoot || s.get("watchdog") == "1" || s.get("appprof") == "1") {
             ContextCompat.startForegroundService(context, Intent(context, GuardService::class.java))
         }
