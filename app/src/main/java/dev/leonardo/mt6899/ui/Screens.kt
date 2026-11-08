@@ -180,7 +180,10 @@ fun GpuScreen(ui: UiState, vm: MainViewModel) {
     val freqs = info.gpuOpps.map { it.kHz }.sorted()
     Page {
         Section("Estado", info.gpuName) {
-            KV("Frequência", live?.gpuKHz?.let { mhz(it) } ?: "—")
+            KV("GED · índice/frequência informada", live?.gpuKHz?.let { mhz(it) } ?: "—")
+            KV("Fmeter · frequência medida", live?.gpuFmeterKHz?.let { mhz(it) } ?: "—")
+            KV("GPU · saída informada pelo driver", live?.gpuOutKHz?.let { mhz(it) } ?: "—")
+            KV("Estado de energia GPU", when (live?.gpuPowerActive) { true -> "ativa"; false -> "inativa/idle"; null -> "indisponível" })
             KV("Uso", live?.gpuUtil?.let { "$it%" } ?: "—")
             KV("OPP atual", live?.gpuIdx?.toString() ?: "—")
             if (live != null) {
