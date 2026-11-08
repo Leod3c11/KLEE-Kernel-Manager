@@ -872,7 +872,7 @@ class Engine(
         val paths = info?.nodes.orEmpty().map { it.path }.distinct()
         val nodeCommand = StringBuilder("for f in ")
         paths.forEach { nodeCommand.append(q(p(it))).append(' ') }
-        nodeCommand.append("; do echo \"----- \\$f -----\"; if [ -e \"\\$f\" ]; then stat -c 'permissions=%A (%a) owner=%U:%G' \"\\$f\" 2>&1; head -c 4000 \"\\$f\" 2>&1; echo; else echo 'MISSING'; fi; done")
+        nodeCommand.append("; do echo \"----- \$f -----\"; if [ -e \"\$f\" ]; then stat -c 'permissions=%A (%a) owner=%U:%G' \"\$f\" 2>&1; head -c 4000 \"\$f\" 2>&1; echo; else echo 'MISSING'; fi; done")
         section("NÓS DETECTADOS PELO KLEE - VALOR E PERMISSÕES",
             if (paths.isEmpty()) "echo 'Nenhum nó foi detectado pelo KLEE'" else nodeCommand.toString())
 
@@ -918,7 +918,7 @@ class Engine(
             for f in /proc/sys/kernel/sched_pelt_multiplier /proc/sys/kernel/sched_energy_aware /proc/interrupts /proc/pressure/cpu /proc/pressure/memory /proc/pressure/io; do
               [ -r "${'$'}f" ] && { echo "----- ${'$'}f -----"; head -c 12000 "${'$'}f" 2>&1; echo; }
             done
-            echo '[cmdline filtrada]'; tr ' ' '\\n' < /proc/cmdline | grep -viE 'serial|imei|androidboot\.serial'
+            echo '[cmdline filtrada]'; tr ' ' '\n' < /proc/cmdline | grep -viE 'serial|imei|androidboot\.serial'
         """.trimIndent())
 
         section("SERVIÇOS RELACIONADOS", """
