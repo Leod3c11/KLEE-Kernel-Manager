@@ -1283,351 +1283,47 @@ class Engine(
         """.trimIndent())
 
 
-        section("INVENTÁRIO DE INTERFACES DO KERNEL - SOMENTE LEITURA", """
-            echo '[parâmetros de módulos relacionados a desempenho/GPU/APU]'
-            find /sys/module -mindepth 3 -maxdepth 3 -type f -path '*/parameters/*' 2>/dev/null |
-              grep -iE '/(ged|apu_top|apusys|gpufreq|mali|mtk_perf|cpufreq|cpuidle|thermal|fpsgo|dvfs|dvfsrc|power)/parameters/' |
-              sort | while read f; do
-                mode=$(stat -c %a "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f" 2>/dev/null)
-                case "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}mode" in *[2367]*) mode_write=yes;; *) mode_write=no;; esac
-                if [ -r "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f" ]; then value=$(head -c 800 "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f" 2>/dev/null | tr '\n' ' '); else value='<sem leitura>'; fi
-                if [ -w "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f" ]; then root_test_w=yes; else root_test_w=no; fi
-                echo "----- ${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f -----"
-                echo "mode=${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}mode | mode_has_write_bit=${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}mode_write | root_test_w=${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}root_test_w"
-                echo "owner=$(stat -c '%U:%G' "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f" 2>/dev/null) | value=${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}value"
-              done
-            echo '[interfaces térmicas e thermal_message: candidatos, sem escrita]'
+        section("INVENTÁRIO COMPLETO DE INTERFACES DO KERNEL - SOMENTE LEITURA", """
+            echo '[TODOS os parâmetros publicados por módulos: sem filtro por nome e sem corte artificial]'
+            find /sys/module -mindepth 3 -maxdepth 3 -type f -path '*/parameters/*' 2>/dev/null | sort | while IFS= read -r f; do
+              mode=$(stat -c %a "${'$'}f" 2>/dev/null)
+              owner=$(stat -c %U:%G "${'$'}f" 2>/dev/null)
+              case "${'$'}mode" in *[2367]*) mode_write=yes;; *) mode_write=no;; esac
+              if [ -r "${'$'}f" ]; then value=$(head -c 1200 "${'$'}f" 2>/dev/null | tr "\n" " "); else value="<sem leitura>"; fi
+              echo "----- ${'$'}f -----"
+              echo "mode=${'$'}mode | mode_has_write_bit=${'$'}mode_write | owner=${'$'}owner | value=${'$'}value"
+            done
+            echo '[Interfaces térmicas: leitura e permissões; escrita bloqueada no app]'
             for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
-              [ -f "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f" ] || continue
-              mode=$(stat -c %a "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f" 2>/dev/null)
-              case "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}mode" in *[2367]*) mode_write=yes;; *) mode_write=no;; esac
-              echo "----- ${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f | mode=${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}mode | mode_has_write_bit=${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}mode_write -----"
-              head -c 500 "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f" 2>/dev/null | tr '\n' ' '
-              echo
+              [ -f "${'$'}f" ] || continue
+              mode=$(stat -c %a "${'$'}f" 2>/dev/null)
+              echo "----- ${'$'}f | mode=${'$'}mode -----"
+              head -c 1500 "${'$'}f" 2>/dev/null | tr "\n" " "; echo
             done
-            echo '[APU / NPU / DSP / VPU / MDLA / IOMMU]'
+            echo '[APU / NPU / DSP / VPU / MDLA / IOMMU: nós descobertos]'
             for root in /sys/class/devfreq /sys/class/remoteproc /sys/class/misc /sys/bus/platform/devices /sys/kernel /sys/module; do
-              [ -d "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}root" ] || continue
-              find "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}root" -mindepth 1 -maxdepth 3 2>/dev/null | grep -iE 'apu|npu|neural|mdla|vpu|dsp|iommu|scp|edma|apusys|mali|ged' | head -n 250
+              [ -d "${'$'}root" ] || continue
+              find "${'$'}root" -mindepth 1 -maxdepth 4 2>/dev/null | grep -iE 'apu|npu|neural|mdla|vpu|dsp|iommu|scp|edma|apusys|mali|ged' || true
             done
-            echo '[devfreq: valores e permissões]'
+            echo '[Todos os domínios devfreq e atributos disponíveis]'
             for p in /sys/class/devfreq/*; do
-              [ -d "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}p" ] || continue
-              echo "----- ${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}p -----"
-              for f in name governor available_governors available_frequencies min_freq max_freq cur_freq target_freq polling_interval; do
-                [ -r "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}p/${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f" ] && { printf '%s=' "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f"; head -c 4000 "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}p/${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}f" 2>&1; echo; }
+              [ -d "${'$'}p" ] || continue
+              echo "----- ${'$'}p -----"
+              find "${'$'}p" -maxdepth 1 -type f 2>/dev/null | sort | while IFS= read -r f; do
+                mode=$(stat -c %a "${'$'}f" 2>/dev/null)
+                value=$(head -c 3000 "${'$'}f" 2>/dev/null | tr "\n" " ")
+                echo "${'$'}f | mode=${'$'}mode | value=${'$'}value"
               done
-              stat -c 'directory=%n mode=%a owner=%U:%G' "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}p" 2>/dev/null
             done
-            echo '[árvore de memória e zRAM]'
-            find /sys/block/zram* /sys/kernel/mm /sys/devices/system/node -mindepth 1 -maxdepth 2 -type f 2>/dev/null | head -n 250
-            echo '[drivers vinculados a dispositivos platform]'
+            echo '[Árvore completa de zRAM, memória e nós de NUMA]'
+            find /sys/block/zram* /sys/kernel/mm /sys/devices/system/node -type f 2>/dev/null | sort
+            echo '[Drivers vinculados aos dispositivos platform]'
             for d in /sys/bus/platform/devices/*; do
-              [ -e "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}d" ] || continue
-              drv=$(readlink -f "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}d/driver" 2>/dev/null)
-              [ -n "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}drv" ] && echo "${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}d -> ${'
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
-        return out.toString()
-    }
-
-
-}
-}drv"
-            done | head -n 300
+              [ -e "${'$'}d" ] || continue
+              drv=$(readlink -f "${'$'}d/driver" 2>/dev/null)
+              [ -n "${'$'}drv" ] && echo "${'$'}d -> ${'$'}drv"
+            done
         """.trimIndent())
-        line()
-        line("========== FIM DO DIAGNÓSTICO ==========")
-        line("Total de caracteres: " + out.length)
         return out.toString()
     }
 
