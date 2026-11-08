@@ -381,6 +381,34 @@ class Engine(
         }
     }
 
+    /** Telemetria APU/GED somente leitura; ausência de nó é omitida, nunca simulada. */
+    fun readApuTelemetry(): Map<String, String> {
+        val paths = linkedMapOf(
+            "Limite APU" to "$KTHERMAL/is_apu_limit",
+            "Informações APU" to "$KTHERMAL/apu_info",
+            "APU ATC" to "$KTHERMAL/apu_atc",
+            "Limite CPU" to "$KTHERMAL/is_cpu_limit",
+            "Limite GPU" to "$KTHERMAL/is_gpu_limit",
+            "Frequência GED (índice / kHz)" to "$GED/current_freqency",
+            "Utilização GED" to "$GED/gpu_utilization",
+            "GPU loading" to "/sys/module/ged/parameters/gpu_loading",
+            "GPU idle" to "/sys/module/ged/parameters/gpu_idle",
+            "GED DVFS habilitado" to "/sys/module/ged/parameters/gpu_dvfs_enable",
+            "GED Boost habilitado" to "/sys/module/ged/parameters/ged_boost_enable",
+            "GED Smart Boost" to "/sys/module/ged/parameters/ged_smart_boost",
+            "Boost GPU" to "/sys/module/ged/parameters/boost_gpu_enable",
+            "Teto GED personalizado (kHz)" to "/sys/module/ged/parameters/gpu_cust_upbound_freq",
+            "Boost GED personalizado (kHz)" to "/sys/module/ged/parameters/gpu_cust_boost_freq",
+            "Piso GED (kHz)" to "/sys/module/ged/parameters/gpu_bottom_freq",
+            "Função APU TOP" to "/sys/module/apu_top/parameters/aputop_func_sel",
+            "Função PBM APU" to "/sys/module/apusys/parameters/apu_pbm_func_sel"
+        )
+        val raw = readMany(paths.values.toList(), 8192)
+        return paths.mapNotNull { (label, path) ->
+            raw[path]?.trim()?.takeIf { it.isNotEmpty() }?.let { label to it }
+        }.toMap(LinkedHashMap())
+    }
+
     fun readExtras(): Map<String, String> {
         val keys = listOf("boost", "balance_mode", "temp_state", "foreground_app_name", "cloud_game", "video_mode", "screen_state")
         val r = readMany(keys.map { "/sys/class/thermal/thermal_message/$it" })
