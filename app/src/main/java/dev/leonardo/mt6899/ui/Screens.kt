@@ -389,10 +389,8 @@ fun InventoryScreen(ui: UiState, vm: MainViewModel, onExport: () -> Unit) {
             }
             if (info?.nodes.orEmpty().none { it.editable }) Hint("Nenhum controle editável reconhecido nesta leitura.")
         }
-        Section("Todos os parâmetros de módulos detectados", "Leitura automática de /sys/module/*/parameters/*, sem filtro por nome. Parâmetros sem semântica validada ficam bloqueados para escrita.") {
-            val moduleNodes = info?.nodes.orEmpty().filter { it.group == "Inventário · parâmetros de módulos" }
-            moduleNodes.forEach { node -> NodeRow(node, ui.nodeValues[node.id]) { } }
-            if (moduleNodes.isEmpty()) Hint("Nenhum parâmetro de módulo foi publicado pelo kernel.")
+        Section("Parâmetros de módulos", "A varredura global foi temporariamente suspensa para evitar carga excessiva durante a inicialização. Os parâmetros GED e APU conhecidos continuam disponíveis nas respectivas abas.") {
+            Hint("A leitura completa será reintroduzida como uma ação manual, limitada e paginada. Nenhum parâmetro desconhecido será incluído no snapshot ou escrito automaticamente.")
         }
         Section("Como interpretar") {
             Hint("Permissão de escrita observada não significa que o kernel aceite a gravação nem que o controle seja seguro. Cada interface precisa ser validada antes de virar um controle.")
