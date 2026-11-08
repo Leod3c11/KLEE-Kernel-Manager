@@ -212,7 +212,10 @@ fun NodeRow(spec: NodeSpec, value: String?, onApply: (String) -> Unit) {
                 label = null,
                 options = spec.choices,
                 selected = value,
-                onSelect = { c -> if (spec.risk == Risk.DANGER) pending = c else onApply(c) }
+                onSelect = { c ->
+                    if (spec.group == "Térmica" || spec.risk == Risk.DANGER) pending = c
+                    else onApply(c)
+                }
             )
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -224,7 +227,10 @@ fun NodeRow(spec: NodeSpec, value: String?, onApply: (String) -> Unit) {
                 )
                 Spacer(Modifier.width(8.dp))
                 Button(
-                    onClick = { if (spec.risk == Risk.DANGER) pending = text.trim() else onApply(text.trim()) },
+                    onClick = {
+                        if (spec.group == "Térmica" || spec.risk == Risk.DANGER) pending = text.trim()
+                        else onApply(text.trim())
+                    },
                     enabled = text.isNotBlank() && text != value
                 ) { Text("Aplicar") }
             }
@@ -234,7 +240,13 @@ fun NodeRow(spec: NodeSpec, value: String?, onApply: (String) -> Unit) {
     if (p != null) {
         ConfirmDialog(
             title = "Alterar ${spec.label}?",
-            text = "Este ajuste é marcado como de risco (${spec.hint.ifEmpty { "sem detalhes" }}). Novo valor: $p",
+            text = buildString {
+                append("Valor atual: ${value ?: "indisponível"}\\n")
+                append("Novo valor: $p\\n")
+                append("Interface: ${spec.path}\\n")
+                append(if (spec.group == "Térmica") "Alteração térmica: pode mudar a resposta de desempenho e temperatura. " else "Este ajuste é marcado como de risco. ")
+                append(spec.hint.ifEmpty { "Sem detalhes adicionais." })
+            },
             onConfirm = { onApply(p) },
             onDismiss = { pending = null }
         )
