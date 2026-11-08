@@ -29,6 +29,7 @@ enum class Tab(val title: String, val glyph: String) {
     Home("Painel", "◉"),
     Cpu("CPU", "▦"),
     Gpu("GPU", "▣"),
+    Apu("APU", "◈"),
     Thermal("Térmica", "♨"),
     System("Sistema", "⚙"),
     Profiles("Perfis", "★"),
@@ -42,6 +43,7 @@ data class UiState(
     val live: Live? = null,
     val nodeValues: Map<String, String?> = emptyMap(),
     val extras: Map<String, String> = emptyMap(),
+    val apuTelemetry: Map<String, String> = emptyMap(),
     val displayInfo: String = "",
     val profiles: List<Profile> = emptyList(),
     val active: String? = null,
@@ -127,6 +129,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             refreshLive()
             refreshNodes()
+            refreshApu()
         } catch (e: Throwable) {
             LogBuffer.add("ERRO na detecção: ${e.message}")
             _ui.update { it.copy(phase = Phase.NoRoot) }
@@ -163,6 +166,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update { it.copy(nodeValues = v) }
     }
 
+    private fun refreshApu() {
+        val values = try {
+            engine.readApuTelemetry()
+        } catch (e: Throwable) {
+            LogBuffer.add("ERRO leitura APU/GED: " + e.message)
+            return
+        }
+        _ui.update { it.copy(apuTelemetry = values) }
+    }
+
     private fun refreshExtras() {
         val m = try {
             engine.readExtras()
@@ -180,6 +193,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 when (s.tab) {
                     Tab.Cpu, Tab.Gpu, Tab.System -> refreshNodes()
                     Tab.Thermal -> refreshExtras()
+                    Tab.Apu -> refreshApu()
                     else -> {}
                 }
             }
