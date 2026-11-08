@@ -823,7 +823,7 @@ class Engine(
 
         section("CPU - POLICIES, FREQUÊNCIAS E GOVERNORS", """
             for p in /sys/devices/system/cpu/cpufreq/policy*; do
-              [ -d "$p" ] || continue
+              [ -d "${'p" ] || continue
               echo "----- $p -----"
               for f in related_cpus affected_cpus scaling_driver scaling_governor scaling_available_governors scaling_available_frequencies scaling_min_freq scaling_max_freq scaling_cur_freq cpuinfo_min_freq cpuinfo_max_freq cpuinfo_transition_latency; do
                 [ -r "$p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }
@@ -833,11 +833,80 @@ class Engine(
             echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
             echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
             echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
+        }p" ] || continue
+              echo "----- ${'p -----"
+              for f in related_cpus affected_cpus scaling_driver scaling_governor scaling_available_governors scaling_available_frequencies scaling_min_freq scaling_max_freq scaling_cur_freq cpuinfo_min_freq cpuinfo_max_freq cpuinfo_transition_latency; do
+                [ -r "$p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }
+              done
+              stat -c 'permissions=%A (%a) owner=%U:%G' "$p/scaling_governor" "$p/scaling_min_freq" "$p/scaling_max_freq" 2>&1
+            done
+            echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
+            echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
+            echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
+        }p -----"
+              for f in related_cpus affected_cpus scaling_driver scaling_governor scaling_available_governors scaling_available_frequencies scaling_min_freq scaling_max_freq scaling_cur_freq cpuinfo_min_freq cpuinfo_max_freq cpuinfo_transition_latency; do
+                [ -r "${'p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }
+              done
+              stat -c 'permissions=%A (%a) owner=%U:%G' "$p/scaling_governor" "$p/scaling_min_freq" "$p/scaling_max_freq" 2>&1
+            done
+            echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
+            echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
+            echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
+        }p/${'f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }
+              done
+              stat -c 'permissions=%A (%a) owner=%U:%G' "$p/scaling_governor" "$p/scaling_min_freq" "$p/scaling_max_freq" 2>&1
+            done
+            echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
+            echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
+            echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
+        }f" ] && { printf '%s=' "${'f"; cat "$p/$f" 2>&1; }
+              done
+              stat -c 'permissions=%A (%a) owner=%U:%G' "$p/scaling_governor" "$p/scaling_min_freq" "$p/scaling_max_freq" 2>&1
+            done
+            echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
+            echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
+            echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
+        }f"; cat "${'p/$f" 2>&1; }
+              done
+              stat -c 'permissions=%A (%a) owner=%U:%G' "$p/scaling_governor" "$p/scaling_min_freq" "$p/scaling_max_freq" 2>&1
+            done
+            echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
+            echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
+            echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
+        }p/${'f" 2>&1; }
+              done
+              stat -c 'permissions=%A (%a) owner=%U:%G' "$p/scaling_governor" "$p/scaling_min_freq" "$p/scaling_max_freq" 2>&1
+            done
+            echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
+            echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
+            echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
+        }f" 2>&1; }
+              done
+              stat -c 'permissions=%A (%a) owner=%U:%G' "${'p/scaling_governor" "$p/scaling_min_freq" "$p/scaling_max_freq" 2>&1
+            done
+            echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
+            echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
+            echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
+        }p/scaling_governor" "${'p/scaling_min_freq" "$p/scaling_max_freq" 2>&1
+            done
+            echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
+            echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
+            echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
+        }p/scaling_min_freq" "${'p/scaling_max_freq" 2>&1
+            done
+            echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
+            echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
+            echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
+        }p/scaling_max_freq" 2>&1
+            done
+            echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
+            echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
+            echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
         """.trimIndent())
 
         section("GPU MALI / DEVFREQ / GED / GPUFREQ", """
             for p in /sys/class/devfreq/*mali* /sys/devices/platform/soc/13000000.mali /sys/devices/platform/soc/13f50000.gpufreq /sys/devices/platform/soc/13c00000.gpueb /sys/kernel/ged /sys/kernel/ged/hal; do
-              [ -e "$p" ] || continue
+              [ -e "${'p" ] || continue
               echo "----- $p -----"
               if [ -d "$p" ]; then
                 for f in name governor available_governors available_frequencies min_freq max_freq cur_freq target_freq polling_interval trans_stat; do
@@ -852,14 +921,157 @@ class Engine(
             done
             echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
             echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }p" ] || continue
+              echo "----- ${'p -----"
+              if [ -d "$p" ]; then
+                for f in name governor available_governors available_frequencies min_freq max_freq cur_freq target_freq polling_interval trans_stat; do
+                  [ -r "$p/$f" ] && { printf '%s=' "$f"; head -c 12000 "$p/$f" 2>&1; echo; }
+                done
+              else
+                ls -ld "$p" 2>&1
+              fi
+            done
+            for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/gpu_utilization /sys/kernel/ged/hal/custom_upbound_gpu_freq /sys/kernel/ged/hal/custom_boost_gpu_freq /sys/kernel/ged/hal/gpu_boost_level; do
+              [ -r "$f" ] && { echo "----- $f -----"; cat "$f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }p -----"
+              if [ -d "${'p" ]; then
+                for f in name governor available_governors available_frequencies min_freq max_freq cur_freq target_freq polling_interval trans_stat; do
+                  [ -r "$p/$f" ] && { printf '%s=' "$f"; head -c 12000 "$p/$f" 2>&1; echo; }
+                done
+              else
+                ls -ld "$p" 2>&1
+              fi
+            done
+            for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/gpu_utilization /sys/kernel/ged/hal/custom_upbound_gpu_freq /sys/kernel/ged/hal/custom_boost_gpu_freq /sys/kernel/ged/hal/gpu_boost_level; do
+              [ -r "$f" ] && { echo "----- $f -----"; cat "$f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }p" ]; then
+                for f in name governor available_governors available_frequencies min_freq max_freq cur_freq target_freq polling_interval trans_stat; do
+                  [ -r "${'p/$f" ] && { printf '%s=' "$f"; head -c 12000 "$p/$f" 2>&1; echo; }
+                done
+              else
+                ls -ld "$p" 2>&1
+              fi
+            done
+            for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/gpu_utilization /sys/kernel/ged/hal/custom_upbound_gpu_freq /sys/kernel/ged/hal/custom_boost_gpu_freq /sys/kernel/ged/hal/gpu_boost_level; do
+              [ -r "$f" ] && { echo "----- $f -----"; cat "$f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }p/${'f" ] && { printf '%s=' "$f"; head -c 12000 "$p/$f" 2>&1; echo; }
+                done
+              else
+                ls -ld "$p" 2>&1
+              fi
+            done
+            for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/gpu_utilization /sys/kernel/ged/hal/custom_upbound_gpu_freq /sys/kernel/ged/hal/custom_boost_gpu_freq /sys/kernel/ged/hal/gpu_boost_level; do
+              [ -r "$f" ] && { echo "----- $f -----"; cat "$f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }f" ] && { printf '%s=' "${'f"; head -c 12000 "$p/$f" 2>&1; echo; }
+                done
+              else
+                ls -ld "$p" 2>&1
+              fi
+            done
+            for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/gpu_utilization /sys/kernel/ged/hal/custom_upbound_gpu_freq /sys/kernel/ged/hal/custom_boost_gpu_freq /sys/kernel/ged/hal/gpu_boost_level; do
+              [ -r "$f" ] && { echo "----- $f -----"; cat "$f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }f"; head -c 12000 "${'p/$f" 2>&1; echo; }
+                done
+              else
+                ls -ld "$p" 2>&1
+              fi
+            done
+            for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/gpu_utilization /sys/kernel/ged/hal/custom_upbound_gpu_freq /sys/kernel/ged/hal/custom_boost_gpu_freq /sys/kernel/ged/hal/gpu_boost_level; do
+              [ -r "$f" ] && { echo "----- $f -----"; cat "$f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }p/${'f" 2>&1; echo; }
+                done
+              else
+                ls -ld "$p" 2>&1
+              fi
+            done
+            for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/gpu_utilization /sys/kernel/ged/hal/custom_upbound_gpu_freq /sys/kernel/ged/hal/custom_boost_gpu_freq /sys/kernel/ged/hal/gpu_boost_level; do
+              [ -r "$f" ] && { echo "----- $f -----"; cat "$f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }f" 2>&1; echo; }
+                done
+              else
+                ls -ld "${'p" 2>&1
+              fi
+            done
+            for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/gpu_utilization /sys/kernel/ged/hal/custom_upbound_gpu_freq /sys/kernel/ged/hal/custom_boost_gpu_freq /sys/kernel/ged/hal/gpu_boost_level; do
+              [ -r "$f" ] && { echo "----- $f -----"; cat "$f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }p" 2>&1
+              fi
+            done
+            for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/gpu_utilization /sys/kernel/ged/hal/custom_upbound_gpu_freq /sys/kernel/ged/hal/custom_boost_gpu_freq /sys/kernel/ged/hal/gpu_boost_level; do
+              [ -r "${'f" ] && { echo "----- $f -----"; cat "$f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }f" ] && { echo "----- ${'f -----"; cat "$f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }f -----"; cat "${'f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        }f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
         """.trimIndent())
 
         section("DEVFREQ - TODOS OS DOMÍNIOS", """
             for p in /sys/class/devfreq/*; do
-              [ -d "$p" ] || continue
+              [ -d "${'p" ] || continue
               echo "----- $p -----"
               for f in name governor available_governors available_frequencies min_freq max_freq cur_freq target_freq polling_interval; do
                 [ -r "$p/$f" ] && { printf '%s=' "$f"; head -c 10000 "$p/$f" 2>&1; echo; }
+              done
+            done
+        }p" ] || continue
+              echo "----- ${'p -----"
+              for f in name governor available_governors available_frequencies min_freq max_freq cur_freq target_freq polling_interval; do
+                [ -r "$p/$f" ] && { printf '%s=' "$f"; head -c 10000 "$p/$f" 2>&1; echo; }
+              done
+            done
+        }p -----"
+              for f in name governor available_governors available_frequencies min_freq max_freq cur_freq target_freq polling_interval; do
+                [ -r "${'p/$f" ] && { printf '%s=' "$f"; head -c 10000 "$p/$f" 2>&1; echo; }
+              done
+            done
+        }p/${'f" ] && { printf '%s=' "$f"; head -c 10000 "$p/$f" 2>&1; echo; }
+              done
+            done
+        }f" ] && { printf '%s=' "${'f"; head -c 10000 "$p/$f" 2>&1; echo; }
+              done
+            done
+        }f"; head -c 10000 "${'p/$f" 2>&1; echo; }
+              done
+            done
+        }p/${'f" 2>&1; echo; }
+              done
+            done
+        }f" 2>&1; echo; }
               done
             done
         """.trimIndent())
@@ -872,7 +1084,7 @@ class Engine(
 
         section("TÉRMICA - ZONAS E COOLING DEVICES", """
             for z in /sys/class/thermal/thermal_zone*; do
-              [ -d "$z" ] || continue
+              [ -d "${'z" ] || continue
               echo "----- $z -----"
               for f in type temp mode policy available_policies; do
                 [ -r "$z/$f" ] && { printf '%s=' "$f"; cat "$z/$f" 2>&1; }
@@ -888,14 +1100,189 @@ class Engine(
             for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
               [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
             done
+        }z" ] || continue
+              echo "----- ${'z -----"
+              for f in type temp mode policy available_policies; do
+                [ -r "$z/$f" ] && { printf '%s=' "$f"; cat "$z/$f" 2>&1; }
+              done
+            done
+            for c in /sys/class/thermal/cooling_device*; do
+              [ -d "$c" ] || continue
+              echo "----- $c -----"
+              for f in type cur_state max_state; do
+                [ -r "$c/$f" ] && { printf '%s=' "$f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }z -----"
+              for f in type temp mode policy available_policies; do
+                [ -r "${'z/$f" ] && { printf '%s=' "$f"; cat "$z/$f" 2>&1; }
+              done
+            done
+            for c in /sys/class/thermal/cooling_device*; do
+              [ -d "$c" ] || continue
+              echo "----- $c -----"
+              for f in type cur_state max_state; do
+                [ -r "$c/$f" ] && { printf '%s=' "$f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }z/${'f" ] && { printf '%s=' "$f"; cat "$z/$f" 2>&1; }
+              done
+            done
+            for c in /sys/class/thermal/cooling_device*; do
+              [ -d "$c" ] || continue
+              echo "----- $c -----"
+              for f in type cur_state max_state; do
+                [ -r "$c/$f" ] && { printf '%s=' "$f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }f" ] && { printf '%s=' "${'f"; cat "$z/$f" 2>&1; }
+              done
+            done
+            for c in /sys/class/thermal/cooling_device*; do
+              [ -d "$c" ] || continue
+              echo "----- $c -----"
+              for f in type cur_state max_state; do
+                [ -r "$c/$f" ] && { printf '%s=' "$f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }f"; cat "${'z/$f" 2>&1; }
+              done
+            done
+            for c in /sys/class/thermal/cooling_device*; do
+              [ -d "$c" ] || continue
+              echo "----- $c -----"
+              for f in type cur_state max_state; do
+                [ -r "$c/$f" ] && { printf '%s=' "$f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }z/${'f" 2>&1; }
+              done
+            done
+            for c in /sys/class/thermal/cooling_device*; do
+              [ -d "$c" ] || continue
+              echo "----- $c -----"
+              for f in type cur_state max_state; do
+                [ -r "$c/$f" ] && { printf '%s=' "$f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }f" 2>&1; }
+              done
+            done
+            for c in /sys/class/thermal/cooling_device*; do
+              [ -d "${'c" ] || continue
+              echo "----- $c -----"
+              for f in type cur_state max_state; do
+                [ -r "$c/$f" ] && { printf '%s=' "$f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }c" ] || continue
+              echo "----- ${'c -----"
+              for f in type cur_state max_state; do
+                [ -r "$c/$f" ] && { printf '%s=' "$f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }c -----"
+              for f in type cur_state max_state; do
+                [ -r "${'c/$f" ] && { printf '%s=' "$f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }c/${'f" ] && { printf '%s=' "$f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }f" ] && { printf '%s=' "${'f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }f"; cat "${'c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }c/${'f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "${'f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }f" ] && { echo "----- ${'f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        }f -----"; head -c 3000 "${'f" 2>&1; echo; }
+            done
+        }f" 2>&1; echo; }
+            done
         """.trimIndent())
 
         section("BATERIA E ENERGIA", """
             for p in /sys/class/power_supply/*; do
-              [ -d "$p" ] || continue
+              [ -d "${'p" ] || continue
               echo "----- $p -----"
               for f in type status health capacity voltage_now current_now power_now temp technology charge_counter; do
                 [ -r "$p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }
+              done
+            done
+        }p" ] || continue
+              echo "----- ${'p -----"
+              for f in type status health capacity voltage_now current_now power_now temp technology charge_counter; do
+                [ -r "$p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }
+              done
+            done
+        }p -----"
+              for f in type status health capacity voltage_now current_now power_now temp technology charge_counter; do
+                [ -r "${'p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }
+              done
+            done
+        }p/${'f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }
+              done
+            done
+        }f" ] && { printf '%s=' "${'f"; cat "$p/$f" 2>&1; }
+              done
+            done
+        }f"; cat "${'p/$f" 2>&1; }
+              done
+            done
+        }p/${'f" 2>&1; }
+              done
+            done
+        }f" 2>&1; }
               done
             done
         """.trimIndent())
@@ -903,14 +1290,44 @@ class Engine(
         section("MEMÓRIA, ZRAM E ARMAZENAMENTO", """
             echo '[meminfo]'; cat /proc/meminfo
             echo '[swaps]'; cat /proc/swaps
-            echo '[zram]'; for p in /sys/block/zram*; do [ -d "$p" ] || continue; echo "----- $p -----"; for f in disksize mm_stat comp_algorithm max_comp_streams; do [ -r "$p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }; done; done
+            echo '[zram]'; for p in /sys/block/zram*; do [ -d "${'p" ] || continue; echo "----- $p -----"; for f in disksize mm_stat comp_algorithm max_comp_streams; do [ -r "$p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }; done; done
+            echo '[block devices]'; lsblk 2>&1
+            echo '[mounts relevantes]'; mount | grep -E 'sysfs|proc|debugfs|tracefs|cgroup'
+        }p" ] || continue; echo "----- ${'p -----"; for f in disksize mm_stat comp_algorithm max_comp_streams; do [ -r "$p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }; done; done
+            echo '[block devices]'; lsblk 2>&1
+            echo '[mounts relevantes]'; mount | grep -E 'sysfs|proc|debugfs|tracefs|cgroup'
+        }p -----"; for f in disksize mm_stat comp_algorithm max_comp_streams; do [ -r "${'p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }; done; done
+            echo '[block devices]'; lsblk 2>&1
+            echo '[mounts relevantes]'; mount | grep -E 'sysfs|proc|debugfs|tracefs|cgroup'
+        }p/${'f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }; done; done
+            echo '[block devices]'; lsblk 2>&1
+            echo '[mounts relevantes]'; mount | grep -E 'sysfs|proc|debugfs|tracefs|cgroup'
+        }f" ] && { printf '%s=' "${'f"; cat "$p/$f" 2>&1; }; done; done
+            echo '[block devices]'; lsblk 2>&1
+            echo '[mounts relevantes]'; mount | grep -E 'sysfs|proc|debugfs|tracefs|cgroup'
+        }f"; cat "${'p/$f" 2>&1; }; done; done
+            echo '[block devices]'; lsblk 2>&1
+            echo '[mounts relevantes]'; mount | grep -E 'sysfs|proc|debugfs|tracefs|cgroup'
+        }p/${'f" 2>&1; }; done; done
+            echo '[block devices]'; lsblk 2>&1
+            echo '[mounts relevantes]'; mount | grep -E 'sysfs|proc|debugfs|tracefs|cgroup'
+        }f" 2>&1; }; done; done
             echo '[block devices]'; lsblk 2>&1
             echo '[mounts relevantes]'; mount | grep -E 'sysfs|proc|debugfs|tracefs|cgroup'
         """.trimIndent())
 
         section("SCHEDULER, INTERRUPÇÕES E LIMITES DO KERNEL", """
             for f in /proc/sys/kernel/sched_pelt_multiplier /proc/sys/kernel/sched_energy_aware /proc/interrupts /proc/pressure/cpu /proc/pressure/memory /proc/pressure/io; do
-              [ -r "$f" ] && { echo "----- $f -----"; head -c 12000 "$f" 2>&1; echo; }
+              [ -r "${'f" ] && { echo "----- $f -----"; head -c 12000 "$f" 2>&1; echo; }
+            done
+            echo '[cmdline filtrada]'; tr ' ' '\n' < /proc/cmdline | grep -viE 'serial|imei|androidboot\.serial'
+        }f" ] && { echo "----- ${'f -----"; head -c 12000 "$f" 2>&1; echo; }
+            done
+            echo '[cmdline filtrada]'; tr ' ' '\n' < /proc/cmdline | grep -viE 'serial|imei|androidboot\.serial'
+        }f -----"; head -c 12000 "${'f" 2>&1; echo; }
+            done
+            echo '[cmdline filtrada]'; tr ' ' '\n' < /proc/cmdline | grep -viE 'serial|imei|androidboot\.serial'
+        }f" 2>&1; echo; }
             done
             echo '[cmdline filtrada]'; tr ' ' '\n' < /proc/cmdline | grep -viE 'serial|imei|androidboot\.serial'
         """.trimIndent())
