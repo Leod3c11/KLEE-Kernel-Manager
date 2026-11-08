@@ -51,13 +51,23 @@ data class CpuPolicy(
     val label: String get() = "Cluster $id · CPU ${cpuRange(cpus)}"
 }
 
+/** "0 1 2 3 6" -> "0-3,6" (agrupa só CPUs consecutivas; antes "0 2" virava "0-2"). */
 fun cpuRange(cpus: String): String {
-    val l = cpus.trim().split(Regex("\\s+")).mapNotNull { it.toIntOrNull() }
-    return when {
-        l.isEmpty() -> "?"
-        l.size == 1 -> "${l[0]}"
-        else -> "${l.first()}-${l.last()}"
+    val l = cpus.trim().split(Regex("\\s+")).mapNotNull { it.toIntOrNull() }.distinct().sorted()
+    if (l.isEmpty()) return "?"
+    val parts = ArrayList<String>()
+    var start = l[0]
+    var prev = l[0]
+    for (n in l.drop(1) + Int.MIN_VALUE) { // Int.MIN_VALUE: sentinela que descarrega o último grupo
+        if (n == prev + 1) {
+            prev = n
+            continue
+        }
+        parts += if (start == prev) "$start" else "$start-$prev"
+        start = n
+        prev = n
     }
+    return parts.joinToString(",")
 }
 
 data class GpuOpp(val idx: Int, val kHz: Long, val volt: Long)
@@ -168,5 +178,8 @@ data class Profile(
         }
 
         private fun clean(s: String) = s.replace("|", "/").replace(",", ";").replace("\n", " ")
+
+        /** Nome como ele volta depois de salvar e reler (encode/decode), sem espaços nas pontas. */
+        fun cleanName(s: String): String = clean(s).trim()
     }
 }

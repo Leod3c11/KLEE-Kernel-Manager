@@ -243,8 +243,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val n = name.trim()
         if (n.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            engine.saveProfile(engine.captureCurrent(n))
-            _ui.update { it.copy(profiles = engine.allProfiles(), message = "Perfil '$n' salvo") }
+            val saved = engine.saveProfile(engine.captureCurrent(n))
+            _ui.update { it.copy(profiles = engine.allProfiles(), message = "Perfil '$saved' salvo") }
         }
     }
 

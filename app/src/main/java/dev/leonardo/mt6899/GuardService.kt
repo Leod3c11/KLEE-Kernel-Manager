@@ -13,6 +13,7 @@ import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import dev.leonardo.mt6899.core.Engine
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,7 +35,17 @@ class GuardService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startInForeground()
-        if (job == null) job = scope.launch { loop() }
+        if (job?.isActive != true) job = scope.launch {
+            try {
+                loop()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // exceção solta numa coroutine sem handler derruba o app inteiro
+                LogBuffer.add("Serviço: falha inesperada (${e.javaClass.simpleName}: ${e.message}), encerrando")
+                stopSelf()
+            }
+        }
         return START_STICKY
     }
 
@@ -91,6 +102,8 @@ class GuardService : Service() {
                 } else if (store.get("watchdog") == "1") {
                     engine.enforce()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 LogBuffer.add("Serviço: ${e.message}")
             }

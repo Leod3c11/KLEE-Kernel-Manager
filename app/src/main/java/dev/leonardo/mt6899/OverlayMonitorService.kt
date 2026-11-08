@@ -12,6 +12,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
@@ -59,13 +60,15 @@ class OverlayMonitorService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        // Quem iniciou com startForegroundService tem ~5 s para chamar startForeground; sair antes disso
+        // (como no caso sem permissão abaixo) derruba o app com ForegroundServiceDidNotStartInTimeException.
+        startInForeground()
         if (!Settings.canDrawOverlays(this)) {
             store.put("overlay_monitor", "0")
             stopSelf()
             return START_NOT_STICKY
         }
 
-        startInForeground()
         store.put("overlay_monitor", "1")
         if (monitorJob?.isActive != true) monitorJob = scope.launch { monitorLoop() }
         return START_STICKY
@@ -117,7 +120,13 @@ class OverlayMonitorService : Service() {
             val engine = Engine(RootShell, store) { LogBuffer.add(it) }
             val info = engine.detect()
             withContext(Dispatchers.Main) { createPanel(info) }
+            val power = getSystemService(PowerManager::class.java)
             while (scope.isActive) {
+                // tela apagada: ninguém vê o painel, então não vale acordar o root a cada segundo
+                if (power?.isInteractive == false) {
+                    delay(2000)
+                    continue
+                }
                 try {
                     val live = engine.readLive()
                     withContext(Dispatchers.Main) { updatePanel(info, live) }

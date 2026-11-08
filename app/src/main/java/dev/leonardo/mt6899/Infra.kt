@@ -15,7 +15,9 @@ object RootShell : Shell {
     override fun exec(cmd: String): ShellResult {
         val out = ArrayList<String>()
         val err = ArrayList<String>()
-        val r = com.topjohnwu.superuser.Shell.cmd(cmd).to(out, err).exec()
+        // Subshell: os comandos do Engine usam `exit N` (ex.: nó inexistente = 3). O shell do libsu é
+        // persistente e compartilhado; assim um `exit` encerra só o subshell, nunca a sessão root.
+        val r = com.topjohnwu.superuser.Shell.cmd("(\n$cmd\n)").to(out, err).exec()
         return ShellResult(out.joinToString("\n"), err.joinToString("\n"), r.code)
     }
 

@@ -8,6 +8,8 @@ class Engine(
     private val sh: Shell,
     val store: Store,
     private val prefix: String = "",
+    // antes do logger: quem chama com lambda final (Engine(sh, store) { ... }) continua ligando ao logger
+    private val clock: () -> Long = { System.currentTimeMillis() },
     private val logger: (String) -> Unit = {}
 ) {
     @Volatile
@@ -18,7 +20,23 @@ class Engine(
     private fun p(path: String) = prefix + path
     private fun pol(id: Int) = "/sys/devices/system/cpu/cpufreq/policy$id"
 
+    // Controle de "briga" com o sistema em enforce(): no máximo N reaplicações por janela.
+    private val driftTimes = ArrayDeque<Long>()
+    private var enforceMutedUntil = 0L
+
     companion object {
+        const val P_ECO = "Economia"
+        const val P_BAL = "Equilibrado"
+        const val P_PERF = "Desempenho"
+        const val P_MAX = "Máximo ⚠"
+        private val BUILTIN_NAMES = listOf(P_ECO, P_BAL, P_PERF, P_MAX)
+
+        private const val ENFORCE_WINDOW_MS = 60_000L
+        private const val ENFORCE_MAX_PER_WINDOW = 4
+        private val MODE_RE = Regex("^[0-7]{3,4}$")
+        private val THERMAL_SERVICES = listOf("mi_thermald", "thermald")
+        private const val BIG_READ = 65_536
+
         const val GPU_LIMIT_TABLE = "/proc/gpufreqv2/limit_table"
         const val GPU_STATUS = "/proc/gpufreqv2/gpufreq_status"
         const val GPU_OPP_TABLE = "/proc/gpufreqv2/gpu_working_opp_table"
@@ -39,12 +57,16 @@ class Engine(
 
     // ------------------------------------------------------------------ leitura
 
-    /** Lê vários arquivos num único shell. Valor null = arquivo inexistente. */
-    fun readMany(paths: List<String>): Map<String, String?> {
+    /**
+     * Lê vários arquivos num único shell. Valor null = arquivo inexistente.
+     * [maxBytes] limita cada arquivo; tabelas grandes (OPPs da GPU) precisam de mais que o padrão,
+     * senão a leitura é cortada no meio sem aviso.
+     */
+    fun readMany(paths: List<String>, maxBytes: Int = 4000): Map<String, String?> {
         if (paths.isEmpty()) return emptyMap()
         val sb = StringBuilder("for p in ")
         paths.forEach { sb.append(q(p(it))).append(' ') }
-        sb.append("; do if [ -e \"\$p\" ]; then echo \"@@E\$p\"; head -c 4000 \"\$p\" 2>/dev/null; echo; ")
+        sb.append("; do if [ -e \"\$p\" ]; then echo \"@@E\$p\"; head -c $maxBytes \"\$p\" 2>/dev/null; echo; ")
         sb.append("else echo \"@@N\$p\"; fi; done")
         val out = sh.exec(sb.toString()).out
         val res = LinkedHashMap<String, String?>()
@@ -73,7 +95,18 @@ class Engine(
 
     fun readOne(path: String): String? = readMany(listOf(path))[path]
 
-    private fun prop(k: String): String = sh.exec("getprop $k").out.trim()
+    /** Várias propriedades numa única chamada de shell (antes eram cinco chamadas em sequência). */
+    private fun props(vararg keys: String): Map<String, String> {
+        val sb = StringBuilder("for k in ")
+        keys.forEach { sb.append(it).append(' ') }
+        sb.append("; do echo \"\$k=\$(getprop \$k)\"; done")
+        val m = LinkedHashMap<String, String>()
+        sh.exec(sb.toString()).out.lines().forEach { l ->
+            val i = l.indexOf('=')
+            if (i > 0) m[l.substring(0, i)] = l.substring(i + 1).trim()
+        }
+        return m
+    }
 
     // ------------------------------------------------------------------ detecção
 
@@ -104,7 +137,7 @@ class Engine(
         }
 
         // GPU
-        val g = readMany(listOf(GPU_OPP_TABLE, "/sys/class/misc/mali0/device/gpuinfo"))
+        val g = readMany(listOf(GPU_OPP_TABLE, "/sys/class/misc/mali0/device/gpuinfo"), BIG_READ)
         var opps = Parse.oppTable(g[GPU_OPP_TABLE])
 
         // devfreq
@@ -145,11 +178,12 @@ class Engine(
             if (n.id.endsWith(".sched")) n.copy(choices = Parse.scheduler(ex[n.path]).second) else n
         }
 
-        val market = prop("ro.product.marketname").ifEmpty { prop("ro.product.model") }
-        val socModel = prop("ro.soc.model").ifEmpty { prop("ro.board.platform") }
+        val pr = props("ro.product.marketname", "ro.product.model", "ro.soc.model", "ro.board.platform", "ro.product.device")
+        val market = (pr["ro.product.marketname"] ?: "").ifEmpty { pr["ro.product.model"] ?: "" }
+        val socModel = (pr["ro.soc.model"] ?: "").ifEmpty { pr["ro.board.platform"] ?: "" }
         val result = SocInfo(
             marketName = market.ifEmpty { "?" },
-            device = prop("ro.product.device").ifEmpty { "?" },
+            device = (pr["ro.product.device"] ?: "").ifEmpty { "?" },
             socModel = socModel.ifEmpty { "?" },
             kernel = sh.exec("uname -r").out.trim(),
             gpuName = Parse.firstLine(g["/sys/class/misc/mali0/device/gpuinfo"]).ifEmpty { "GPU" },
@@ -266,7 +300,7 @@ class Engine(
         paths += tz.map { it.second }
         val flagNames = listOf("is_cpu_limit", "is_gpu_limit", "is_apu_limit")
         paths += flagNames.map { "$KTHERMAL/$it" }
-        val r = readMany(paths)
+        val r = readMany(paths, 16_000)
 
         val cpu = LinkedHashMap<Int, CpuLive>()
         for (pc in i.policies) {
@@ -370,7 +404,7 @@ class Engine(
     fun write(path: String, value: String, lock: Boolean = false, verify: Boolean = true): WriteResult {
         if (lock && store.get("mode:$path") == null) {
             val m = sh.exec("stat -c %a ${q(p(path))} 2>/dev/null").out.trim()
-            if (m.isNotEmpty()) store.put("mode:$path", m)
+            if (MODE_RE.matches(m)) store.put("mode:$path", m)
         }
         val res = execWrite(path, value, lock)
         if (res.code == 3) return WriteResult(path, value, "", false, "nó inexistente")
@@ -392,11 +426,21 @@ class Engine(
 
     // --- CPU
 
-    fun resolveMax(pc: CpuPolicy, v: Long): Long =
-        if (v <= 0) pc.maxHw else (pc.freqs.lastOrNull { it <= v } ?: pc.freqs.firstOrNull() ?: pc.maxHw)
+    /** Sem tabela de frequências (scaling_available_frequencies ausente) usa o pedido, limitado ao hardware. */
+    fun resolveMax(pc: CpuPolicy, v: Long): Long = when {
+        v <= 0 -> pc.maxHw
+        pc.freqs.isEmpty() -> clampHw(pc, v)
+        else -> pc.freqs.lastOrNull { it <= v } ?: pc.freqs.first()
+    }
 
-    fun resolveMin(pc: CpuPolicy, v: Long): Long =
-        if (v <= 0) pc.minHw else (pc.freqs.firstOrNull { it >= v } ?: pc.freqs.lastOrNull() ?: pc.maxHw)
+    fun resolveMin(pc: CpuPolicy, v: Long): Long = when {
+        v <= 0 -> pc.minHw
+        pc.freqs.isEmpty() -> clampHw(pc, v)
+        else -> pc.freqs.firstOrNull { it >= v } ?: pc.freqs.last()
+    }
+
+    private fun clampHw(pc: CpuPolicy, v: Long): Long =
+        if (pc.maxHw > 0 && pc.maxHw >= pc.minHw) v.coerceIn(pc.minHw, pc.maxHw) else v
 
     fun lockEnabled(): Boolean = store.get("lock") == "1"
 
@@ -406,25 +450,62 @@ class Engine(
         val res = ArrayList<WriteResult>()
         if (gov != null) res += write("$base/scaling_governor", gov)
         if (minK == null && maxK == null) return res
-        val cur = readMany(listOf("$base/scaling_min_freq", "$base/scaling_max_freq"))
-        val curMin = Parse.intOf(cur["$base/scaling_min_freq"]) ?: 0L
-        val curMax = Parse.intOf(cur["$base/scaling_max_freq"]) ?: Long.MAX_VALUE
-        var newMin = minK ?: curMin
-        var newMax = maxK ?: curMax
-        if (maxK != null && minK == null && newMin > newMax) newMin = newMax
-        // piso acima do teto atual: o kernel rejeita (EINVAL); sobe o teto junto
-        if (minK != null && maxK == null && newMin > newMax) newMax = newMin
-        val writeMax = maxK != null || newMax != curMax
         val minP = "$base/scaling_min_freq"
         val maxP = "$base/scaling_max_freq"
-        if (newMax < curMin) {
-            if (minK != null || newMin != curMin) res += write(minP, newMin.toString(), lock)
-            if (writeMax) res += write(maxP, newMax.toString(), lock)
-        } else {
-            if (writeMax) res += write(maxP, newMax.toString(), lock)
-            if (minK != null || newMin != curMin) res += write(minP, newMin.toString(), lock)
+        val cur = readMany(listOf(minP, maxP))
+        val curMin = Parse.intOf(cur[minP]) ?: 0L
+        val curMax = Parse.intOf(cur[maxP]) ?: Long.MAX_VALUE
+        var newMin = minK ?: curMin
+        var newMax = maxK ?: curMax
+        if (newMin > newMax) {
+            when {
+                // pedido incoerente (piso > teto): o teto vence, o kernel rejeitaria o contrário
+                minK != null && maxK != null -> {
+                    log("CPU policy$policy: piso $minK > teto $maxK; piso reduzido ao teto")
+                    newMin = newMax
+                }
+                // novo teto abaixo do piso atual: leva o piso junto
+                maxK != null -> newMin = newMax
+                // novo piso acima do teto atual: o kernel rejeita (EINVAL); sobe o teto junto
+                else -> newMax = newMin
+            }
         }
+        res += writeRange(minP, maxP, newMin, newMax, curMin, curMax, minK != null, maxK != null, lock)
         return res
+    }
+
+    /**
+     * Escreve um par min/max (cpufreq ou devfreq) na ordem que o kernel aceita e desfaz o que já foi
+     * escrito se uma das escritas falhar, para não deixar o par pela metade.
+     * [forceMin]/[forceMax] escrevem mesmo sem mudança (reafirma o valor e aplica o lock).
+     */
+    private fun writeRange(
+        minPath: String, maxPath: String,
+        newMin: Long, newMax: Long, oldMin: Long, oldMax: Long,
+        forceMin: Boolean, forceMax: Boolean, lock: Boolean
+    ): List<WriteResult> {
+        if (newMin > newMax)
+            return listOf(WriteResult(minPath, newMin.toString(), "", false, "min_freq não pode superar max_freq"))
+        val minStep = if (forceMin || newMin != oldMin) Triple(minPath, newMin, oldMin) else null
+        val maxStep = if (forceMax || newMax != oldMax) Triple(maxPath, newMax, oldMax) else null
+        // Teto novo abaixo do piso atual: baixa o piso primeiro. Nos demais casos, teto primeiro.
+        val ordered = if (newMax < oldMin) listOfNotNull(minStep, maxStep) else listOfNotNull(maxStep, minStep)
+        val results = ArrayList<WriteResult>()
+        val undo = ArrayList<Pair<String, Long>>()
+        for ((path, value, old) in ordered) {
+            val r = write(path, value.toString(), lock)
+            results += r
+            if (!r.ok) {
+                // a escrita que falhou pode ter sido aceita com outro valor (kernel ajustou): desfaz também
+                val now = readOne(path)?.trim()?.toLongOrNull()
+                if (now != null && now != old) undo += path to old
+                // valores 0 / MAX_VALUE são os "não consegui ler" de setCpu: não faz sentido regravá-los
+                for ((p2, o2) in undo.asReversed()) if (o2 in 1 until Long.MAX_VALUE) write(p2, o2.toString())
+                return results
+            }
+            undo += path to old
+        }
+        return results
     }
 
     // --- GPU
@@ -480,33 +561,21 @@ class Engine(
         if (nextMin > nextMax)
             return WriteResult(dev.path, "$nextMin..$nextMax", "$oldMin..$oldMax", false, "min_freq não pode superar max_freq")
 
-        val changes = when {
-            nextMax < oldMin -> listOf(minPath to nextMin, maxPath to nextMax)
-            nextMin > oldMax -> listOf(maxPath to nextMax, minPath to nextMin)
-            else -> buildList {
-                if (nextMax != oldMax) add(maxPath to nextMax)
-                if (nextMin != oldMin) add(minPath to nextMin)
-            }
-        }
-        if (changes.isEmpty())
+        if (nextMin == oldMin && nextMax == oldMax)
             return WriteResult(dev.path, "$nextMin..$nextMax", "$oldMin..$oldMax", true, "limites já estavam aplicados")
 
-        var firstPath: String? = null
-        for ((path, value) in changes) {
-            val result = write(path, value.toString())
-            if (!result.ok) {
-                if (firstPath != null) {
-                    val original = if (firstPath == minPath) oldMin else oldMax
-                    write(firstPath!!, original.toString())
-                }
-                return WriteResult(dev.path, "$nextMin..$nextMax", "min=${readOne(minPath)} max=${readOne(maxPath)}", false,
-                    "falha em ${path.substringAfterLast('/')}: ${result.note.ifBlank { "kernel não confirmou o valor" }}")
-                    .also { log(it.line()) }
+        val steps = writeRange(minPath, maxPath, nextMin, nextMax, oldMin, oldMax, forceMin = false, forceMax = false, lock = false)
+        val failed = steps.firstOrNull { !it.ok }
+        val state = "min=${readOne(minPath)?.trim()} max=${readOne(maxPath)?.trim()}"
+        val result =
+            if (failed != null) {
+                WriteResult(dev.path, "$nextMin..$nextMax", state, false,
+                    "falha em ${failed.path.substringAfterLast('/')}: ${failed.note.ifBlank { "kernel não confirmou o valor" }}")
+            } else {
+                WriteResult(dev.path, "$nextMin..$nextMax", state, true)
             }
-            if (firstPath == null) firstPath = path
-        }
-        return WriteResult(dev.path, "$nextMin..$nextMax", "min=${readOne(minPath)} max=${readOne(maxPath)}", true)
-            .also { log(it.line()) }
+        log(result.line())
+        return result
     }
 
     fun setGpuDevfreqGovernor(governor: String): WriteResult {
@@ -519,6 +588,12 @@ class Engine(
 
     fun fixGpuOpp(idx: Int?): WriteResult {
         val v = (idx ?: -1).toString()
+        // um índice fora da tabela não deve chegar ao driver (fixar OPP é a escrita mais sensível da GPU)
+        val valid = info?.gpuOpps?.map { it.idx }?.toSet().orEmpty()
+        if (idx != null && valid.isNotEmpty() && idx !in valid)
+            return WriteResult(GPU_FIX, v, "", false, "índice fora da tabela de OPPs (0..${valid.max()})").also { log(it.line()) }
+        if (idx != null && idx < 0)
+            return WriteResult(GPU_FIX, v, "", false, "índice inválido").also { log(it.line()) }
         val w = write(GPU_FIX, v, verify = false)
         val cur = Parse.gpuOppIndex(readOne(GPU_STATUS))
         val ok = w.ok && (idx == null || cur == idx)
@@ -541,8 +616,8 @@ class Engine(
 
     fun setRefresh(hz: Int?): WriteResult {
         if (hz == null) {
-            sh.exec("settings delete system min_refresh_rate; settings delete system peak_refresh_rate; settings delete system user_refresh_rate")
-            return WriteResult("display", "auto", "auto", true).also { log(it.line()) }
+            val d = sh.exec("settings delete system min_refresh_rate; settings delete system peak_refresh_rate; settings delete system user_refresh_rate")
+            return WriteResult("display", "auto", if (d.ok) "auto" else "", d.ok, d.err.take(80)).also { log(it.line()) }
         }
         val f = "$hz.0"
         val r = sh.exec("settings put system min_refresh_rate $f; settings put system peak_refresh_rate $f; settings put system user_refresh_rate $hz")
@@ -550,14 +625,32 @@ class Engine(
         return WriteResult("display", f, got, r.ok && got.startsWith("$hz"), "HyperOS pode sobrescrever").also { log(it.line()) }
     }
 
+    /**
+     * Pausa/retoma os serviços térmicos. Guarda quais serviços foram de fato parados
+     * ("thermal_stopped"): o aparelho pode não ter `thermald`, e marcar como pausado (ou retomado)
+     * sem olhar o resultado deixava a proteção térmica registrada com o estado errado.
+     */
     fun pauseThermal(pause: Boolean): List<WriteResult> {
-        val out = listOf("mi_thermald", "thermald").map { svc ->
+        val prev = store.get("thermal_stopped")?.split(",")?.filter { it.isNotEmpty() }
+        // sem registro do que foi parado (preferência antiga, ou serviço parado fora do app):
+        // tenta iniciar os dois, que é inofensivo se já estiverem rodando
+        val legacy = !pause && prev == null
+        val targets = if (pause || legacy) THERMAL_SERVICES else prev.orEmpty()
+        val results = targets.map { svc ->
             val r = sh.exec((if (pause) "stop " else "start ") + svc)
             WriteResult("svc:$svc", if (pause) "stop" else "start", "code=${r.code}", r.ok, r.err.take(80))
                 .also { log(it.line()) }
         }
-        store.put("thermal_paused", if (pause) "1" else "0")
-        return out
+        val stopped: List<String> = if (pause) {
+            ((prev ?: emptyList()) + targets.filterIndexed { i, _ -> results[i].ok }).distinct()
+        } else if (legacy) {
+            emptyList()
+        } else {
+            targets.filterIndexed { i, _ -> !results[i].ok } // não conseguiu retomar: continua registrado
+        }
+        if (stopped.isEmpty()) store.remove("thermal_stopped") else store.put("thermal_stopped", stopped.joinToString(","))
+        store.put("thermal_paused", if (stopped.isEmpty()) "0" else "1")
+        return results
     }
 
     // ------------------------------------------------------------------ perfis
@@ -584,18 +677,27 @@ class Engine(
         val max = base(listOf(100), listOf(1300000, 1500000, 1500000), 0, 702000, 120)
         max["gpu.limit.THERMAL_AP"] = "off"
         return listOf(
-            Profile("Economia", eco, true),
-            Profile("Equilibrado", bal, true),
-            Profile("Desempenho", perf, true),
-            Profile("Máximo ⚠", max, true)
+            Profile(P_ECO, eco, true),
+            Profile(P_BAL, bal, true),
+            Profile(P_PERF, perf, true),
+            Profile(P_MAX, max, true)
         )
     }
 
     fun allProfiles(): List<Profile> = builtins() + Profile.decode(store.get("profiles"))
 
-    fun saveProfile(p: Profile) {
-        val mine = Profile.decode(store.get("profiles")).filter { it.name != p.name } + p.copy(builtin = false)
+    /**
+     * Salva um perfil do usuário e devolve o nome com que ele ficou. O nome passa pela mesma limpeza
+     * do encode (senão "a|b" nunca era substituído, pois voltava como "a/b") e não pode repetir o de
+     * um perfil embutido (o embutido sempre vencia em applyByName, escondendo o salvo).
+     */
+    fun saveProfile(p: Profile): String {
+        var name = Profile.cleanName(p.name).ifEmpty { "Perfil" }
+        if (BUILTIN_NAMES.any { it.equals(name, ignoreCase = true) }) name += " (meu)"
+        val mine = Profile.decode(store.get("profiles")).filter { !it.name.equals(name, ignoreCase = true) } +
+            p.copy(name = name, builtin = false)
         store.put("profiles", Profile.encode(mine))
+        return name
     }
 
     fun deleteProfile(name: String) {
@@ -617,11 +719,18 @@ class Engine(
         val up = live.gpuUpIdx
         if (up != null) m["gpu.max_khz"] = if (up <= 0) "0" else (i.gpuOpps.firstOrNull { it.idx == up }?.kHz ?: 0L).toString()
         val bo = live.gpuBoostIdx
-        if (bo != null) m["gpu.min_khz"] = if (bo >= i.gpuOpps.size - 1) "0" else (i.gpuOpps.firstOrNull { it.idx == bo }?.kHz ?: 0L).toString()
+        val lastIdx = i.gpuOpps.lastOrNull()?.idx ?: 0
+        if (bo != null) m["gpu.min_khz"] = if (bo >= lastIdx) "0" else (i.gpuOpps.firstOrNull { it.idx == bo }?.kHz ?: 0L).toString()
         return Profile(name, m, false)
     }
 
-    fun applyProfile(pr: Profile): List<WriteResult> {
+    fun applyProfile(pr: Profile): List<WriteResult> = applyProfileInternal(pr, quiet = false)
+
+    /**
+     * [quiet] = reaplicação automática (enforce / modo seguro): mexe só em CPU, GPU e nós, sem refazer
+     * a taxa de atualização nem parar/iniciar serviços a cada deriva.
+     */
+    private fun applyProfileInternal(pr: Profile, quiet: Boolean): List<WriteResult> {
         val i = info ?: detect()
         val res = ArrayList<WriteResult>()
         log("── Perfil '${pr.name}' ──")
@@ -637,8 +746,8 @@ class Engine(
             when {
                 k.startsWith("gpu.limit.") -> log("Perfil ignorado: limit_table é somente leitura até validar o protocolo do driver")
                 k.startsWith("node:") -> i.node(k.removePrefix("node:"))?.let { res += writeNode(it, v) }
-                k == "display.hz" -> res += setRefresh(v.toIntOrNull())
-                k == "thermal.pause" -> res += pauseThermal(v == "1")
+                k == "display.hz" -> if (!quiet) res += setRefresh(v.toIntOrNull())
+                k == "thermal.pause" -> if (!quiet) res += pauseThermal(v == "1")
             }
         }
         store.put("active", pr.name)
@@ -668,12 +777,24 @@ class Engine(
         val i = info ?: return false
         val name = store.get("active") ?: return false
         val pr = allProfiles().firstOrNull { it.name == name } ?: return false
+        val now = clock()
+        if (now < enforceMutedUntil) return false
         val exp = expected(i, pr)
         val cur = readMany(exp.keys.toList())
         val bad = exp.filter { (k, v) -> cur[k]?.let { !Parse.same(v, it) } ?: false }
         if (bad.isEmpty()) return false
+        // Se o sistema desfaz o perfil toda vez (throttling térmico, perf HAL), reaplicar em loop só
+        // gera escrita e briga: depois de algumas tentativas na janela, pausa a reaplicação por um tempo.
+        while (driftTimes.isNotEmpty() && now - driftTimes.first() > ENFORCE_WINDOW_MS) driftTimes.removeFirst()
+        if (driftTimes.size >= ENFORCE_MAX_PER_WINDOW) {
+            enforceMutedUntil = now + ENFORCE_WINDOW_MS
+            driftTimes.clear()
+            log("Deriva persistente em ${bad.size} nó(s): o sistema continua alterando os valores; reaplicação pausada por ${ENFORCE_WINDOW_MS / 1000} s")
+            return false
+        }
+        driftTimes.addLast(now)
         log("Deriva em ${bad.size} nó(s): " + bad.keys.joinToString { it.substringAfterLast('/') } + " → reaplicando '${pr.name}'")
-        applyProfile(pr)
+        applyProfileInternal(pr, quiet = true)
         return true
     }
 
@@ -715,20 +836,46 @@ class Engine(
             val mx = store.get("snap:${pol(pc.id)}/scaling_max_freq")?.toLongOrNull()
             res += setCpu(pc.id, mn, mx, g)
         }
+        // Pares min/max do devfreq (GPU, DDR, UFS) precisam de ordem válida: gravar o teto antigo antes
+        // de baixar o piso atual é rejeitado pelo kernel e deixava o restore pela metade.
+        val rangePaths = HashSet<String>()
+        for (df in listOfNotNull(i.gpuDevfreq, i.ddr, i.ufs)) {
+            val minP = "${df.path}/min_freq"
+            val maxP = "${df.path}/max_freq"
+            rangePaths += minP
+            rangePaths += maxP
+            val sMin = store.get("snap:$minP")?.toLongOrNull() ?: continue
+            val sMax = store.get("snap:$maxP")?.toLongOrNull() ?: continue
+            res += restoreRange(minP, maxP, sMin, sMax)
+        }
         for (path in snapPaths(i)) {
-            if (path.contains("/cpufreq/policy")) continue
+            if (path.contains("/cpufreq/policy") || path in rangePaths) continue
             val v = store.get("snap:$path") ?: continue
             res += write(path, v)
         }
+        // o snapshot é o estado "de fábrica": serviços térmicos parados pelo app voltam junto
+        if (store.get("thermal_paused") == "1") res += pauseThermal(false)
         restoreModes()
         store.remove("active")
         return res
     }
 
+    private fun restoreRange(minPath: String, maxPath: String, wantMin: Long, wantMax: Long): List<WriteResult> {
+        val cur = readMany(listOf(minPath, maxPath))
+        val oldMin = Parse.intOf(cur[minPath])
+        val oldMax = Parse.intOf(cur[maxPath])
+        if (oldMin == null || oldMax == null)
+            return listOf(WriteResult(minPath, wantMin.toString(), "", false, "não foi possível ler os limites atuais"))
+        return writeRange(minPath, maxPath, wantMin, wantMax, oldMin, oldMax, forceMin = false, forceMax = false, lock = false)
+    }
+
     fun restoreModes() {
         store.keys().filter { it.startsWith("mode:") }.forEach { k ->
             val path = k.removePrefix("mode:")
-            sh.exec("chmod ${store.get(k)} ${q(p(path))} 2>/dev/null")
+            val mode = store.get(k)?.trim()
+            // o valor vem das preferências e vai para um shell root: só aceita octal puro
+            if (mode != null && MODE_RE.matches(mode)) sh.exec("chmod $mode ${q(p(path))} 2>/dev/null")
+            else log("Modo de arquivo inválido ignorado: $path")
             store.remove(k)
         }
     }
@@ -737,11 +884,15 @@ class Engine(
 
     data class GuardCfg(val enabled: Boolean, val soc: Float, val skin: Float, val batt: Float)
 
+    /** Limites configuráveis, mas dentro de faixas sãs: "0" travava o app em modo seguro, "500" desligava a guarda. */
+    private fun guardLimit(key: String, def: Float, lo: Float, hi: Float): Float =
+        (store.get(key)?.toFloatOrNull()?.takeIf { it.isFinite() } ?: def).coerceIn(lo, hi)
+
     fun guardCfg() = GuardCfg(
         enabled = store.get("guard") != "0",
-        soc = store.get("g_soc")?.toFloatOrNull() ?: 80f,
-        skin = store.get("g_skin")?.toFloatOrNull() ?: 44f,
-        batt = store.get("g_batt")?.toFloatOrNull() ?: 42f
+        soc = guardLimit("g_soc", 80f, 50f, 110f),
+        skin = guardLimit("g_skin", 44f, 35f, 60f),
+        batt = guardLimit("g_batt", 42f, 35f, 55f)
     )
 
     fun guardReason(live: Live, g: GuardCfg = guardCfg()): String? {
@@ -774,15 +925,10 @@ class Engine(
         val res = ArrayList<WriteResult>()
         if (store.get("thermal_paused") == "1") res += pauseThermal(false)
         if (!(store.get("disabled_limits") ?: "").isBlank()) log("AVISO: preferência antiga registra limitadores desativados; tabela PPM não será alterada por segurança")
-        res += applyByName("Equilibrado")
+        // quiet: o modo seguro só alivia CPU/GPU; não deve trocar a taxa de atualização da tela
+        allProfiles().firstOrNull { it.name == P_BAL }?.let { res += applyProfileInternal(it, quiet = true) }
         return res
     }
-
-    /**
-     * Diagnóstico técnico somente de leitura. Coleta dados reais disponíveis no aparelho;
-     * cada seção registra código de saída e erros para diferenciar ausência de permissão
-     * de nó inexistente ou falha do comando.
-     */
 
     /**
      * Diagnóstico técnico somente de leitura. Registra saída, stderr e exit code
