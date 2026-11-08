@@ -488,7 +488,10 @@ class Engine(
         return WriteResult(path, value, shown, ok, note).also { log(it.line()) }
     }
 
-    fun writeNode(spec: NodeSpec, value: String): WriteResult = when (spec.id) {
+    fun writeNode(spec: NodeSpec, value: String): WriteResult = if (!spec.editable) {
+        WriteResult(spec.path, value, readOne(spec.path) ?: "", false,
+            "escrita bloqueada: interface ainda não foi validada para edição")
+    } else when (spec.id) {
         "gpu.cust_upbound" -> writeGedGpuOpp(spec.path, value, "/sys/module/ged/parameters/gpu_bottom_freq", true)
         "gpu.bottom" -> writeGedGpuOpp(spec.path, value, "/sys/module/ged/parameters/gpu_cust_upbound_freq", false)
         "gpu.cust_boost" -> writeGedGpuOpp(spec.path, value, null, null)
@@ -1129,7 +1132,7 @@ class Engine(
             try {
                 val r = sh.exec(command)
                 line("[exit_code=" + r.code + "]")
-                if (r.out.isNotBlank()) line(r.out.take(30000))
+                if (r.out.isNotBlank()) line(r.out.take(300000))
                 if (r.err.isNotBlank()) line("[stderr] " + r.err.take(5000))
                 if (r.out.isBlank() && r.err.isBlank()) line("(sem saída)")
             } catch (t: Throwable) {
