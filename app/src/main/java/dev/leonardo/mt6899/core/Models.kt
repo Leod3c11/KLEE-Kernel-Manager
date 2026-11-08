@@ -125,7 +125,10 @@ data class Live(
     val temps: Map<String, Float>,
     val battPct: Int?,
     val battTempC: Float?,
-    val flags: Map<String, String>
+    val flags: Map<String, String>,
+    val gpuFmeterKHz: Long? = null,
+    val gpuOutKHz: Long? = null,
+    val gpuPowerActive: Boolean? = null
 )
 
 data class WriteResult(
