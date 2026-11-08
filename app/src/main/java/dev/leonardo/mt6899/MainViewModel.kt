@@ -31,7 +31,8 @@ enum class Tab(val title: String, val glyph: String) {
     Gpu("GPU", "▣"),
     Thermal("Térmica", "♨"),
     System("Sistema", "⚙"),
-    Profiles("Perfis", "★")
+    Profiles("Perfis", "★"),
+    Inventory("Inventário", "⌕")
 }
 
 data class UiState(
