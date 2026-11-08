@@ -777,4 +777,161 @@ class Engine(
         res += applyByName("Equilibrado")
         return res
     }
+
+    /**
+     * Diagnóstico técnico somente de leitura. Coleta dados reais disponíveis no aparelho;
+     * cada seção registra código de saída e erros para diferenciar ausência de permissão
+     * de nó inexistente ou falha do comando.
+     */
+    fun diagnosticReport(appLog: List<String>, appState: String): String {
+        val out = StringBuilder()
+        fun line(s: String = "") { out.append(s).append('\\n') }
+        fun section(title: String, command: String) {
+            line()
+            line("========== $title ==========")
+            try {
+                val r = sh.exec(command)
+                line("[exit_code=${r.code}]")
+                if (r.out.isNotBlank()) line(r.out.take(30000))
+                if (r.err.isNotBlank()) line("[stderr] ${r.err.take(5000)}")
+                if (r.out.isBlank() && r.err.isBlank()) line("(sem saída)")
+            } catch (t: Throwable) {
+                line("[EXCEPTION] ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+
+        line("KLEE KERNEL MANAGER - DIAGNÓSTICO COMPLETO")
+        line("Gerado: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", java.util.Locale.US).format(java.util.Date())}")
+        line("Formato: texto simples UTF-8")
+        line("Aviso: coleta somente leitura; não altera clocks, governors, tensão ou proteções.")
+        line()
+        line("========== ESTADO DO APLICATIVO ==========")
+        line(appState)
+        line()
+        line("========== LOG INTERNO DO KLEE ==========")
+        if (appLog.isEmpty()) line("(sem eventos registrados)") else appLog.forEach { line(it) }
+
+        section("IDENTIFICAÇÃO DO SISTEMA", """
+            echo '[getprop - propriedades não sensíveis]'
+            getprop | grep -E '\\[(ro\\.product\\.(model|device|marketname|brand)|ro\\.soc\\.model|ro\\.board\\.platform|ro\\.build\\.(version\\.(release|sdk)|type|tags|fingerprint)|ro\\.boot\\.hardware)\\]'
+            echo '[kernel]'; uname -a
+            echo '[uptime]'; cat /proc/uptime
+            echo '[root identity]'; id
+            echo '[SELinux]'; getenforce 2>/dev/null
+            echo '[boot reason]'; getprop sys.boot.reason
+        """.trimIndent())
+
+        section("CPU - POLICIES, FREQUÊNCIAS E GOVERNORS", """
+            for p in /sys/devices/system/cpu/cpufreq/policy*; do
+              [ -d "$p" ] || continue
+              echo "----- $p -----"
+              for f in related_cpus affected_cpus scaling_driver scaling_governor scaling_available_governors scaling_available_frequencies scaling_min_freq scaling_max_freq scaling_cur_freq cpuinfo_min_freq cpuinfo_max_freq cpuinfo_transition_latency; do
+                [ -r "$p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }
+              done
+              stat -c 'permissions=%A (%a) owner=%U:%G' "$p/scaling_governor" "$p/scaling_min_freq" "$p/scaling_max_freq" 2>&1
+            done
+            echo '[cpu online]'; cat /sys/devices/system/cpu/online 2>&1
+            echo '[cpu present]'; cat /sys/devices/system/cpu/present 2>&1
+            echo '[cpuinfo summary]'; grep -E '^(processor|model name|CPU implementer|CPU part|BogoMIPS)' /proc/cpuinfo 2>&1
+        """.trimIndent())
+
+        section("GPU MALI / DEVFREQ / GED / GPUFREQ", """
+            for p in /sys/class/devfreq/*mali* /sys/devices/platform/soc/13000000.mali /sys/devices/platform/soc/13f50000.gpufreq /sys/devices/platform/soc/13c00000.gpueb /sys/kernel/ged /sys/kernel/ged/hal; do
+              [ -e "$p" ] || continue
+              echo "----- $p -----"
+              if [ -d "$p" ]; then
+                for f in name governor available_governors available_frequencies min_freq max_freq cur_freq target_freq polling_interval trans_stat; do
+                  [ -r "$p/$f" ] && { printf '%s=' "$f"; head -c 12000 "$p/$f" 2>&1; echo; }
+                done
+              else
+                ls -ld "$p" 2>&1
+              fi
+            done
+            for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/gpu_utilization /sys/kernel/ged/hal/custom_upbound_gpu_freq /sys/kernel/ged/hal/custom_boost_gpu_freq /sys/kernel/ged/hal/gpu_boost_level; do
+              [ -r "$f" ] && { echo "----- $f -----"; cat "$f" 2>&1; }
+            done
+            echo '[gpuinfo]'; cat /sys/class/misc/mali0/device/gpuinfo 2>&1
+            echo '[gpu modules]'; grep -iE 'mali|gpu|ged|gpufreq|gpueb' /proc/modules 2>&1
+        """.trimIndent())
+
+        section("DEVFREQ - TODOS OS DOMÍNIOS", """
+            for p in /sys/class/devfreq/*; do
+              [ -d "$p" ] || continue
+              echo "----- $p -----"
+              for f in name governor available_governors available_frequencies min_freq max_freq cur_freq target_freq polling_interval; do
+                [ -r "$p/$f" ] && { printf '%s=' "$f"; head -c 10000 "$p/$f" 2>&1; echo; }
+              done
+            done
+        """.trimIndent())
+
+        section("NÓS DETECTADOS PELO KLEE - VALOR E PERMISSÕES", run {
+            val paths = info?.nodes.orEmpty().map { it.path }.distinct()
+            if (paths.isEmpty()) "echo 'Nenhum nó foi detectado pelo KLEE'"
+            else "for f in " + paths.joinToString(" ") { q(p(it)) } + "; do echo \"----- \$f -----\"; if [ -e \"\$f\" ]; then stat -c 'permissions=%A (%a) owner=%U:%G' \"\$f\" 2>&1; head -c 4000 \"\$f\" 2>&1; echo; else echo 'MISSING'; fi; done"
+        })
+
+        section("TÉRMICA - ZONAS E COOLING DEVICES", """
+            for z in /sys/class/thermal/thermal_zone*; do
+              [ -d "$z" ] || continue
+              echo "----- $z -----"
+              for f in type temp mode policy available_policies; do
+                [ -r "$z/$f" ] && { printf '%s=' "$f"; cat "$z/$f" 2>&1; }
+              done
+            done
+            for c in /sys/class/thermal/cooling_device*; do
+              [ -d "$c" ] || continue
+              echo "----- $c -----"
+              for f in type cur_state max_state; do
+                [ -r "$c/$f" ] && { printf '%s=' "$f"; cat "$c/$f" 2>&1; }
+              done
+            done
+            for f in /sys/kernel/thermal/* /sys/class/thermal/thermal_message/*; do
+              [ -f "$f" ] && { echo "----- $f -----"; head -c 3000 "$f" 2>&1; echo; }
+            done
+        """.trimIndent())
+
+        section("BATERIA E ENERGIA", """
+            for p in /sys/class/power_supply/*; do
+              [ -d "$p" ] || continue
+              echo "----- $p -----"
+              for f in type status health capacity voltage_now current_now power_now temp technology charge_counter; do
+                [ -r "$p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }
+              done
+            done
+        """.trimIndent())
+
+        section("MEMÓRIA, ZRAM E ARMAZENAMENTO", """
+            echo '[meminfo]'; cat /proc/meminfo
+            echo '[swaps]'; cat /proc/swaps
+            echo '[zram]'; for p in /sys/block/zram*; do [ -d "$p" ] || continue; echo "----- $p -----"; for f in disksize mm_stat comp_algorithm max_comp_streams; do [ -r "$p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }; done; done
+            echo '[block devices]'; lsblk 2>&1
+            echo '[mounts relevantes]'; mount | grep -E 'sysfs|proc|debugfs|tracefs|cgroup'
+        """.trimIndent())
+
+        section("SCHEDULER, INTERRUPÇÕES E LIMITES DO KERNEL", """
+            for f in /proc/sys/kernel/sched_pelt_multiplier /proc/sys/kernel/sched_energy_aware /proc/interrupts /proc/pressure/cpu /proc/pressure/memory /proc/pressure/io; do
+              [ -r "$f" ] && { echo "----- $f -----"; head -c 12000 "$f" 2>&1; echo; }
+            done
+            echo '[cmdline filtrada]'; tr ' ' '\\n' < /proc/cmdline | grep -viE 'serial|imei|androidboot\\.serial'
+        """.trimIndent())
+
+        section("SERVIÇOS RELACIONADOS", """
+            echo '[serviços térmicos/performance]'; getprop | grep -iE 'init\\.svc\\..*(thermal|perf|power|ged|gpu|apu)'
+            echo '[processos relacionados]'; ps -A 2>/dev/null | grep -iE 'thermal|perf|power|ged|gpu|klee' | grep -v grep
+        """.trimIndent())
+
+        section("LOG DO KERNEL - EVENTOS RELACIONADOS", """
+            dmesg 2>&1 | grep -iE 'mtk|mt6899|mali|gpu|ged|gpufreq|gpueb|devfreq|cpufreq|thermal|cooling|permission denied|avc: denied|klee' | tail -n 700
+        """.trimIndent())
+
+        section("LOGCAT - EVENTOS RELACIONADOS", """
+            logcat -b main -b system -b crash -d -t 1800 -v threadtime 2>&1 | grep -iE 'mt6899|klee|mtk|mali|gpu|ged|gpufreq|gpueb|devfreq|cpufreq|thermal|avc: denied|fatal exception|permission denied|write failed' | tail -n 900
+        """.trimIndent())
+
+        line()
+        line("========== FIM DO DIAGNÓSTICO ==========")
+        line("Total de caracteres: ${out.length}")
+        return out.toString()
+    }
+
 }
