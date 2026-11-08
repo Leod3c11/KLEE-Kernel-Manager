@@ -1,0 +1,3097 @@
+KLEE KERNEL MANAGER - DIAGNÓSTICO COMPLETO
+Gerado: 2026-11-08 08:26:51 -0300
+Formato: texto simples UTF-8
+Aviso: coleta somente leitura; não altera clocks, governors, tensão ou proteções.
+
+========== ESTADO DO APLICATIVO ==========
+App: MT6899 Manager
+Fase: Ready
+Aba: Inventário
+Perfil ativo: nenhum
+Preferências: {lock=0, boot=1, watchdog=0, appprof=0, guard=1, g_soc=80, g_skin=44, g_batt=42, interval=10, thermal_paused=0, overlay_monitor=0, snapshot=1}
+SoC detectado: MT6899
+Modelo: POCO X8 Pro
+Kernel: 6.6.89-android15-8-g8e4be6b47e40-ab14134548-4k
+Clusters CPU: 3
+OPPs GPU: 49
+Nós detectados: 52
+Estado ao vivo: Live(ts=1794137210646, cpu={0=CpuLive(cur=700000, min=300000, max=1200000, gov=sugov_ext), 4=CpuLive(cur=400000, min=400000, max=1400000, gov=sugov_ext), 7=CpuLive(cur=1300000, min=1000000, max=1300000, gov=sugov_ext)}, gpuIdx=37, gpuKHz=546000, gpuUtil=8, gpuUpIdx=0, gpuBoostIdx=48, ppmCeilIdx=37, ppmCeilLimiter=4, ppmFloorIdx=37, ppmFloorLimiter=13, limits=[GpuLimit(id=0, name=SEGMENT, priority=9, ceiling=0, floor=48, cEnable=true, fEnable=true), GpuLimit(id=1, name=DEBUG, priority=8, ceiling=-1, floor=-1, cEnable=true, fEnable=true), GpuLimit(id=2, name=GPM_3.0, priority=7, ceiling=-1, floor=-1, cEnable=true, fEnable=true), GpuLimit(id=3, name=PEAK_POWER, priority=7, ceiling=31, floor=-1, cEnable=true, fEnable=true), GpuLimit(id=4, name=THERMAL_AP, priority=6, ceiling=37, floor=-1, cEnable=true, fEnable=true), GpuLimit(id=5, name=THERMAL_EB, priority=6, ceiling=0, floor=-1, cEnable=true, fEnable=true), GpuLimit(id=6, name=SRAMRC, priority=5, ceiling=-1, floor=-1, cEnable=true, fEnable=true), GpuLimit(id=7, name=BATT_OC, priority=4, ceiling=-1, floor=-1, cEnable=true, fEnable=true), GpuLimit(id=8, name=BATT_PERCENT, priority=4, ceiling=-1, floor=-1, cEnable=true, fEnable=true), GpuLimit(id=9, name=LOW_BATT, priority=4, ceiling=-1, floor=-1, cEnable=true, fEnable=true), GpuLimit(id=10, name=PBM, priority=4, ceiling=-1, floor=-1, cEnable=true, fEnable=true), GpuLimit(id=11, name=APIBOOST, priority=3, ceiling=-1, floor=48, cEnable=true, fEnable=true), GpuLimit(id=12, name=POWERHAL, priority=2, ceiling=0, floor=48, cEnable=true, fEnable=true), GpuLimit(id=13, name=FIXCMD, priority=2, ceiling=0, floor=0, cEnable=true, fEnable=true)], temps={soc_max=46.108, cpu-big-core7-0=45.744, cpu-medium-core4-0=43.822, cpu-little-core0=44.544, quiet_therm=39.388, display_therm=39.944, battery=40.8, wifi_therm=40.944, flash_therm=40.388}, battPct=51, battTempC=39.0, flags={is_cpu_limit=0, is_gpu_limit=0, is_apu_limit=0})
+Valores dos nós: {cpu0.cc.enable=1, cpu0.cc.min_cpus=4, cpu0.cc.max_cpus=4, cpu0.cc.up_thres=70, cpu0.cc.cpu_busy_up_thres=70, cpu0.cc.cpu_busy_down_thres=40, cpu4.cc.enable=1, cpu4.cc.min_cpus=3, cpu4.cc.max_cpus=3, cpu4.cc.up_thres=70, cpu4.cc.cpu_busy_up_thres=70, cpu4.cc.cpu_busy_down_thres=40, cpu7.cc.enable=1, cpu7.cc.min_cpus=0, cpu7.cc.max_cpus=1, cpu7.cc.up_thres=50, cpu7.cc.cpu_busy_up_thres=60, cpu7.cc.cpu_busy_down_thres=30, sched.pelt=2, sched.eas=1, ged.dvfs=1, ged.boost=1, gpu.margin=530, gpu.window=8, gpu.stride=2, gpu.timer_margin=30, gpu.loadmode=6, gpu.boostlevel=-1, gpu.fwidle=1, gpu.dev.max=546000000, gpu.dev.min=546000000, gpu.dev.gov=userspace, ddr.gov=userspace, ddr.min=800000000, ddr.max=9600000000, ufs.gov=simple_ondemand, ufs.min=273000000, ufs.max=499200000, vm.swappiness=100, vm.vfs=100, vm.dirty=20, vm.dirty_bg=10, vm.pagecluster=3, vm.wmark=80, io.sda.sched=none, io.sda.ra=1024, io.sdb.sched=none, io.sdb.ra=1024, io.sdc.sched=none, io.sdc.ra=512, thermal.sports=0, fpsgo.enable=0}
+Extras: {}
+
+
+========== LOG INTERNO DO KLEE ==========
+2026-11-08 08:26:12.430 SoC MT6899 · POCO X8 Pro · 3 clusters · 49 OPPs GPU · 52 nós ajustáveis
+2026-11-08 08:26:13.419 Snapshot salvo (63 nós)
+
+========== IDENTIFICAÇÃO DO SISTEMA ==========
+[exit_code=0]
+[getprop - propriedades não sensíveis]
+[ro.board.platform]: [mt6899]
+[ro.boot.hardware]: [mt6899]
+[ro.build.fingerprint]: [POCO/klee_global/klee:16/BP2A.250605.031.A3/OS3.0.5.0.WPJMIXM:user/release-keys]
+[ro.build.tags]: [release-keys]
+[ro.build.type]: [user]
+[ro.build.version.release]: [16]
+[ro.build.version.sdk]: [36]
+[ro.product.brand]: [POCO]
+[ro.product.device]: [klee]
+[ro.product.marketname]: [POCO X8 Pro]
+[ro.product.model]: [2511FPC34G]
+[ro.soc.model]: [MT6899]
+[kernel]
+Linux localhost 6.6.89-android15-8-g8e4be6b47e40-ab14134548-4k #1 SMP PREEMPT Fri Sep 19 15:34:56 UTC 2025 aarch64 Toybox
+[uptime]
+65342.48 372025.14
+[root identity]
+uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+[SELinux]
+Enforcing
+[boot reason]
+reboot,userrequested
+
+========== CPU - POLICIES, FREQUÊNCIAS E GOVERNORS ==========
+[exit_code=0]
+----- /sys/devices/system/cpu/cpufreq/policy0 -----
+related_cpus=0 1 2 3
+affected_cpus=0 1 2 3
+scaling_driver=mtk-cpufreq-hw
+scaling_governor=sugov_ext
+scaling_available_governors=sugov_ext conservative powersave performance schedutil 
+scaling_available_frequencies=2200000 2100000 2000000 1900000 1800000 1700000 1600000 1500000 1400000 1300000 1200000 1100000 1000000 900000 800000 700000 600000 500000 400000 300000 
+scaling_min_freq=300000
+scaling_max_freq=1200000
+scaling_cur_freq=600000
+cpuinfo_min_freq=300000
+cpuinfo_max_freq=2200000
+cpuinfo_transition_latency=1000
+permissions=-rw-rw---- (660) owner=system:system
+permissions=-rw-rw---- (660) owner=system:system
+permissions=-rw-rw---- (660) owner=system:system
+----- /sys/devices/system/cpu/cpufreq/policy4 -----
+related_cpus=4 5 6
+affected_cpus=4 5 6
+scaling_driver=mtk-cpufreq-hw
+scaling_governor=sugov_ext
+scaling_available_governors=sugov_ext conservative powersave performance schedutil 
+scaling_available_frequencies=3200000 3100000 3000000 2900000 2800000 2700000 2600000 2500000 2400000 2300000 2200000 2100000 2000000 1900000 1800000 1700000 1600000 1500000 1400000 1300000 1200000 1100000 1000000 900000 800000 700000 600000 500000 400000 
+scaling_min_freq=400000
+scaling_max_freq=1400000
+scaling_cur_freq=400000
+cpuinfo_min_freq=400000
+cpuinfo_max_freq=3200000
+cpuinfo_transition_latency=1000
+permissions=-rw-rw---- (660) owner=system:system
+permissions=-rw-rw---- (660) owner=system:system
+permissions=-rw-rw---- (660) owner=system:system
+----- /sys/devices/system/cpu/cpufreq/policy7 -----
+related_cpus=7
+affected_cpus=7
+scaling_driver=mtk-cpufreq-hw
+scaling_governor=sugov_ext
+scaling_available_governors=sugov_ext conservative powersave performance schedutil 
+scaling_available_frequencies=3400000 3350000 3300000 3250000 3200000 3100000 3000000 2900000 2800000 2700000 2600000 2500000 2400000 2300000 2200000 2100000 2000000 1900000 1800000 1700000 1600000 1500000 1400000 1300000 1200000 1100000 1000000 
+scaling_min_freq=1000000
+scaling_max_freq=1300000
+scaling_cur_freq=1300000
+cpuinfo_min_freq=1000000
+cpuinfo_max_freq=3400000
+cpuinfo_transition_latency=1000
+permissions=-rw-rw---- (660) owner=system:system
+permissions=-rw-rw---- (660) owner=system:system
+permissions=-rw-rw---- (660) owner=system:system
+[cpu online]
+0-7
+[cpu present]
+0-7
+[cpuinfo summary]
+processor	: 0
+BogoMIPS	: 26.00
+CPU implementer	: 0x41
+CPU part	: 0xd87
+processor	: 1
+BogoMIPS	: 26.00
+CPU implementer	: 0x41
+CPU part	: 0xd87
+processor	: 2
+BogoMIPS	: 26.00
+CPU implementer	: 0x41
+CPU part	: 0xd87
+processor	: 3
+BogoMIPS	: 26.00
+CPU implementer	: 0x41
+CPU part	: 0xd87
+processor	: 4
+BogoMIPS	: 26.00
+CPU implementer	: 0x41
+CPU part	: 0xd87
+processor	: 5
+BogoMIPS	: 26.00
+CPU implementer	: 0x41
+CPU part	: 0xd87
+processor	: 6
+BogoMIPS	: 26.00
+CPU implementer	: 0x41
+CPU part	: 0xd87
+processor	: 7
+BogoMIPS	: 26.00
+CPU implementer	: 0x41
+CPU part	: 0xd87
+
+========== CPU - PPM, LIMITADORES E VÍNCULOS TÉRMICOS ==========
+[exit_code=0]
+CPU cooling devices
+----- /sys/class/thermal/cooling_device10 type=cpu-pause-3 -----
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device11 type=cpu-pause-4 -----
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device12 type=cpu-pause-5 -----
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device13 type=cpu-pause-6 -----
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device14 type=cpu-pause-7 -----
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device7 type=cpu-pause-0 -----
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device8 type=cpu-pause-1 -----
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device9 type=cpu-pause-2 -----
+cur_state=0
+max_state=1
+PROC PPM performance nodes
+SYSFS PPM performance nodes
+----- /sys/kernel/thermal/is_cpu_limit -----
+0
+
+Thermal trip points and bindings
+----- /sys/class/thermal/thermal_zone0 -----
+type=bms
+temp=39000
+----- /sys/class/thermal/thermal_zone1 -----
+type=mtk-master-charger
+temp=42000
+----- /sys/class/thermal/thermal_zone10 -----
+type=cpu-little-core0
+temp=46791
+----- /sys/class/thermal/thermal_zone10/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone10/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone11 -----
+type=cpu-little-core1
+temp=46794
+----- /sys/class/thermal/thermal_zone11/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone11/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone12 -----
+type=cpu-little-core2
+temp=47083
+----- /sys/class/thermal/thermal_zone12/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone12/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone13 -----
+type=cpu-little-core3
+temp=46362
+----- /sys/class/thermal/thermal_zone13/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone13/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone14 -----
+type=cpu-medium-core4-0
+temp=45789
+----- /sys/class/thermal/thermal_zone14/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone14/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone15 -----
+type=cpu-medium-core4-1
+temp=46029
+----- /sys/class/thermal/thermal_zone15/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone15/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone16 -----
+type=cpu-medium-core5-0
+temp=45655
+----- /sys/class/thermal/thermal_zone16/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone16/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone17 -----
+type=cpu-medium-core5-1
+temp=45753
+----- /sys/class/thermal/thermal_zone17/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone17/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone18 -----
+type=cpu-medium-core6-0
+temp=46651
+----- /sys/class/thermal/thermal_zone18/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone18/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone19 -----
+type=cpu-medium-core6-1
+temp=47089
+----- /sys/class/thermal/thermal_zone19/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone19/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone2 -----
+type=mtk-slave-charger
+temp=0
+----- /sys/class/thermal/thermal_zone20 -----
+type=cpu-big-core7-0
+temp=49971
+----- /sys/class/thermal/thermal_zone20/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone20/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone21 -----
+type=cpu-big-core7-1
+temp=49796
+----- /sys/class/thermal/thermal_zone21/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone21/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone22 -----
+type=cpu-dsu0
+temp=49766
+----- /sys/class/thermal/thermal_zone22/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone22/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone23 -----
+type=cpu-dsu1
+temp=49916
+----- /sys/class/thermal/thermal_zone23/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone23/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone24 -----
+type=cpu-dsu2
+temp=49673
+----- /sys/class/thermal/thermal_zone24/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone24/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone25 -----
+type=cpu-dsu3
+temp=49402
+----- /sys/class/thermal/thermal_zone25/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone25/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone26 -----
+type=soc-top0
+temp=46395
+----- /sys/class/thermal/thermal_zone26/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone26/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone27 -----
+type=soc-top1
+temp=46882
+----- /sys/class/thermal/thermal_zone27/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone27/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone28 -----
+type=soc-top2
+temp=48431
+----- /sys/class/thermal/thermal_zone28/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone28/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone29 -----
+type=soc-top3
+temp=45673
+----- /sys/class/thermal/thermal_zone29/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone29/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone3 -----
+type=mtk-mst-div-chg
+temp=0
+----- /sys/class/thermal/thermal_zone30 -----
+type=soc-bot0
+temp=46835
+----- /sys/class/thermal/thermal_zone30/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone30/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone31 -----
+type=soc-bot1
+temp=47270
+----- /sys/class/thermal/thermal_zone31/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone31/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone32 -----
+type=soc-bot2
+temp=48146
+----- /sys/class/thermal/thermal_zone32/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone32/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone33 -----
+type=soc-bot3
+temp=47935
+----- /sys/class/thermal/thermal_zone33/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone33/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone34 -----
+type=apu-a0
+temp=-274000
+----- /sys/class/thermal/thermal_zone34/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone34/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone35 -----
+type=gpu0
+temp=48946
+----- /sys/class/thermal/thermal_zone35/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone35/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone36 -----
+type=gpu1
+temp=47610
+----- /sys/class/thermal/thermal_zone36/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone36/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone37 -----
+type=gpu2
+temp=47688
+----- /sys/class/thermal/thermal_zone37/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone37/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone38 -----
+type=pmic6363-vio18
+temp=43787
+----- /sys/class/thermal/thermal_zone38/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone38/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone39 -----
+type=pmic6363-vs1-vs3
+temp=43787
+----- /sys/class/thermal/thermal_zone39/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone39/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone4 -----
+type=mtk-slv-div-chg
+temp=0
+----- /sys/class/thermal/thermal_zone40 -----
+type=pmic6363-bk3-bk7
+temp=44324
+----- /sys/class/thermal/thermal_zone40/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone40/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone41 -----
+type=pmic6363-vs2
+temp=43250
+----- /sys/class/thermal/thermal_zone41/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone41/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone42 -----
+type=pmic6368-buck1
+temp=40030
+----- /sys/class/thermal/thermal_zone42/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone42/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone43 -----
+type=pmic6368-vpa
+temp=40566
+----- /sys/class/thermal/thermal_zone43/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone43/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone44 -----
+type=pmic6368-vcn33-1
+temp=40030
+----- /sys/class/thermal/thermal_zone44/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone44/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone45 -----
+type=pmic6368-vrf18-aif
+temp=39493
+----- /sys/class/thermal/thermal_zone45/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone45/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone46 -----
+type=quiet_therm
+temp=39333
+----- /sys/class/thermal/thermal_zone46/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone46/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone47 -----
+type=wifi_therm
+temp=40833
+----- /sys/class/thermal/thermal_zone47/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone47/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone48 -----
+type=flash_therm
+temp=40277
+----- /sys/class/thermal/thermal_zone48/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone48/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone49 -----
+type=charger1_therm
+temp=43789
+----- /sys/class/thermal/thermal_zone49/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone49/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone5 -----
+type=mtk-mst-hvdiv-chg
+temp=0
+----- /sys/class/thermal/thermal_zone50 -----
+type=display_therm
+temp=39833
+----- /sys/class/thermal/thermal_zone50/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone50/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone51 -----
+type=mtktsAP
+temp=42996
+----- /sys/class/thermal/thermal_zone51/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone51/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone52 -----
+type=mtktsbtsmdpa
+temp=39911
+----- /sys/class/thermal/thermal_zone52/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone52/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone53 -----
+type=mtktsbtsnrpa
+temp=40150
+----- /sys/class/thermal/thermal_zone53/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone53/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone54 -----
+type=vtskin-max
+temp=-274000
+----- /sys/class/thermal/thermal_zone54/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone54/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone55 -----
+type=vtskin1
+temp=-274000
+----- /sys/class/thermal/thermal_zone55/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone55/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone56 -----
+type=vtskin2
+temp=-274000
+----- /sys/class/thermal/thermal_zone56/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone56/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone57 -----
+type=vtskin3
+temp=-274000
+----- /sys/class/thermal/thermal_zone57/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone57/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone58 -----
+type=vtskin4
+temp=-274000
+----- /sys/class/thermal/thermal_zone58/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone58/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone59 -----
+type=vtskin5
+temp=-274000
+----- /sys/class/thermal/thermal_zone59/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone59/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone6 -----
+type=mtk-slv-hvdiv-chg
+temp=0
+----- /sys/class/thermal/thermal_zone60 -----
+type=vtskin6
+temp=-274000
+----- /sys/class/thermal/thermal_zone60/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone60/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone61 -----
+type=vtskin7
+temp=-274000
+----- /sys/class/thermal/thermal_zone61/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone61/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone62 -----
+type=vtskin8
+temp=-274000
+----- /sys/class/thermal/thermal_zone62/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone62/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone63 -----
+type=vtskin9
+temp=-274000
+----- /sys/class/thermal/thermal_zone63/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone63/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone64 -----
+type=vtskin10
+temp=-274000
+----- /sys/class/thermal/thermal_zone64/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone64/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone65 -----
+type=consys
+temp=43000
+----- /sys/class/thermal/thermal_zone65/trip_point_0_type -----
+passive
+----- /sys/class/thermal/thermal_zone65/trip_point_0_temp -----
+119000
+----- /sys/class/thermal/thermal_zone7 -----
+type=mt6375-gauge
+temp=25000
+----- /sys/class/thermal/thermal_zone8 -----
+type=battery
+temp=40700
+----- /sys/class/thermal/thermal_zone9 -----
+type=soc_max
+temp=52124
+----- /sys/class/thermal/thermal_zone9/trip_point_0_type -----
+critical
+----- /sys/class/thermal/thermal_zone9/trip_point_0_temp -----
+119000
+Android power performance services
+[init.svc.factory_restore_cpumax]: [stopped]
+[init.svc.mi_thermald]: [running]
+[init.svc.miperf2-hal]: [running]
+[init.svc.system_perf_init]: [stopped]
+[init.svc.thermald]: [running]
+[init.svc.traced_perf]: [stopped]
+[init.svc.vendor.mtkpower-service.mediatek]: [running]
+[init.svc.vendor.mtkpower_applist-default]: [running]
+[init.svc.vendor.thermal-mediatek]: [running]
+root           343     2          0      0 power_misc_routine_thread 0 S [power_misc_thread]
+root           771     2          0      0 kthread_worker_fn   0 S [kbase_pm_poweroff_wait]
+root           972     2          0      0 rescuer_thread      0 I [kworker/R-perfm]
+root          1064     2          0      0 rescuer_thread      0 I [kworker/R-power]
+system        1164     1   11049792   8020 binder_thread_read  0 S vendor.mediatek.hardware.mtkpower_applist-service.mediatek
+system        1168     1   10955724   4720 binder_thread_read  0 S android.hardware.thermal-service.mediatek
+root          1182     1   11159008   9020 futex_wait_queue    0 S vendor.mediatek.hardware.mtkpower-service.mediatek
+root          1208     1   10995840   5716 binder_thread_read  0 S vendor.xiaomi.hardware.miperf2-service
+u0_a128       3931  1102   17664664 123356 do_epoll_wait       0 S com.facebook.appmanager
+system        5431  1102   18267756 117828 do_epoll_wait       0 S com.miui.powerkeeper
+root         21065     1   12348660   4308 sigsuspend          0 S mi_thermald
+system       21069     1   10873780   4284 __arm64_sys_nanosleep 0 S thermald
+
+========== GPU MALI / DEVFREQ / GED / GPUFREQ ==========
+[exit_code=0]
+----- /sys/class/devfreq/13000000.mali -----
+name=13000000.mali
+
+governor=userspace
+
+available_governors=dummy apupassive-pe apuconstrain apuuser apupassive userspace powersave performance simple_ondemand
+
+available_frequencies=1508000000 1482000000 1456000000 1430000000 1404000000 1378000000 1352000000 1326000000 1300000000 1274000000 1248000000 1222000000 1196000000 1170000000 1144000000 1118000000 1092000000 1066000000 1040000000 1014000000 988000000 962000000 936000000 910000000 884000000 858000000 832000000 806000000 780000000 754000000 728000000 702000000 676000000 650000000 624000000 598000000 572000000 546000000 520000000 494000000 468000000 442000000 416000000 390000000 364000000 338000000 312000000 286000000 260000000
+
+min_freq=546000000
+
+max_freq=546000000
+
+cur_freq=26000000
+
+target_freq=546000000
+
+trans_stat=head: /sys/class/devfreq/13000000.mali/trans_stat: File too large
+
+----- /sys/devices/platform/soc/13000000.mali -----
+----- /sys/devices/platform/soc/13f50000.gpufreq -----
+----- /sys/devices/platform/soc/13c00000.gpueb -----
+----- /sys/kernel/ged -----
+----- /sys/kernel/ged/hal -----
+----- /proc/gpufreqv2/gpufreq_status -----
+[GPUFREQ-DEBUG] Current Status of GPUFREQ
+[GPU   OPP]      Index: 37, Freq:   26000, Volt:  69375, Vsram:  75000
+[STACK OPP]      Index: 37, Freq:   26000, Volt:  69500, Vsram:  75000
+[GPU   REALOPP]  FmeterFreq:   26000, OutFreq:   26000, ReguVolt:  51250, ReguVsram:  75000
+[STACK REALOPP]  FmeterFreq:   26000, OutFreq:   26000, ReguVolt:      0, ReguVsram:  75000
+[GPU   Segment]  SegmentID: 3, WorkingOPPNum: 49, SignedOPPNum: 53, DACLow:      0
+[STACK Segment]  SegmentID: 3, WorkingOPPNum: 49, SignedOPPNum: 53, DACLow:      0
+[PPM Ceiling]    LimitIndex: 37, Limiter:  4, Priority:  6
+[PPM Floor]      LimitIndex: 37, Limiter: 13, Priority:  2
+[Power State]    PowerCount: 1, Active: 0, CG: 1, MTCMOS: 1, BUCK: 0
+[Power State]    Timestamp: 65342215078247, DVFSState: 0x0020
+[Power State]    PowerStatus: 0x00000003, ShaderPresent: 0x00550055
+[MFGSYS Config]  DualBuck: True, GPUEBSupport: On, StressTest: Off
+[MFGSYS Config]  AgingMargin: Off, AVSMargin: Off, GPM1.0: Off, GPM3.0: On, DFD: 2.0
+[MFGSYS Config]  Temperature: 48'C, GPUTemperComp: 0/0, STACKTemperComp: 0/0
+[MFGSYS Config]  DBGVer: 0x20250421, KDBGVer: 0x20241029, PTPVer: 0x0002, SBVer: 0x0000, CType: 0
+[PTP3 Config]    PTP3: On, DVFSMode: HW_LOOP, ImaxProt: 3.5, HBVCFreq: On, HBVCVolt: On
+[PTP3 Config]    BRCAST: AutoDMA, DELSEL: HW, PreOC: On (C=0, T=0, F=7)
+[PTP3 Config]    SES_TOP: Off, SES_ST: Off, SES_Scheduler: Off
+[PTP3 Config]    FLL: On, ATMC: On, Vmeter: On, Tmeter: On, CPmeter: On, CTT: Off
+[PTP3 Config]    InFreq: 546/546, OutFreq: 520/364, CC: 5/6, FC: 5/15, Mode: Normal
+----- /proc/gpufreqv2/gpu_working_opp_table -----
+[00] freq: 1508000, volt: 100000, vsram:  75000
+[01] freq: 1482000, volt:  99375, vsram:  99375
+[02] freq: 1456000, volt:  98750, vsram:  98750
+[03] freq: 1430000, volt:  97500, vsram:  97500
+[04] freq: 1404000, volt:  96875, vsram:  96875
+[05] freq: 1378000, volt:  96250, vsram:  96250
+[06] freq: 1352000, volt:  95000, vsram:  95000
+[07] freq: 1326000, volt:  94375, vsram:  94375
+[08] freq: 1300000, volt:  93750, vsram:  93750
+[09] freq: 1274000, volt:  92500, vsram:  92500
+[10] freq: 1248000, volt:  91875, vsram:  91875
+[11] freq: 1222000, volt:  91250, vsram:  91250
+[12] freq: 1196000, volt:  90000, vsram:  90000
+[13] freq: 1170000, volt:  89375, vsram:  89375
+[14] freq: 1144000, volt:  88750, vsram:  88750
+[15] freq: 1118000, volt:  87500, vsram:  87500
+[16] freq: 1092000, volt:  86875, vsram:  86875
+[17] freq: 1066000, volt:  86250, vsram:  86250
+[18] freq: 1040000, volt:  85000, vsram:  85000
+[19] freq: 1014000, volt:  84375, vsram:  84375
+[20] freq:  988000, volt:  83750, vsram:  83750
+[21] freq:  962000, volt:  82500, vsram:  82500
+[22] freq:  936000, volt:  81875, vsram:  81875
+[23] freq:  910000, volt:  81250, vsram:  81250
+[24] freq:  884000, volt:  80000, vsram:  80000
+[25] freq:  858000, volt:  79375, vsram:  79375
+[26] freq:  832000, volt:  78750, vsram:  78750
+[27] freq:  806000, volt:  77500, vsram:  77500
+[28] freq:  780000, volt:  76875, vsram:  76875
+[29] freq:  754000, volt:  76250, vsram:  76250
+[30] freq:  728000, volt:  75000, vsram:  75000
+[31] freq:  702000, volt:  74375, vsram:  75000
+[32] freq:  676000, volt:  73750, vsram:  75000
+[33] freq:  650000, volt:  72500, vsram:  75000
+[34] freq:  624000, volt:  71875, vsram:  75000
+[35] freq:  598000, volt:  71250, vsram:  75000
+[36] freq:  572000, volt:  70000, vsram:  75000
+[37] freq:  546000, volt:  69375, vsram:  75000
+[38] freq:  520000, volt:  68750, vsram:  75000
+[39] freq:  494000, volt:  67500, vsram:  75000
+[40] freq:  468000, volt:  66875, vsram:  75000
+[41] freq:  442000, volt:  66250, vsram:  75000
+[42] freq:  416000, volt:  65000, vsram:  75000
+[43] freq:  390000, volt:  64375, vsram:  75000
+[44] freq:  364000, volt:  63750, vsram:  75000
+[45] freq:  338000, volt:  62500, vsram:  75000
+[46] freq:  312000, volt:  61875, vsram:  75000
+[47] freq:  286000, volt:  61250, vsram:  75000
+[48] freq:  260000, volt:  60000, vsram:  75000
+----- /proc/gpufreqv2/limit_table -----
+[id]          [name]  [priority]  [ceiling]  [floor]  [c_enable]  [f_enable]
+   0         SEGMENT           9          0       48           1           1
+   1           DEBUG           8         -1       -1           1           1
+   2         GPM_3.0           7         -1       -1           1           1
+   3      PEAK_POWER           7          0       -1           1           1
+   4      THERMAL_AP           6         37       -1           1           1
+   5      THERMAL_EB           6          0       -1           1           1
+   6          SRAMRC           5         -1       -1           1           1
+   7         BATT_OC           4         -1       -1           1           1
+   8    BATT_PERCENT           4         -1       -1           1           1
+   9        LOW_BATT           4         -1       -1           1           1
+  10             PBM           4         -1       -1           1           1
+  11        APIBOOST           3         -1       48           1           1
+  12        POWERHAL           2          0       48           1           1
+  13          FIXCMD           2          0        0           1           1
+----- /proc/gpufreqv2/fix_target_opp_index -----
+[GPUFREQ-DEBUG] fix GPU/STACK OPP index: 0/0
+----- /sys/kernel/ged/hal/current_freqency -----
+37 546000
+----- /sys/kernel/ged/hal/gpu_utilization -----
+15 0 85
+----- /sys/kernel/ged/hal/custom_upbound_gpu_freq -----
+0
+65216974333864:pid:1182 ori:0 value:0 user_id:2(/vendor/bin/hw/vendor.mediatek.hardware.mtkpower-service.mediatek) 
+----- /sys/kernel/ged/hal/custom_boost_gpu_freq -----
+48
+65216974191172:pid:1182 ori:48 value:48 user_id:2(/vendor/bin/hw/vendor.mediatek.hardware.mtkpower-service.mediatek) 
+----- /sys/kernel/ged/hal/gpu_boost_level -----
+-1
+[gpuinfo]
+Mali-G720 8 cores r0p1 0x0C080700
+[gpu modules]
+mali_kbase_mt6899_r49 2486272 115 - Live 0x0000000000000000 (O)
+mali_mgm_mt6899_r49 40960 1 - Live 0x0000000000000000 (O)
+mali_prot_alloc_mt6899_r49 12288 1 - Live 0x0000000000000000 (O)
+ged 692224 4 mtk_mbraink_v6899,mtk_swpm_dbg_common_v1,mtk_fpsgo,mali_kbase_mt6899_r49, Live 0x0000000000000000 (O)
+thermal_interface 69632 10 mtk_perf_common,mtk_cm_mgr_mt6899,mtk_swpm_cpu_dbg_v6899,mtk_core_ctl,scheduler,cpufreq_sugov_ext,vtskin_temp,thermal_trace,soc_temp_lvts,ged, Live 0x0000000000000000 (O)
+mtk_gpu_qos 24576 1 ged, Live 0x0000000000000000 (O)
+mtk_gpufreq_mt6899 49152 0 - Live 0x0000000000000000 (O)
+mtk_gpu_power_throttling 32768 0 - Live 0x0000000000000000 (O)
+mtk_gpufreq_wrapper 90112 7 mtk_mbraink_v6899,mali_kbase_mt6899_r49,ged,thermal_interface,mtk_gpu_qos,mtk_gpufreq_mt6899,mtk_gpu_power_throttling, Live 0x0000000000000000 (O)
+mtk_ghpm_swwa 24576 1 mtk_gpufreq_wrapper, Live 0x0000000000000000 (O)
+mtk_pbm 28672 3 flashlight,mtk_gpufreq_wrapper,ccci_md_all, Live 0x0000000000000000 (O)
+mtk_sec_heap 45056 8 mtk_disp_sec,widevine_driver,sapu,mtk_heap_debug,gz_main_mod,mtk_vcodec_enc_v2,mali_kbase_mt6899_r49,mtk_cam_isp8, Live 0x0000000000000000 (O)
+mtk_battery_oc_throttling 24576 6 mtk_mbraink_v6899,flashlight,mtk_gpu_power_throttling,mtk_cpu_power_throttling,mtk_md_power_throttling,mtk_peak_power_budget, Live 0x0000000000000000 (O)
+mtk_qos 40960 5 mtk_perf_common,mtk_swpm_dbg_v6899,mtk_swpm,mtk_gpu_qos,apusys, Live 0x0000000000000000 (O)
+sspm_v3 32768 6 slbc_mt6899,mtk_swpm_cpu_dbg_v6899,mtk_swpm_dbg_v6899,mtk_swpm,ged,mtk_qos, Live 0x0000000000000000 (O)
+mtk_gpueb 73728 7 fhctl,soc_temp_lvts,mali_kbase_mt6899_r49,ged,mtk_gpufreq_wrapper,mtk_ghpm_swwa,mtk_peak_power_budget, Live 0x0000000000000000 (O)
+tmem_ffa 90112 4 gz_main_mod,mali_kbase_mt6899_r49,mtk_cam_isp8,mtk_sec_heap, Live 0x0000000000000000 (O)
+mtk_gpu_hal 53248 8 mtk_perf_common,mtk_swpm_dbg_common_v1,mali_kbase_mt6899_r49,ged,mtk_gpu_qos,mtk_cg_peak_power_throttling,mtk_gpufreq_wrapper,trace_mmstat, Live 0x0000000000000000 (O)
+mtk_low_battery_throttling 57344 8 mtk_mbraink_v6899,flashlight,connadp,mtk_gpu_power_throttling,mtk_cpu_power_throttling,mtk_md_power_throttling,mtk_peak_power_budget,mt6375_battery, Live 0x0000000000000000 (O)
+mediatek_drm 4030464 49 nt38771_touch_klee,xiaomi_touch_klee,mtk_disp_sec,mtk_fpsgo,mi_thermal_interface,ged,thermal_interface,ccci_md_all,xiaomi_spi_tee,leds_mtk_pwm,leds_mtk_disp,mtk_charger_framework,usb_dp_selector,aee_rs,mtk_dpc_v1,mtk_vdisp_v1,panel_p10_42_02_0b_dsc_vdo,panel_p10_36_02_0a_dsc_vdo, Live 0x0000000000000000 (O)
+mtk_bp_thl 24576 7 flashlight,mt6899_mt6368,mtk_gpu_power_throttling,mtk_cpu_power_throttling,mtk_md_power_throttling,mtk_peak_power_budget,leds_mtk, Live 0x0000000000000000 (O)
+mtk_slbc 32768 19 slbc_mt6899,mtk_vcodec_enc_v2,mtk_vcodec_dec_v2,cpuqos_v3,snd_soc_audiodsp_common,mali_kbase_mt6899_r49,mali_mgm_mt6899_r49,ccci_md_all,mtk_imgsys_isp8,mtk_hcp_isp8,mtk_aov,mtk_mae,mtk_cam_isp8,apusys,slbc_ipi,adsp,mtk_mminfra_imax,mediatek_drm,mtk_mml,[permanent], Live 0x0000000000000000 (O)
+mtk_tinysys_ipi 24576 22 sensorhub,connscp,fhctl,mcupm,mtk_vcodec_enc_v2,mtk_vcodec_dec_v2,elliptic_ultrasound,snd_soc_mtk_scp_ultra,ged,mtk_gpufreq_wrapper,mtk_ghpm_swwa,ccci_fsm_scp,mtk_aov,mtk_peak_power_budget,mtk_gpueb,mtk_vow,scp,mtk_vdisp_v1,mmqos_common,mtk_mmdvfs_v3,mtk_mmdebug_vcp,vcp, Live 0x0000000000000000 (O)
+mtk_mbox 45056 7 mcupm,mtk_gpueb,scp,adsp,vcp,mtk_tinysys_ipi,mtk_rpmsg_mbox, Live 0x0000000000000000 (O)
+system_heap 102400 249 mtk_heap_debug,mtk_heap_refill,slbc_mt6899,jpeg_driver,mtk_vcodec_enc_v2,mtk_vcodec_dec_v2,mtk_vcodec_common,mali_mgm_mt6899_r49,ged,mtk_hcp_isp8,mtk_aov,mtk_cam_isp8,mtk_sec_heap,mtk_ccuv,mediatek_drm,mtk_mml,vcp, Live 0x0000000000000000 (O)
+emi 49152 12 pgboost,mtk_vcodec_enc_v2,mtk_vcodec_dec_v2,mali_kbase_mt6899_r49,mali_mgm_mt6899_r49,ccci_md_all,mtk_cam_isp8,mtk_qos,adsp,mediatek_drm,mmqos_common,mtk_smi_dbg,[permanent], Live 0x0000000000000000 (O)
+miev 24576 13 xiaomi_touch_klee,haptic,mt6899_mt6368,snd_soc_aw882xx,snd_soc_fs19xx,mali_kbase_mt6899_r49,mtk_charger_framework,ufs_mediatek_mod,mca_charge_mievent,mediatek_drm, Live 0x0000000000000000 (O)
+device_apc_common 53248 9 conninfra,mtk_gpufreq_wrapper,ccci_md_all,adsp,mtk_mminfra_debug,mtk_cmdq_drv_ext,clk_chk_mt6899,vcp,device_apc_mt6899, Live 0x0000000000000000 (O)
+irq_dbg 16384 10 mali_kbase_mt6899_r49,ccci_dpmaif,ccci_ccif,ccci_md_all,adsp,spi_mt65xx,ufs_mediatek_mod,ufs_mediatek_dbg,mtk_cmdq_drv_ext,vcp, Live 0x0000000000000000 (O)
+aee_aed 81920 50 dw9781d,wlan_drv_gen4m_6899,conninfra,imgsensor_isp8,fhctl,snd_soc_mt6899_afe,snd_soc_mtk_common,snd_soc_audiodsp_common,mali_kbase_mt6899_r49,mtk_ssc,mtk_pmic_oc_debug,ccci_md_all,ccci_util_lib,mtk_imgsys_cmdq_isp8,mtk_img_frm_sync,mtk_cam_isp8,apusys,apu_top,scp,mtk_ccuv,cache_parity,last_bus,bus_parity,slc_parity,emi_slb,smpu,emi_mpu,adsp,mt6375_battery,rtc_mt6685,ufs_mediatek_dbg,aee_rs,mediatek_drm,mtk_mminfra_debug,mtk_mml,mtk_cmdq_drv_ext,mtk_dvfsrc_helper,mtk_mmdebug_vcp,mmprofile,spmi_mtk_pmif,mtk_pmic_wrap,vcp,clk_common,mtk_smi,iommu_debug,device_apc_common, Live 0x0000000000000000 (O)
+mrdump 73728 28 mtk_heap_debug,mali_kbase_mt6899_r49,mtk_gpufreq_mt6899,ccci_dpmaif,ccci_md_all,ccci_util_lib,apusys,mtk_ccuv,cache_parity,bus_parity,dbg_error_flag,slc_parity,adsp,mpbe,ufs_mediatek_dbg,mtk_mmc_dbg,blocktag,mme,mediatek_drm,mtk_cmdq_drv_ext,mmqos_common,mtk_mmdvfs_debug,spmi_mtk_pmif,vcp,iommu_debug,aee_hangdet,mkp,monitor_hang, Live 0x0000000000000000 (O)
+
+========== DEVFREQ - TODOS OS DOMÍNIOS ==========
+[exit_code=1]
+----- /sys/class/devfreq/112b0000.ufshci -----
+name=112b0000.ufshci
+
+governor=simple_ondemand
+
+available_governors=dummy apupassive-pe apuconstrain apuuser apupassive userspace powersave performance simple_ondemand
+
+available_frequencies=273000000 499200000
+
+min_freq=273000000
+
+max_freq=499200000
+
+cur_freq=499200000
+
+target_freq=499200000
+
+polling_interval=200
+
+----- /sys/class/devfreq/13000000.mali -----
+name=13000000.mali
+
+governor=userspace
+
+available_governors=dummy apupassive-pe apuconstrain apuuser apupassive userspace powersave performance simple_ondemand
+
+available_frequencies=1508000000 1482000000 1456000000 1430000000 1404000000 1378000000 1352000000 1326000000 1300000000 1274000000 1248000000 1222000000 1196000000 1170000000 1144000000 1118000000 1092000000 1066000000 1040000000 1014000000 988000000 962000000 936000000 910000000 884000000 858000000 832000000 806000000 780000000 754000000 728000000 702000000 676000000 650000000 624000000 598000000 572000000 546000000 520000000 494000000 468000000 442000000 416000000 390000000 364000000 338000000 312000000 286000000 260000000
+
+min_freq=546000000
+
+max_freq=546000000
+
+cur_freq=26000000
+
+target_freq=546000000
+
+----- /sys/class/devfreq/mtk-dvfsrc-devfreq -----
+name=mtk-dvfsrc-devfreq
+
+governor=userspace
+
+available_governors=dummy apupassive-pe apuconstrain apuuser apupassive userspace powersave performance simple_ondemand
+
+available_frequencies=757000000 1542000000 2068000000 3094000000 4218000000 5480000000 6378000000 7500000000 8533000000 9600000000
+
+min_freq=800000000
+
+max_freq=9600000000
+
+cur_freq=1542000000
+
+target_freq=1542000000
+
+
+========== NÓS DETECTADOS PELO KLEE - VALOR E PERMISSÕES ==========
+[exit_code=0]
+----- /sys/devices/system/cpu/cpu0/core_ctl/enable -----
+permissions=-rw------- (600) owner=root:root
+1
+
+----- /sys/devices/system/cpu/cpu0/core_ctl/min_cpus -----
+permissions=-rw------- (600) owner=root:root
+4
+
+----- /sys/devices/system/cpu/cpu0/core_ctl/max_cpus -----
+permissions=-rw------- (600) owner=root:root
+4
+
+----- /sys/devices/system/cpu/cpu0/core_ctl/up_thres -----
+permissions=-rw------- (600) owner=root:root
+70
+
+----- /sys/devices/system/cpu/cpu0/core_ctl/cpu_busy_up_thres -----
+permissions=-rw------- (600) owner=root:root
+70
+
+----- /sys/devices/system/cpu/cpu0/core_ctl/cpu_busy_down_thres -----
+permissions=-rw------- (600) owner=root:root
+40
+
+----- /sys/devices/system/cpu/cpu4/core_ctl/enable -----
+permissions=-rw------- (600) owner=root:root
+1
+
+----- /sys/devices/system/cpu/cpu4/core_ctl/min_cpus -----
+permissions=-rw------- (600) owner=root:root
+3
+
+----- /sys/devices/system/cpu/cpu4/core_ctl/max_cpus -----
+permissions=-rw------- (600) owner=root:root
+3
+
+----- /sys/devices/system/cpu/cpu4/core_ctl/up_thres -----
+permissions=-rw------- (600) owner=root:root
+70
+
+----- /sys/devices/system/cpu/cpu4/core_ctl/cpu_busy_up_thres -----
+permissions=-rw------- (600) owner=root:root
+70
+
+----- /sys/devices/system/cpu/cpu4/core_ctl/cpu_busy_down_thres -----
+permissions=-rw------- (600) owner=root:root
+40
+
+----- /sys/devices/system/cpu/cpu7/core_ctl/enable -----
+permissions=-rw------- (600) owner=root:root
+1
+
+----- /sys/devices/system/cpu/cpu7/core_ctl/min_cpus -----
+permissions=-rw------- (600) owner=root:root
+0
+
+----- /sys/devices/system/cpu/cpu7/core_ctl/max_cpus -----
+permissions=-rw------- (600) owner=root:root
+1
+
+----- /sys/devices/system/cpu/cpu7/core_ctl/up_thres -----
+permissions=-rw------- (600) owner=root:root
+50
+
+----- /sys/devices/system/cpu/cpu7/core_ctl/cpu_busy_up_thres -----
+permissions=-rw------- (600) owner=root:root
+60
+
+----- /sys/devices/system/cpu/cpu7/core_ctl/cpu_busy_down_thres -----
+permissions=-rw------- (600) owner=root:root
+30
+
+----- /proc/sys/kernel/sched_pelt_multiplier -----
+permissions=-rw-r--r-- (644) owner=root:root
+2
+
+----- /proc/sys/kernel/sched_energy_aware -----
+permissions=-rw-r--r-- (644) owner=root:root
+1
+
+----- /sys/module/ged/parameters/gpu_dvfs_enable -----
+permissions=-rw-r--r-- (644) owner=root:root
+1
+
+----- /sys/module/ged/parameters/ged_boost_enable -----
+permissions=-rw-r--r-- (644) owner=root:root
+1
+
+----- /sys/kernel/ged/hal/dvfs_margin_value -----
+permissions=-rw-rw-r-- (664) owner=system:system
+530
+
+----- /sys/kernel/ged/hal/loading_window_size -----
+permissions=-rw-rw-r-- (664) owner=system:system
+8
+
+----- /sys/kernel/ged/hal/loading_stride_size -----
+permissions=-rw-rw-r-- (664) owner=system:system
+2
+
+----- /sys/kernel/ged/hal/timer_base_dvfs_margin -----
+permissions=-rw-rw-r-- (664) owner=system:system
+60
+
+----- /sys/kernel/ged/hal/dvfs_loading_mode -----
+permissions=-rw-rw-r-- (664) owner=system:system
+6
+
+----- /sys/kernel/ged/hal/gpu_boost_level -----
+permissions=-rw-rw-r-- (664) owner=system:system
+-1
+
+----- /sys/kernel/ged/hal/fallback_window_size -----
+permissions=-rw-rw-r-- (664) owner=system:system
+1
+
+----- /sys/class/devfreq/13000000.mali/max_freq -----
+permissions=-rw-r--r-- (644) owner=root:root
+546000000
+
+----- /sys/class/devfreq/13000000.mali/min_freq -----
+permissions=-rw-r--r-- (644) owner=root:root
+546000000
+
+----- /sys/class/devfreq/13000000.mali/governor -----
+permissions=-rw-r--r-- (644) owner=root:root
+userspace
+
+----- /sys/class/devfreq/mtk-dvfsrc-devfreq/governor -----
+permissions=-rw-r--r-- (644) owner=root:root
+userspace
+
+----- /sys/class/devfreq/mtk-dvfsrc-devfreq/min_freq -----
+permissions=-rw-r--r-- (644) owner=root:root
+800000000
+
+----- /sys/class/devfreq/mtk-dvfsrc-devfreq/max_freq -----
+permissions=-rw-r--r-- (644) owner=root:root
+9600000000
+
+----- /sys/class/devfreq/112b0000.ufshci/governor -----
+permissions=-rw-r--r-- (644) owner=root:root
+simple_ondemand
+
+----- /sys/class/devfreq/112b0000.ufshci/min_freq -----
+permissions=-rw-r--r-- (644) owner=root:root
+273000000
+
+----- /sys/class/devfreq/112b0000.ufshci/max_freq -----
+permissions=-rw-r--r-- (644) owner=root:root
+499200000
+
+----- /proc/sys/vm/swappiness -----
+permissions=-rw-r--r-- (644) owner=root:root
+100
+
+----- /proc/sys/vm/vfs_cache_pressure -----
+permissions=-rw-r--r-- (644) owner=root:root
+100
+
+----- /proc/sys/vm/dirty_ratio -----
+permissions=-rw-r--r-- (644) owner=root:root
+20
+
+----- /proc/sys/vm/dirty_background_ratio -----
+permissions=-rw-r--r-- (644) owner=root:root
+10
+
+----- /proc/sys/vm/page-cluster -----
+permissions=-rw-r--r-- (644) owner=root:root
+3
+
+----- /proc/sys/vm/watermark_scale_factor -----
+permissions=-rw-r--r-- (644) owner=root:root
+80
+
+----- /sys/block/sda/queue/scheduler -----
+permissions=-rw-r--r-- (644) owner=root:root
+[none] mq-deadline kyber bfq 
+
+----- /sys/block/sda/queue/read_ahead_kb -----
+permissions=-rw-r--r-- (644) owner=root:root
+1024
+
+----- /sys/block/sdb/queue/scheduler -----
+permissions=-rw-r--r-- (644) owner=root:root
+[none] mq-deadline kyber bfq 
+
+----- /sys/block/sdb/queue/read_ahead_kb -----
+permissions=-rw-r--r-- (644) owner=root:root
+1024
+
+----- /sys/block/sdc/queue/scheduler -----
+permissions=-rw-r--r-- (644) owner=root:root
+[none] mq-deadline kyber bfq 
+
+----- /sys/block/sdc/queue/read_ahead_kb -----
+permissions=-rw-rw-r-- (664) owner=system:system
+512
+
+----- /sys/kernel/thermal/sports_mode -----
+permissions=-rw-rw-r-- (664) owner=system:system
+0
+
+----- /sys/kernel/fpsgo/common/fpsgo_enable -----
+permissions=-rw-rw-r-- (664) owner=system:system
+0
+
+
+========== TÉRMICA - ZONAS E COOLING DEVICES ==========
+[exit_code=0]
+----- /sys/class/thermal/thermal_zone0 -----
+type=bms
+temp=38900
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone1 -----
+type=mtk-master-charger
+temp=43000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone10 -----
+type=cpu-little-core0
+temp=48813
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone11 -----
+type=cpu-little-core1
+temp=48646
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone12 -----
+type=cpu-little-core2
+temp=48350
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone13 -----
+type=cpu-little-core3
+temp=48030
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone14 -----
+type=cpu-medium-core4-0
+temp=47348
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone15 -----
+type=cpu-medium-core4-1
+temp=47517
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone16 -----
+type=cpu-medium-core5-0
+temp=47267
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone17 -----
+type=cpu-medium-core5-1
+temp=47382
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone18 -----
+type=cpu-medium-core6-0
+temp=49775
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone19 -----
+type=cpu-medium-core6-1
+temp=49953
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone2 -----
+type=mtk-slave-charger
+temp=0
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone20 -----
+type=cpu-big-core7-0
+temp=49572
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone21 -----
+type=cpu-big-core7-1
+temp=49477
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone22 -----
+type=cpu-dsu0
+temp=48670
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone23 -----
+type=cpu-dsu1
+temp=48598
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone24 -----
+type=cpu-dsu2
+temp=48752
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone25 -----
+type=cpu-dsu3
+temp=47887
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone26 -----
+type=soc-top0
+temp=45812
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone27 -----
+type=soc-top1
+temp=46210
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone28 -----
+type=soc-top2
+temp=47255
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone29 -----
+type=soc-top3
+temp=45704
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone3 -----
+type=mtk-mst-div-chg
+temp=0
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone30 -----
+type=soc-bot0
+temp=46727
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone31 -----
+type=soc-bot1
+temp=46292
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone32 -----
+type=soc-bot2
+temp=47847
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone33 -----
+type=soc-bot3
+temp=47218
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone34 -----
+type=apu-a0
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone35 -----
+type=gpu0
+temp=46797
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone36 -----
+type=gpu1
+temp=45525
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone37 -----
+type=gpu2
+temp=45561
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone38 -----
+type=pmic6363-vio18
+temp=43787
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone39 -----
+type=pmic6363-vs1-vs3
+temp=44324
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone4 -----
+type=mtk-slv-div-chg
+temp=0
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone40 -----
+type=pmic6363-bk3-bk7
+temp=44324
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone41 -----
+type=pmic6363-vs2
+temp=43787
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone42 -----
+type=pmic6368-buck1
+temp=40566
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone43 -----
+type=pmic6368-vpa
+temp=40566
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone44 -----
+type=pmic6368-vcn33-1
+temp=40030
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone45 -----
+type=pmic6368-vrf18-aif
+temp=39493
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone46 -----
+type=quiet_therm
+temp=39555
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone47 -----
+type=wifi_therm
+temp=41000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone48 -----
+type=flash_therm
+temp=40666
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone49 -----
+type=charger1_therm
+temp=43947
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone5 -----
+type=mtk-mst-hvdiv-chg
+temp=0
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone50 -----
+type=display_therm
+temp=40111
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone51 -----
+type=mtktsAP
+temp=42961
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone52 -----
+type=mtktsbtsmdpa
+temp=40212
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone53 -----
+type=mtktsbtsnrpa
+temp=40519
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone54 -----
+type=vtskin-max
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone55 -----
+type=vtskin1
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone56 -----
+type=vtskin2
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone57 -----
+type=vtskin3
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone58 -----
+type=vtskin4
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone59 -----
+type=vtskin5
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone6 -----
+type=mtk-slv-hvdiv-chg
+temp=0
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone60 -----
+type=vtskin6
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone61 -----
+type=vtskin7
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone62 -----
+type=vtskin8
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone63 -----
+type=vtskin9
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone64 -----
+type=vtskin10
+temp=-274000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone65 -----
+type=consys
+temp=43000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone7 -----
+type=mt6375-gauge
+temp=25000
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone8 -----
+type=battery
+temp=40700
+mode=disabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/thermal_zone9 -----
+type=soc_max
+temp=49190
+mode=enabled
+policy=step_wise
+available_policies=power_allocator user_space step_wise bang_bang 
+----- /sys/class/thermal/cooling_device0 -----
+type=brightness0-clone
+cur_state=200
+max_state=200
+----- /sys/class/thermal/cooling_device1 -----
+type=battery
+cur_state=9
+max_state=500
+----- /sys/class/thermal/cooling_device10 -----
+type=cpu-pause-3
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device11 -----
+type=cpu-pause-4
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device12 -----
+type=cpu-pause-5
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device13 -----
+type=cpu-pause-6
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device14 -----
+type=cpu-pause-7
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device15 -----
+type=flashlight_cooler
+cur_state=0
+max_state=4
+----- /sys/class/thermal/cooling_device16 -----
+type=flashlight_cooler
+cur_state=0
+max_state=5
+----- /sys/class/thermal/cooling_device2 -----
+type=apu_cooler
+cur_state=4
+max_state=10
+----- /sys/class/thermal/cooling_device3 -----
+type=devfreq-13000000.mali
+cur_state=31
+max_state=48
+----- /sys/class/thermal/cooling_device4 -----
+type=charger-cooler
+cur_state=0
+max_state=14
+----- /sys/class/thermal/cooling_device5 -----
+type=lcd-backlight
+cur_state=0
+max_state=100
+----- /sys/class/thermal/cooling_device6 -----
+type=wifi-cooler
+cur_state=0
+max_state=5
+----- /sys/class/thermal/cooling_device7 -----
+type=cpu-pause-0
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device8 -----
+type=cpu-pause-1
+cur_state=0
+max_state=1
+----- /sys/class/thermal/cooling_device9 -----
+type=cpu-pause-2
+cur_state=0
+max_state=1
+----- /sys/kernel/thermal/abnormal_temp -----
+777777777
+
+----- /sys/kernel/thermal/apu_atc -----
+666666666,666666666,666666666
+
+----- /sys/kernel/thermal/apu_info -----
+45222,666666666,10
+
+----- /sys/kernel/thermal/bat_type -----
+3
+
+----- /sys/kernel/thermal/catm_p -----
+0, 0, 0
+
+----- /sys/kernel/thermal/cg_policy_mode -----
+666666666
+
+----- /sys/kernel/thermal/cpu_atc -----
+105000,5019952,5152735,3701759,4766253,4789435,4998172,5215390,5170783,4968264,4444795,4973101,5213806,5085486,5607753,2219150,2133858
+
+----- /sys/kernel/thermal/cpu_info -----
+12,28,26,2200000,3200000,3400000,1118000,416000,1300000,94448,97599,97040,777777777,777777777,777777777
+
+----- /sys/kernel/thermal/cpu_temp -----
+48041,47858,47864,47451,47203,46957,48236,49112
+
+----- /sys/kernel/thermal/dram_data_rate -----
+1534
+
+----- /sys/kernel/thermal/dsu_ceiling_freq -----
+1800000
+
+----- /sys/kernel/thermal/frs_info -----
+0,0,0,0,0,0,0,0,0,0,0,0,0
+
+----- /sys/kernel/thermal/frs_nl_id -----
+31
+
+----- /sys/kernel/thermal/frs_pid -----
+-1
+
+----- /sys/kernel/thermal/gpt -----
+75000,666666666,666666666,666666666,666666666
+
+----- /sys/kernel/thermal/gpu_atc -----
+105000,105000,105000
+
+----- /sys/kernel/thermal/gpu_freq -----
+666666666,666666666,666666666,666666666,666666666,666666666
+
+----- /sys/kernel/thermal/gpu_info -----
+46847,1508000,546000
+
+----- /sys/kernel/thermal/headroom_info -----
+66,67,67,67,68,68,66,65,777777777
+
+----- /sys/kernel/thermal/info_b -----
+666666666
+
+----- /sys/kernel/thermal/is_apu_limit -----
+0
+
+----- /sys/kernel/thermal/is_cpu_limit -----
+0
+
+----- /sys/kernel/thermal/is_gpu_limit -----
+0
+
+----- /sys/kernel/thermal/lvts_info1 -----
+2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271
+
+----- /sys/kernel/thermal/lvts_info2 -----
+2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271
+
+----- /sys/kernel/thermal/lvts_info3 -----
+2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271,2e5bf271
+
+----- /sys/kernel/thermal/max_ttj -----
+95000, 95000, 95000
+
+----- /sys/kernel/thermal/md_actuator_info -----
+0,0
+
+----- /sys/kernel/thermal/md_sensor_info -----
+0
+
+----- /sys/kernel/thermal/min_throttle_freq -----
+777777777, 777777777, 777777777 666666666
+
+----- /sys/kernel/thermal/min_ttj -----
+63000
+
+----- /sys/kernel/thermal/pid_info -----
+
+
+----- /sys/kernel/thermal/power_budget -----
+777777777, 666666666, 666666666
+
+----- /sys/kernel/thermal/sports_mode -----
+0
+
+----- /sys/kernel/thermal/target_tpcb -----
+777777777
+
+----- /sys/kernel/thermal/thermal_hint -----
+0
+
+----- /sys/kernel/thermal/ttj -----
+777777777, 666666666, 666666666
+
+----- /sys/kernel/thermal/user_vsensor -----
+0, , 0, , 0, , 0, , 0, , 0, 
+----- /sys/kernel/thermal/utc_count -----
+0
+
+----- /sys/kernel/thermal/vtskin_info -----
+vtskin sensor total num=11
+   vtskin id=0, name=vtskin-max, ref_num=0 op=1
+
+   vtskin id=1, name=vtskin1, ref_num=0 op=0
+
+   vtskin id=2, name=vtskin2, ref_num=0 op=0
+
+   vtskin id=3, name=vtskin3, ref_num=0 op=0
+
+   vtskin id=4, name=vtskin4, ref_num=0 op=0
+
+   vtskin id=5, name=vtskin5, ref_num=0 op=0
+
+   vtskin id=6, name=vtskin6, ref_num=0 op=0
+
+   vtskin id=7, name=vtskin7, ref_num=0 op=0
+
+   vtskin id=8, name=vtskin8, ref_num=0 op=0
+
+   vtskin id=9, name=vtskin9, ref_num=0 op=0
+
+   vtskin id=10, name=vtskin10, ref_num=0 op=0
+
+
+----- /sys/kernel/thermal/vtskin_temp -----
+666666666
+
+----- /sys/class/thermal/thermal_message/ambient_sensor -----
+ABT-SENSOR
+----- /sys/class/thermal/thermal_message/ambient_sensor_temp -----
+
+----- /sys/class/thermal/thermal_message/atc_enable -----
+-1
+
+----- /sys/class/thermal/thermal_message/balance_mode -----
+2
+
+----- /sys/class/thermal/thermal_message/board_sensor -----
+VIRTUAL-SENSOR
+----- /sys/class/thermal/thermal_message/board_sensor_temp -----
+38196
+
+----- /sys/class/thermal/thermal_message/board_sensor_trip -----
+38196 1 40000 41000
+----- /sys/class/thermal/thermal_message/boost -----
+boost:0
+----- /sys/class/thermal/thermal_message/boost_daily_track -----
+period:2347205|exec_times:3070|skip_times:0|temps:2,0,0,1,4,0,0,0,55,385,1190,1391,42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+----- /sys/class/thermal/thermal_message/boost_perapp_track -----
+period:0|exec_times:0|skip_times:0|temps:0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+----- /sys/class/thermal/thermal_message/charger_temp -----
+8
+
+----- /sys/class/thermal/thermal_message/cloud_game -----
+0
+
+----- /sys/class/thermal/thermal_message/config_daily_track -----
+switch_times:9|periods:thermal-normal.conf@6979,thermal-class0.conf@49,thermal-nolimits.conf@3
+----- /sys/class/thermal/thermal_message/connsys_limit -----
+0
+
+----- /sys/class/thermal/thermal_message/cpu_limits -----
+
+----- /sys/class/thermal/thermal_message/display_therm_temp -----
+40111
+
+----- /sys/class/thermal/thermal_message/flash_state -----
+0
+
+----- /sys/class/thermal/thermal_message/foreground_app_name -----
+dev.leonardo.mt6899
+----- /sys/class/thermal/thermal_message/market_download_limit -----
+0
+
+----- /sys/class/thermal/thermal_message/modem_level -----
+0
+
+----- /sys/class/thermal/thermal_message/modem_limit -----
+0
+
+----- /sys/class/thermal/thermal_message/poor_modem_limit -----
+0
+
+----- /sys/class/thermal/thermal_message/sconfig -----
+2
+
+----- /sys/class/thermal/thermal_message/screen_state -----
+1
+
+----- /sys/class/thermal/thermal_message/super_hdr -----
+0
+
+----- /sys/class/thermal/thermal_message/temp_aware -----
+9
+
+----- /sys/class/thermal/thermal_message/temp_state -----
+0
+
+----- /sys/class/thermal/thermal_message/therm_log_enable -----
+2
+----- /sys/class/thermal/thermal_message/thermal_max_brightness -----
+0
+
+----- /sys/class/thermal/thermal_message/torch_level -----
+0
+
+----- /sys/class/thermal/thermal_message/torch_real_level -----
+-1
+
+----- /sys/class/thermal/thermal_message/uevent -----
+
+----- /sys/class/thermal/thermal_message/usb_online -----
+1
+
+----- /sys/class/thermal/thermal_message/video_mode -----
+0
+
+----- /sys/class/thermal/thermal_message/voice_limit -----
+0
+
+----- /sys/class/thermal/thermal_message/wifi_limit -----
+0
+
+
+========== BATERIA E ENERGIA ==========
+[exit_code=1]
+----- /sys/class/power_supply/battery -----
+type=Battery
+status=Charging
+health=Good
+capacity=51
+voltage_now=4001000
+current_now=-3523000
+temp=389
+technology=Li-poly
+charge_counter=3134000
+----- /sys/class/power_supply/bms -----
+type=Battery
+capacity=51
+voltage_now=4001000
+current_now=-3523000
+temp=389
+technology=Li-poly
+charge_counter=3134000
+----- /sys/class/power_supply/cp_master -----
+type=Mains
+status=Unknown
+voltage_now=4025
+----- /sys/class/power_supply/mt6375-gauge -----
+type=Unknown
+voltage_now=4000000
+current_now=-600
+temp=250
+----- /sys/class/power_supply/mtk-master-charger -----
+type=Unknown
+voltage_now=0
+temp=420
+----- /sys/class/power_supply/mtk-mst-div-chg -----
+type=Unknown
+voltage_now=0
+temp=0
+----- /sys/class/power_supply/mtk-mst-hvdiv-chg -----
+type=Unknown
+voltage_now=0
+temp=0
+----- /sys/class/power_supply/mtk-slave-charger -----
+type=Unknown
+voltage_now=0
+temp=0
+----- /sys/class/power_supply/mtk-slv-div-chg -----
+type=Unknown
+voltage_now=0
+temp=0
+----- /sys/class/power_supply/mtk-slv-hvdiv-chg -----
+type=Unknown
+voltage_now=0
+temp=0
+----- /sys/class/power_supply/primary_chg -----
+type=USB_DCP
+status=Not charging
+----- /sys/class/power_supply/usb -----
+type=USB_DCP
+status=Charging
+voltage_now=0
+current_now=0
+
+========== MEMÓRIA, ZRAM E ARMAZENAMENTO ==========
+[exit_code=0]
+[meminfo]
+MemTotal:       11597948 kB
+MemFree:          198824 kB
+MemAvailable:    4260112 kB
+Buffers:            2460 kB
+Cached:          3726424 kB
+SwapCached:        19844 kB
+Active:          2737672 kB
+Inactive:        3643476 kB
+Active(anon):     859500 kB
+Inactive(anon):  1886568 kB
+Active(file):    1878172 kB
+Inactive(file):  1756908 kB
+Unevictable:       90496 kB
+Mlocked:           90496 kB
+SwapTotal:      12582908 kB
+SwapFree:        8028632 kB
+Dirty:              1596 kB
+Writeback:             0 kB
+AnonPages:       2703764 kB
+Mapped:          2030852 kB
+Shmem:             31244 kB
+KReclaimable:     838680 kB
+Slab:             741356 kB
+SReclaimable:     194104 kB
+SUnreclaim:       547252 kB
+KernelStack:      145952 kB
+ShadowCallStack:       0 kB
+PageTables:       254140 kB
+SecPageTables:         0 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:    18381880 kB
+Committed_AS:   404995052 kB
+VmallocTotal:   257687552 kB
+VmallocUsed:      448244 kB
+VmallocChunk:          0 kB
+Percpu:            17760 kB
+AnonHugePages:         0 kB
+ShmemHugePages:        0 kB
+ShmemPmdMapped:        0 kB
+FileHugePages:         0 kB
+FilePmdMapped:         0 kB
+CmaTotal:         147456 kB
+CmaFree:             176 kB
+[swaps]
+Filename				Type		Size		Used		Priority
+/dev/block/zram0                        partition	12582908	4554276		-2
+[zram]
+----- /sys/block/zram0 -----
+disksize=12884901888
+mm_stat=4662194176 1418835472 1452662784        0 1684762624   124422  3941070    37362   629201   605852
+comp_algorithm=lzo lzo-rle [lz4] zstd 
+max_comp_streams=8
+[block devices]
+/system/bin/sh: <stdin>[335]: lsblk: inaccessible or not found
+[mounts relevantes]
+none on /dev/blkio type cgroup (rw,nosuid,nodev,noexec,relatime,blkio)
+none on /dev/cpuctl type cgroup (rw,nosuid,nodev,noexec,relatime,cpu)
+none on /dev/cpuset type cgroup (rw,nosuid,nodev,noexec,relatime,cpuset,noprefix,cpuset_v2_mode)
+none on /dev/memcg type cgroup (rw,nosuid,nodev,noexec,relatime,memory)
+proc on /proc type proc (rw,relatime,gid=3009,hidepid=invisible)
+sysfs on /sys type sysfs (rw,seclabel,relatime)
+none on /sys/fs/cgroup type cgroup2 (rw,nosuid,nodev,noexec,relatime,memory_recursiveprot)
+tracefs on /sys/kernel/tracing type tracefs (rw,seclabel,relatime,gid=3012)
+/proc/8548/fd/14 on /data/incremental/MT_data_app_vmdl132/mount type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl132d777cae1-3789-4e09-8cc2-5c40d8437483)
+/proc/8548/fd/14 on /data/app/~~rZTv8UcAtalagOCJvZssRA== type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl132d777cae1-3789-4e09-8cc2-5c40d8437483)
+/proc/8548/fd/14 on /data/incremental/MT_data_app_vmdl333/mount type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl3332d378c61-2996-4334-b829-44df5d93d5a2)
+/proc/8548/fd/14 on /data/app/~~MLrZ5Z6NsTMHdEuJpYVWdw== type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl3332d378c61-2996-4334-b829-44df5d93d5a2)
+/proc/8548/fd/14 on /data/incremental/MT_data_app_vmdl466/mount type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl4660e1ed00b-869a-4fed-971d-55b1e33132d7)
+/proc/8548/fd/14 on /data/app/~~b_eY5QWX6lti1MqxJODUUQ== type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl4660e1ed00b-869a-4fed-971d-55b1e33132d7)
+/proc/8548/fd/14 on /data/incremental/MT_data_app_vmdl131/mount type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl131a6050ae9-25f7-4efe-bad0-1c644885a47a)
+/proc/8548/fd/14 on /data/app/~~OgsEmJZnf28snQykifUo7A== type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl131a6050ae9-25f7-4efe-bad0-1c644885a47a)
+/proc/8548/fd/14 on /data/incremental/MT_data_app_vmdl1320/mount type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl1320aa0f8c6a-9b62-4ae4-9af1-ad7eab0f4924)
+/proc/8548/fd/14 on /data/app/~~isVFd49VuG9lGIs9q8d-Ig== type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl1320aa0f8c6a-9b62-4ae4-9af1-ad7eab0f4924)
+/proc/8548/fd/14 on /data/incremental/MT_data_app_vmdl529/mount type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl529c7f6e654-d27e-4e94-b819-485c99fd7eec)
+/proc/8548/fd/14 on /data/app/~~aWSOnWUgwduh4bdH3vBlpg== type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl529c7f6e654-d27e-4e94-b819-485c99fd7eec)
+/proc/8548/fd/14 on /data/incremental/MT_data_app_vmdl766/mount type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl76699633cc4-c6b0-4201-b26b-bceee188cfd5)
+/proc/8548/fd/14 on /data/app/~~4SZNBsHZA30fk9cMIZs-uQ== type incremental-fs (rw,seclabel,nosuid,nodev,noatime,read_timeout_ms=10000,readahead=0,report_uid,sysfs_name=MT_data_app_vmdl76699633cc4-c6b0-4201-b26b-bceee188cfd5)
+
+========== SCHEDULER, INTERRUPÇÕES E LIMITES DO KERNEL ==========
+[exit_code=0]
+----- /proc/sys/kernel/sched_pelt_multiplier -----
+2
+
+----- /proc/sys/kernel/sched_energy_aware -----
+1
+
+----- /proc/interrupts -----
+           CPU0       CPU1       CPU2       CPU3       CPU4       CPU5       CPU6       CPU7       
+ 19:          0          0          0          0          0          0          0          0     GICv3  26 Level     trusty
+ 20:   15418111   11544345   10235900    9502432    9724800    9235531    8344199    4842809     GICv3  27 Level     arch_timer
+ 23:          0          0          0          0          0          0          0          0     GICv3  30 Level     trusty
+ 25:      16958      15407      14087      13615      19452      18509      17573      21469  GICv3-23   0 Level     arm-pmu
+ 26:     487862     104758     133694     101494     482473     442813     404210     155989     GICv3 841 Level     systimer@1cc10000
+ 27:          0          0          0          0          0          0          0          0     GICv3 930 Level     devapc
+ 28:          0          0          0          0          0          0          0          0     GICv3 734 Level     devapc
+ 29:          0          0          0          0          0          0          0          0     GICv3 886 Level     devapc
+ 30:          0          0          0          0          0          0          0          0     GICv3 300 Level     devapc
+ 31:          0          0          0          0          0          0          0          0     GICv3 693 Level     devapc
+ 32:          0          0          0          0          0          0          0          0     GICv3 569 Level     devapc
+ 33:          0          0          0          0          0          0          0          0     GICv3 687 Level     devapc
+ 34:       6191          0          0          0          0          0          0          0     GICv3 852 Level     mtk_tinysys_mbox
+ 35:          0          0          0          0          0          0          0          0     GICv3 853 Level     mtk_tinysys_mbox
+ 44:       6909          0          0          0          0          0          0          0  mtk-eint   7 Level     5-0034
+ 46:    2176699          0          0          0          0          0          0          0  mtk-eint   9 Edge      xiaomi_tp
+ 56:          0          0          0          0          0          0          0          0  mtk-eint  19 Edge      aw882xx
+ 57:          0          0          0          0          0          0          0          0  mtk-eint  20 Edge      aw882xx
+ 58:      18533          0          0          0          0          0          0          0  mtk-eint  21 Level     haptic_rt
+ 74:         48          0          0          0          0          0          0          0  mtk-eint  37 Level     nq-nci
+113:         49          0          0          0          0          0          0          0  mtk-eint  76 Edge      sc858x-standalone-irq
+159:          0          0          0          0          0          0          0          0  mtk-eint 122 Edge      esd_err_irq
+290:        163          0          0          0          0          0          0          0  mtk-eint 253 Level     rcs_irq
+292:          0          0          0          0          0          0          0          0  mtk-eint 255 Level     rcs_irq
+293:          0          0          0          0          0          0          0          0     GICv3 334 Level     19010000.iommu
+294:          0          0          0          0          0          0          0          0     GICv3 335 Level     19011000.iommu
+295:          0          0          0          0          0          0          0          0     GICv3 336 Level     19012000.iommu
+296:          0          0          0          0          0          0          0          0     GICv3 337 Level     19013000.iommu
+297:          0          0          0          0          0          0          0          0     GICv3 338 Level     19014000.iommu
+298:          0          0          0          0          0          0          0          0     GICv3 339 Level     19015000.iommu
+299:          0          0          0          0          0          0          0          0     GICv3 340 Level     19016000.iommu
+300:          0          0          0          0          0          0          0          0     GICv3 341 Level     19017000.iommu
+301:          0          0          0          0          0          0          0          0     GICv3 342 Level     19018000.iommu
+302:          0          0          0          0          0          0          0          0     GICv3 343 Level     19019000.iommu
+303:          0          0          0          0          0          0          0          0     GICv3 704 Level     1e816000.iommu
+304:          0          0          0          0          0          0          0          0     GICv3 705 Level     1e817000.iommu
+305:          0          0          0          0          0          0          0          0     GICv3 706 Level     1e818000.iommu
+306:          0          0          0          0          0          0          0          0     GICv3 707 Level     1e819000.iommu
+307:          0          0          0          0          0          0          0          0     GICv3 708 Level     1e81a000.iommu
+308:          0          0          0          0          0          0          0          0     GICv3 699 Level     1e81b000.iommu
+309:          0          0          0          0          0          0          0          0     GICv3 700 Level     1e81c000.iommu
+310:          0          0          0          0          0          0          0          0     GICv3 701 Level     1e81d000.iommu
+311:          0          0          0          0          0          0          0          0     GICv3 702 Level     1e81e000.iommu
+312:          0          0          0          0          0          0          0          0     GICv3 703 Level     1e81f000.iommu
+313:          0          0          0          0          0          0          0          0     GICv3 562 Level     VCP wdt
+314:          0          0          0          0          0          0          0          0     GICv3 563 Level     VCP reserved
+315:     566112          0          0          0          0          0          0          0     GICv3 564 Level     vcp_mboxdev
+316:       2530          0          0          0          0          0          0          0     GICv3 565 Level     vcp_mboxdev
+317:       8197          0          0          0          0          0          0          0     GICv3 566 Level     vcp_mboxdev
+318:          2          0          0          0          0          0          0          0     GICv3 567 Level     vcp_mboxdev
+319:          0          0          0          0          0          0          0          0     GICv3 568 Level     vcp_mboxdev
+320:          0          0          0          0          0          0          0          0     GICv3 939 Level     HWV IRQ
+321:          1          0          0          0          0          0          0          0     GICv3 571 Level     HFRP HWV IRQ
+322:          0          0          0          0          0          0          0          0     GICv3 865 Level     event_0, event_1, event_2, event_3, event_4
+323:          0          0          0          0          0          0          0          0     GICv3 897 Level     event_0, event_1, event_2, event_3, event_4
+324:          0          0          0          0          0          0          0          0     GICv3 989 Level     event_0, event_1, event_2, event_3, event_4
+325:          0          0          0          0          0          0          0          0     GICv3 864 Level     spmi_nack_irq
+326:          0          0          0          0          0          0          0          0     GICv3 896 Level     spmi_nack_irq
+327:          0          0          0          0          0          0          0          0     GICv3 990 Level     spmi_nack_irq
+328:         74         20          9         14         13         12         15          5   rcs_irq   4 Edge      spmi-pmic-irq
+329:          0          0          0          0          0          0          0          0  spmi-pmic-irq  16 Edge      VCN15
+330:          0          0          0          0          0          0          0          0  spmi-pmic-irq  17 Edge      VCN13
+331:          0          0          0          0          0          0          0          0  spmi-pmic-irq  18 Edge      VRF09
+332:          0          0          0          0          0          0          0          0  spmi-pmic-irq  19 Edge      VRF12
+333:          0          0          0          0          0          0          0          0  spmi-pmic-irq  20 Edge      VRF13
+334:          0          0          0          0          0          0          0          0  spmi-pmic-irq  21 Edge      VRF18
+335:          0          0          0          0          0          0          0          0  spmi-pmic-irq  22 Edge      VRFIO18
+336:          0          0          0          0          0          0          0          0  spmi-pmic-irq  24 Edge      VSRAM_MDFE
+337:          0          0          0          0          0          0          0          0  spmi-pmic-irq  26 Edge      VTREF18
+338:          0          0          0          0          0          0          0          0  spmi-pmic-irq  30 Edge      VSRAM_APU
+339:          0          0          0          0          0          0          0          0  spmi-pmic-irq  31 Edge      VAUX18
+340:          0          0          0          0          0          0          0          0  spmi-pmic-irq  32 Edge      VEMC
+341:          0          0          0          0          0          0          0          0  spmi-pmic-irq  33 Edge      VUFS12
+342:          0          0          0          0          0          0          0          0  spmi-pmic-irq  34 Edge      VUFS18
+343:          0          0          0          0          0          0          0          0  spmi-pmic-irq  35 Edge      VIO18
+344:          0          0          0          0          0          0          0          0  spmi-pmic-irq  36 Edge      VIO075
+345:          0          0          0          0          0          0          0          0  spmi-pmic-irq  37 Edge      VA12_1
+346:          0          0          0          0          0          0          0          0  spmi-pmic-irq  38 Edge      VA12_2
+347:          0          0          0          0          0          0          0          0  spmi-pmic-irq  39 Edge      VA15
+348:          0          0          0          0          0          0          0          0  spmi-pmic-irq  40 Edge      VM18
+349:         32          4          2          2          0          2          4          1  spmi-pmic-irq  48 Edge      mtk-pmic-keys
+350:         11          1          4          4          4          1          1          0  spmi-pmic-irq  49 Edge      mtk-pmic-keys
+351:          5          0          0          0          1          2          0          0  spmi-pmic-irq  50 Edge      mtk-pmic-keys
+352:         14          8          3          7          4          5          4          2  spmi-pmic-irq  51 Edge      mtk-pmic-keys
+353:         11          5          0          0          4          2          2          2  spmi-pmic-irq  52 Edge      mtk-pmic-keys
+354:          1          2          0          1          0          0          4          0  spmi-pmic-irq  53 Edge      mtk-pmic-keys
+355:          0          0          0          0          0          0          0          0  spmi-pmic-irq  54 Edge      LVSYS_R
+356:          0          0          0          0          0          0          0          0  spmi-pmic-irq  55 Edge      LVSYS_F
+357:          0          0          0          0          0          0          0          0   rcs_irq   5 Edge      spmi-pmic-irq
+358:          0          0          0          0          0          0          0          0  spmi-pmic-irq  97 Edge      ACCDET_IRQ
+359:          0          0          0          0          0          0          0          0  spmi-pmic-irq  98 Edge      ACCDET_EINT0
+361: 
+----- /proc/pressure/cpu -----
+some avg10=12.08 avg60=13.86 avg300=16.32 total=7190923850
+full avg10=0.00 avg60=0.00 avg300=0.00 total=0
+
+----- /proc/pressure/memory -----
+some avg10=0.59 avg60=0.69 avg300=0.83 total=269792229
+full avg10=0.37 avg60=0.47 avg300=0.60 total=214824409
+
+----- /proc/pressure/io -----
+some avg10=0.00 avg60=0.02 avg300=0.00 total=113157872
+full avg10=0.00 avg60=0.00 avg300=0.00 total=73821941
+
+[cmdline filtrada]
+console=ttynull
+stack_depot_disable=on
+cgroup_disable=pressure
+kasan.stacktrace=off
+kvm-arm.mode=protected
+bootconfig
+ioremap_guard
+
+console=tty0
+root=/dev/ram
+nosoftlockup
+8250.nr_uarts=4
+restrict_cma_redirect
+vmalloc=400M
+swiotlb=noforce
+firmware_class.path=/vendor/firmware,/odm/firmware
+cgroup.memory=nosocket,nokmem
+disable_dma32=on
+rcu_nocbs=all
+transparent_hugepage=never
+cpufreq.default_governor=conservative
+log_buf_len=4M
+gpt=1
+loop.max_part=7
+ufshcd_core.poll_queues=0
+panel-p10-42-02-0b-dsc-vdo.panel_sn=ALH564A04SB66
+panel-p10-42-02-0b-dsc-vdo.oled_wp=019800b300be
+panel-p10-42-02-0b-dsc-vdo.oled_lhbm=24e022b029e81e101c9c22f4
+panel-p10-42-02-0b-dsc-vdo.build_id=c0
+mediatek_drm.panel_opt=0x53,0x42,0x32,0x30,0x50,0x0a,0x31,0x00
+arm64.nomte
+mtk_printk_ctrl.disable_uart=1
+et7480.disable_uart=1
+PMIC_UVLO=0xffff
+usb2jtag_mode=0
+root=/dev/ram
+bootopt=64S3,32N2,64N2
+erofs.reserved_pages=64
+initcall_blacklist=ufshcd_core_init
+ramoops.mem_address=0x6ec00000
+ramoops.mem_size=0x410000
+ramoops.pmsg_size=0x200000
+ramoops.console_size=0x200000
+hwid.project_name=klee
+hwid.hwid_value=1638400
+hwid.project=7
+aee_aed.pureason=reboot
+aee_aed.poffreason=AP_WDT
+block2mtd.block2mtd=/dev/block/by-name/oops,2097152,0
+mtdoops.mtddev=0
+mtdoops.record_size=2097152
+mtdoops.dump_oops=1
+printk.always_kmsg_dump=1
+mtdoops.boot_mode=0
+bootconfig
+
+========== SERVIÇOS RELACIONADOS ==========
+[exit_code=0]
+[serviços térmicos/performance]
+[init.svc.fuelgauged]: [running]
+[init.svc.fuelgauged_nvram]: [stopped]
+[init.svc.gpu]: [running]
+[init.svc.mi_thermald]: [running]
+[init.svc.miperf2-hal]: [running]
+[init.svc.storaged]: [running]
+[init.svc.system_perf_init]: [stopped]
+[init.svc.thermald]: [running]
+[init.svc.traced_perf]: [stopped]
+[init.svc.vendor.gpuserv-default]: [running]
+[init.svc.vendor.mtkpower-service.mediatek]: [running]
+[init.svc.vendor.mtkpower_applist-default]: [running]
+[init.svc.vendor.thermal-mediatek]: [running]
+[processos relacionados]
+root           343     2          0      0 power_misc_routine_thread 0 S [power_misc_thread]
+root           594     2          0      0 rescuer_thread      0 I [kworker/R-gpueb]
+root           764     2          0      0 rescuer_thread      0 I [kworker/R-ged_e]
+root           765     2          0      0 rescuer_thread      0 I [kworker/R-ged_n]
+root           766     2          0      0 rescuer_thread      0 I [kworker/R-ged_k]
+root           767     2          0      0 rescuer_thread      0 I [kworker/R-ged_f]
+root           771     2          0      0 kthread_worker_fn   0 S [kbase_pm_poweroff_wait]
+root           972     2          0      0 rescuer_thread      0 I [kworker/R-perfm]
+root          1064     2          0      0 rescuer_thread      0 I [kworker/R-power]
+system        1164     1   11049792   8020 binder_thread_read  0 S vendor.mediatek.hardware.mtkpower_applist-service.mediatek
+system        1168     1   10955724   4720 binder_thread_read  0 S android.hardware.thermal-service.mediatek
+root          1182     1   11159008   9020 futex_wait_queue    0 S vendor.mediatek.hardware.mtkpower-service.mediatek
+root          1208     1   10995840   5716 binder_thread_read  0 S vendor.xiaomi.hardware.miperf2-service
+gpu_service   1266     1   11000656   7464 binder_thread_read  0 S gpuservice
+system        1274     1   10776004   3944 __skb_wait_for_more_packets 0 S fuelgauged
+root          1366     2          0      0 kbase_csf_scheduler_kthread 0 S [mali-gpuq-kthread]
+system        1437     1   10885796   5604 binder_thread_read  0 S vendor.mediatek.hardware.gpuserv-service
+root          1539     1   10943576   6100 binder_thread_read  0 S storaged
+root          5260     2          0      0 worker_thread       0 I [kworker/u16:4-ged_fence]
+system        5431  1102   18250204 111152 do_epoll_wait       0 S com.miui.powerkeeper
+root         14178     2          0      0 worker_thread       0 I [kworker/u17:1-ged_notify_sw_vsync]
+root         19728     2          0      0 worker_thread       0 I [kworker/u16:0-ged_fence]
+root         21065     1   12348660   4308 sigsuspend          0 S mi_thermald
+system       21069     1   10873780   4284 __arm64_sys_nanosleep 0 S thermald
+root         29093     2          0      0 worker_thread       0 I [kworker/u17:2-ged_notify_sw_vsync]
+root         29317     2          0      0 worker_thread       0 I [kworker/u16:5-ged_fence]
+root         30462     2          0      0 worker_thread       0 I [kworker/u16:6-ged_kpi]
+
+========== LOG DO KERNEL - EVENTOS RELACIONADOS ==========
+[exit_code=0]
+[65336.376884] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65336.434500] [08:26:45:875-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3996, ibatt=-3429, jeita_index=5, vbatt_step=5, ibatt_step=0, vbus_step=5, ibus_step=2, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65336.434542] [08:26:45:875-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65336.519718] batt_thermal real_temp:408
+[65336.580857] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65336.784840] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65336.885436] batt_thermal real_temp:408
+[65336.997162] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65337.120626] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65337.130394] [08:26:46:571-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65337.130427] [08:26:46:571-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3996 -3447 390], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65337.441060] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65337.459242] [08:26:46:900-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3996, ibatt=-3447, jeita_index=5, vbatt_step=5, ibatt_step=0, vbus_step=5, ibus_step=2, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65337.459287] [08:26:46:900-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65337.514198] [wlan][2635]mtk_cfg80211_vendor_llstats_get_info:(REQ INFO) llstats_get_info(bss=0)
+[65337.548575] [wlan][2667]mtk_cfg80211_get_station:(REQ INFO) link speed=12010/12010, bw=0/0, rssi=-65, BSSID:[98:b3:**:**:**:b0], idx=0,TxFail=238, TxTimeOut=0, TxOK=643954, RxOK=2282494, FcsErr=0
+[65337.645017] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65337.848804] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65338.024170] batt_thermal real_temp:408
+[65338.053128] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65338.144570] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65338.155039] [08:26:47:596-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65338.155070] [08:26:47:596-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3996 -3457 390], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65338.465254] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65338.483483] [08:26:47:924-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3996, ibatt=-3457, jeita_index=5, vbatt_step=5, ibatt_step=0, vbus_step=5, ibus_step=2, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65338.483529] [08:26:47:924-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65338.668747] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65338.888397] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65338.978281] batt_thermal real_temp:408
+[65339.168572] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65339.176644] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65339.179148] [08:26:48:620-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65339.179180] [08:26:48:620-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3996 -3437 390], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65339.401026] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65339.507313] [08:26:48:948-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3996, ibatt=-3437, jeita_index=5, vbatt_step=5, ibatt_step=0, vbus_step=5, ibus_step=2, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65339.507359] [08:26:48:948-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65339.832691] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65340.032179] batt_thermal real_temp:408
+[65340.040702] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65340.192439] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65340.203201] [08:26:49:644-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65340.203233] [08:26:49:644-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3996 -3421 390], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65340.448628] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65340.531292] [08:26:49:972-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3996, ibatt=-3421, jeita_index=5, vbatt_step=5, ibatt_step=0, vbus_step=5, ibus_step=2, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65340.531337] [08:26:49:972-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65340.573975] [wlan][2635]mtk_cfg80211_vendor_llstats_get_info:(REQ INFO) llstats_get_info(bss=0)
+[65340.590457] [wlan][2667]mtk_cfg80211_get_station:(REQ INFO) link speed=12010/12010, bw=0/0, rssi=-67, BSSID:[98:b3:**:**:**:b0], idx=0,TxFail=238, TxTimeOut=0, TxOK=643955, RxOK=2282496, FcsErr=0
+[65340.652432] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65340.900801] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65341.099265] batt_thermal real_temp:408
+[65341.104937] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65341.202570] mtk get sink vbus ma = 4750, pp= 1
+[65341.213148] mtk_battery_external_power_changed status.intval=3 online.intval=5
+[65341.218919] mtk_battery_external_power_changed event, name:battery online:0, status:1, EOC:0, cur_chr_type:2 old:2, vbat0:[o:0 n:0]
+[65341.219353] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65341.220578] mtk_charger_start_timer: alarm timer start:1, 65351 216326125
+[65341.227744] power_supply mtk-master-charger: driver reporting unsupported connected type
+[65341.240418] [08:26:50:681-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65341.240433] [08:26:50:681-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3996 -3411 390], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65341.283610] [08:26:50:724-E][mtk_charger]charger_routine_thread:4615 Vbat=3996 vbats=4033 vbus:0 ibus:0 I=-3411 T=39 uisoc:51 type:std>std idx:0 ta_stat:0 swchg_ibat:0 cv:4580000 cmd_pp:-1
+[65341.298020] [08:26:50:739-E][mtk_basic_charger]select_charging_current_limit:327 [CHG_CURRENT_LIMIT](c) pd adapter_imax:6100,2800, thermal_ichg:3500, sic_ichg:7200
+[65341.298084] [08:26:50:739-E][mtk_basic_charger]select_charging_current_limit:736 [CHG_CURRENT_LIMIT] m:0 chg1:-1,-1,2800,3500 chg2:-1,-1,0,0 dvchg1:-1 sc:5500000 -1 0 type:5:0 usb_unlimited:0 usbif:0 usbsm:0 ii:-1,4750 aicl:-1 atm:0 bm:0 b:1 mtbf:0
+[65341.497309] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65341.555273] [08:26:50:996-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3996, ibatt=-3411, jeita_index=5, vbatt_step=5, ibatt_step=0, vbus_step=5, ibus_step=2, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65341.555319] [08:26:50:996-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65341.700699] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65341.904722] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65342.039861] batt_thermal real_temp:407
+[65342.121132] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65342.304515] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65342.314653] [08:26:51:755-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65342.314671] [08:26:51:755-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3996 -3397 390], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65342.324512] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65342.537097] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65342.542593] batt_thermal real_temp:407
+[65342.578159] [08:26:52:019-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3996, ibatt=-3397, jeita_index=5, vbatt_step=5, ibatt_step=0, vbus_step=5, ibus_step=2, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65342.578185] [08:26:52:019-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65342.740445] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65342.948406] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65343.160720] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65343.328530] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65343.340484] [08:26:52:781-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65343.340506] [08:26:52:781-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3997 -3283 390], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65343.364729] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65343.568432] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65343.603001] [08:26:53:044-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3997, ibatt=-3283, jeita_index=5, vbatt_step=5, ibatt_step=0, vbus_step=5, ibus_step=2, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65343.603029] [08:26:53:044-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65343.614629] [wlan][2635]mtk_cfg80211_vendor_llstats_get_info:(REQ INFO) llstats_get_info(bss=0)
+[65343.622148] mtk get sink vbus ma = 4750, pp= 1
+[65343.629726] mtk_battery_external_power_changed status.intval=3 online.intval=5
+[65343.632800] [wlan][2667]mtk_cfg80211_get_station:(REQ INFO) link speed=12010/12010, bw=0/0, rssi=-67, BSSID:[98:b3:**:**:**:b0], idx=0,TxFail=238, TxTimeOut=0, TxOK=643955, RxOK=2282497, FcsErr=0
+[65343.635575] mtk_battery_external_power_changed event, name:battery online:0, status:1, EOC:0, cur_chr_type:2 old:2, vbat0:[o:0 n:0]
+[65343.636807] mtk_charger_start_timer: alarm timer start:1, 65353 632555279
+[65343.644380] power_supply mtk-master-charger: driver reporting unsupported connected type
+[65343.692102] [08:26:53:133-E][mtk_charger]charger_routine_thread:4615 Vbat=3997 vbats=4032 vbus:0 ibus:0 I=-3283 T=39 uisoc:51 type:std>std idx:0 ta_stat:0 swchg_ibat:0 cv:4580000 cmd_pp:-1
+[65343.706492] [08:26:53:147-E][mtk_basic_charger]select_charging_current_limit:327 [CHG_CURRENT_LIMIT](c) pd adapter_imax:6100,2800, thermal_ichg:3500, sic_ichg:7200
+[65343.706525] [08:26:53:147-E][mtk_basic_charger]select_charging_current_limit:736 [CHG_CURRENT_LIMIT] m:0 chg1:-1,-1,2800,3500 chg2:-1,-1,0,0 dvchg1:-1 sc:5500000 -1 0 type:5:0 usb_unlimited:0 usbif:0 usbsm:0 ii:-1,4750 aicl:-1 atm:0 bm:0 b:1 mtbf:0
+[65343.772560] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65343.988920] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65344.049614] batt_thermal real_temp:407
+[65344.192479] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65344.352880] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65344.356546] batt_thermal real_temp:407
+[65344.365032] [08:26:53:806-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65344.365055] [08:26:53:806-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3996 -3305 390], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65344.420512] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65344.624581] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65344.836594] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65344.850848] [08:26:54:291-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3996, ibatt=-3305, jeita_index=5, vbatt_step=5, ibatt_step=1, vbus_step=5, ibus_step=2, final_step=1, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65344.850876] [08:26:54:291-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65345.040529] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65345.248547] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65345.376574] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65345.388223] [08:26:54:829-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65345.388248] [08:26:54:829-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3997 -3435 390], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65345.460941] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65345.684664] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65345.875879] [08:26:55:316-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3997, ibatt=-3435, jeita_index=5, vbatt_step=5, ibatt_step=1, vbus_step=5, ibus_step=1, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65345.875912] [08:26:55:316-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65345.888473] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65346.057684] batt_thermal real_temp:407
+[65346.096443] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65346.300577] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65346.402731] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65346.415557] [08:26:55:856-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65346.415582] [08:26:55:856-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3997 -3428 390], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65346.504914] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65346.655630] [wlan][2635]mtk_cfg80211_vendor_llstats_get_info:(REQ INFO) llstats_get_info(bss=0)
+[65346.662300] [wlan][2667]mtk_cfg80211_get_station:(REQ INFO) link speed=12010/12010, bw=0/0, rssi=-66, BSSID:[98:b3:**:**:**:b0], idx=0,TxFail=238, TxTimeOut=0, TxOK=643958, RxOK=2282500, FcsErr=0
+[65346.708570] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65346.899569] [08:26:56:340-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3997, ibatt=-3428, jeita_index=5, vbatt_step=5, ibatt_step=0, vbus_step=5, ibus_step=1, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65346.899591] [08:26:56:340-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65346.912442] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65347.124613] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65347.328728] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65347.424545] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65347.436162] [08:26:56:877-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65347.436175] [08:26:56:877-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3997 -3411 389], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65347.536932] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65347.740392] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65347.921622] [08:26:57:362-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3997, ibatt=-3411, jeita_index=5, vbatt_step=5, ibatt_step=0, vbus_step=5, ibus_step=0, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65347.921643] [08:26:57:362-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65347.944525] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65348.065127] batt_thermal real_temp:407
+[65348.138689] PowerDet:Cpu usage:9% user + 4% kernel, comm:RenderThread, pid:3729, pcomm:leonardo.mt6899, ppid:31984
+[65348.138701] PowerDet:Cpu usage:7% user + 2% kernel, comm:leonardo.mt6899, pid:31984, pcomm:leonardo.mt6899, ppid:31984
+[65348.138711] PowerDet:Cpu usage:0% user + 3% kernel, comm:mali-gpuq-kthre, pid:1366, pcomm:mali-gpuq-kthre, ppid:1366
+[65348.148455] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65348.352742] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65348.448575] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65348.459241] [08:26:57:900-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65348.459256] [08:26:57:900-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3994 -3151 389], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65348.556515] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65348.568137] batt_thermal real_temp:407
+[65348.584647] [PPB] throttle cpub_limit_freq=3400000 cpum_limit_freq=3200000 cpul_limit_freq=2200000 gpu_limit_freq=702000
+[65348.760429] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65348.949804] [08:26:58:390-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3994, ibatt=-3151, jeita_index=5, vbatt_step=5, ibatt_step=0, vbus_step=5, ibus_step=1, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65348.949822] [08:26:58:390-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65348.964424] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65348.968356] mtk get sink vbus ma = 4750, pp= 1
+[65348.975904] mtk_charger_start_timer: alarm timer start:1, 65358 971652279
+[65348.983921] mtk_battery_external_power_changed status.intval=3 online.intval=5
+[65348.989733] mtk_battery_external_power_changed event, name:battery online:0, status:1, EOC:0, cur_chr_type:2 old:2, vbat0:[o:0 n:0]
+[65348.992571] get gpueb channel IPI_ID_PPB fail
+[65349.006974] power_supply mtk-master-charger: driver reporting unsupported connected type
+[65349.020583] [PPB] throttle cpub_limit_freq=3400000 cpum_limit_freq=3200000 cpul_limit_freq=2200000 gpu_limit_freq=702000
+[65349.042830] [08:26:58:483-E][mtk_charger]charger_routine_thread:4615 Vbat=3994 vbats=4032 vbus:0 ibus:0 I=-3151 T=38 uisoc:51 type:std>std idx:0 ta_stat:0 swchg_ibat:0 cv:4580000 cmd_pp:-1
+[65349.056456] [08:26:58:497-E][mtk_basic_charger]select_charging_current_limit:327 [CHG_CURRENT_LIMIT](c) pd adapter_imax:6100,2800, thermal_ichg:3500, sic_ichg:7200
+[65349.056492] [08:26:58:497-E][mtk_basic_charger]select_charging_current_limit:736 [CHG_CURRENT_LIMIT] m:0 chg1:-1,-1,2800,3500 chg2:-1,-1,0,0 dvchg1:-1 sc:5500000 -1 0 type:5:0 usb_unlimited:0 usbif:0 usbsm:0 ii:-1,4750 aicl:-1 atm:0 bm:0 b:1 mtbf:0
+[65349.116955] mtk_charger_start_timer: alarm timer start:1, 65359 112703894
+[65349.162622] [08:26:58:603-E][mtk_charger]charger_routine_thread:4615 Vbat=3995 vbats=4035 vbus:0 ibus:0 I=-3218 T=38 uisoc:51 type:std>std idx:0 ta_stat:0 swchg_ibat:0 cv:4580000 cmd_pp:-1
+[65349.168417] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65349.175948] [08:26:58:617-E][mtk_basic_charger]select_charging_current_limit:327 [CHG_CURRENT_LIMIT](c) pd adapter_imax:6100,2800, thermal_ichg:3500, sic_ichg:7200
+[65349.175973] [08:26:58:617-E][mtk_basic_charger]select_charging_current_limit:736 [CHG_CURRENT_LIMIT] m:0 chg1:-1,-1,2800,3500 chg2:-1,-1,0,0 dvchg1:-1 sc:5500000 -1 0 type:5:0 usb_unlimited:0 usbif:0 usbsm:0 ii:-1,4750 aicl:-1 atm:0 bm:0 b:1 mtbf:0
+[65349.372473] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65349.472540] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65349.485761] [08:26:58:926-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65349.485783] [08:26:58:926-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3995 -3218 389], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65349.576511] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65349.688389] [wlan][2635]mtk_cfg80211_vendor_llstats_get_info:(REQ INFO) llstats_get_info(bss=0)
+[65349.699766] [wlan][2667]mtk_cfg80211_get_station:(REQ INFO) link speed=12010/12010, bw=0/0, rssi=-68, BSSID:[98:b3:**:**:**:b0], idx=0,TxFail=238, TxTimeOut=0, TxOK=643962, RxOK=2282502, FcsErr=0
+[65349.784395] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65349.988426] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65350.072480] batt_thermal real_temp:407
+[65350.192451] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65350.226272] [08:26:59:667-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3996, ibatt=-3330, jeita_index=5, vbatt_step=5, ibatt_step=2, vbus_step=5, ibus_step=1, final_step=1, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65350.226300] [08:26:59:667-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65350.245312] mtk get sink vbus ma = 4750, pp= 1
+[65350.253161] mtk_charger_start_timer: alarm timer start:1, 65360 248908818
+[65350.260543] mtk_battery_external_power_changed status.intval=3 online.intval=5
+[65350.265023] mtk_battery_external_power_changed event, name:battery online:0, status:1, EOC:0, cur_chr_type:2 old:2, vbat0:[o:0 n:0]
+[65350.280802] power_supply mtk-master-charger: driver reporting unsupported connected type
+[65350.312588] [08:26:59:753-E][mtk_charger]charger_routine_thread:4615 Vbat=3996 vbats=4025 vbus:0 ibus:0 I=-3330 T=38 uisoc:51 type:std>std idx:0 ta_stat:0 swchg_ibat:0 cv:4580000 cmd_pp:-1
+[65350.325740] [08:26:59:766-E][mtk_basic_charger]select_charging_current_limit:327 [CHG_CURRENT_LIMIT](c) pd adapter_imax:6100,2800, thermal_ichg:3500, sic_ichg:7200
+[65350.325777] [08:26:59:766-E][mtk_basic_charger]select_charging_current_limit:736 [CHG_CURRENT_LIMIT] m:0 chg1:-1,-1,2800,3500 chg2:-1,-1,0,0 dvchg1:-1 sc:5500000 -1 0 type:5:0 usb_unlimited:0 usbif:0 usbsm:0 ii:-1,4750 aicl:-1 atm:0 bm:0 b:1 mtbf:0
+[65350.396613] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65350.496514] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65350.508010] [08:26:59:949-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65350.508029] [08:26:59:949-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3996 -3330 389], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65350.600382] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65350.804418] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65351.008615] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65351.212594] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65351.416564] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65351.474438] [08:27:00:915-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3994, ibatt=-3134, jeita_index=5, vbatt_step=5, ibatt_step=1, vbus_step=5, ibus_step=-1, final_step=-1, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65351.474457] [08:27:00:915-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65351.520336] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65351.529575] [08:27:00:970-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65351.529588] [08:27:00:970-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3994 -3134 389], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65351.578507] conninfra@(consys_thermal_query_mt6899:473) [consys_thermal_query_mt6899] efuse:[0x9c000000][0x00bb00c4][0x0000d8f1][0x77776a69] \x09\x09adie dump: [0x00000042][0x00002100] thermal dump: [0x10004242][0x470340ff][0x42110001][0x00000000][0xffffffff][0x64040000][0x50305a00][0x00004242][0x00004242][0x00084242][0x00004242] 
+[65351.578518] conninfra@(calculate_thermal_temperature:389) y=[66] b=[59] constOffset=[30] [0] [0] => t=[43]
+[65351.578676] conninfra@(conninfra_core_thermal_query:1837) ret=[0] temp=[43]
+[65351.628704] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65351.739379] batt_thermal real_temp:407
+[65351.836722] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65352.053585] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65352.079946] batt_thermal real_temp:407
+[65352.256483] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65352.464610] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65352.503844] [08:27:01:944-E][pd_single_cp_manager]pdm_update_status:704 soc=51, vbatt=3996, ibatt=-3188, jeita_index=5, vbatt_step=5, ibatt_step=2, vbus_step=5, ibus_step=0, final_step=0, target_fcc=3500, fcc_voter=THERMAL_VOTER
+[65352.503859] [08:27:01:944-E][pd_single_cp_manager]pdm_update_status:709 master_cp_bypass=0, bypass_support=0, thermal_limit_fcc=3500, night_charging=0, smart_soclmt=0, smart_pwrboost_trig=0, eea_chg_support_flag=0
+[65352.521866] mtk get sink vbus ma = 4750, pp= 1
+[65352.527281] mtk_charger_start_timer: alarm timer start:1, 65362 523029433
+[65352.532994] mtk_battery_external_power_changed status.intval=3 online.intval=5
+[65352.537519] mtk_battery_external_power_changed event, name:battery online:0, status:1, EOC:0, cur_chr_type:2 old:2, vbat0:[o:0 n:0]
+[65352.544472] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65352.555815] power_supply mtk-master-charger: driver reporting unsupported connected type
+[65352.561628] batt_thermal real_temp:406
+[65352.571661] [08:27:02:012-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65352.571677] [08:27:02:012-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3996 -3188 389], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, gauge_authentic=1, warm_term=0, cell=3, smart_batt:0, smart_fv:0
+[65352.599388] [08:27:02:040-E][mtk_charger]charger_routine_thread:4615 Vbat=3996 vbats=4037 vbus:0 ibus:0 I=-3188 T=38 uisoc:51 type:std>std idx:0 ta_stat:0 swchg_ibat:0 cv:4580000 cmd_pp:-1
+[65352.611513] [08:27:02:052-E][mtk_basic_charger]select_charging_current_limit:327 [CHG_CURRENT_LIMIT](c) pd adapter_imax:6100,2800, thermal_ichg:3500, sic_ichg:7200
+[65352.611534] [08:27:02:052-E][mtk_basic_charger]select_charging_current_limit:736 [CHG_CURRENT_LIMIT] m:0 chg1:-1,-1,2800,3500 chg2:-1,-1,0,0 dvchg1:-1 sc:5500000 -1 0 type:5:0 usb_unlimited:0 usbif:0 usbsm:0 ii:-1,4750 aicl:-1 atm:0 bm:0 b:1 mtbf:0
+[65352.668442] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65352.719351] [wlan][2635]mtk_cfg80211_vendor_llstats_get_info:(REQ INFO) llstats_get_info(bss=0)
+[65352.731550] [wlan][2667]mtk_cfg80211_get_station:(REQ INFO) link speed=12010/12010, bw=0/0, rssi=-68, BSSID:[98:b3:**:**:**:b0], idx=0,TxFail=238, TxTimeOut=0, TxOK=644062, RxOK=2282596, FcsErr=0
+[65352.872607] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65353.076565] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65353.293045] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65353.496482] devfreq 112b0000.ufshci: dvfs failed with (-22) error
+[65353.633745] [XMCHG_MONITOR] set mtk_charger smart_chg done!
+[65353.646060] [08:27:03:087-E][step_jeita_charge]check_charge_data:2232 fcc_votable = [THERMAL_VOTER 3500], icl_votable = [ADAPTER_ICL_VOTER 2800]
+[65353.646075] [08:27:03:087-E][step_jeita_charge]check_charge_data:2237 [CHARGE_LOOP] TYPE = [5 1 12 0], BMS = [51 3996 -3373 389], FULL = [1 0 0 0 0], thermal_level=9, FFC = 1, sw_cv=0, ga
+
+========== LOGCAT - EVENTOS RELACIONADOS ==========
+[exit_code=0]
+11-08 08:27:29.684  1125  8614 D C2MtkVdec: MediaCodec[13] Last Second Decode  62  frame
+11-08 08:27:29.685  1583  1611 E MiuiBooster: "pri is changed by others!!!"
+11-08 08:27:29.747  1901  2321 I TransitionImpl: finishTransition: updateLastSurfacePosition tf=Task{6937f45 #3070 type=standard A=10368:dev.leonardo.mt6899}
+11-08 08:27:29.750  1901  2630 D BarFollowAnimation: checkBarStatus mReparentToOriginParent:false hasTopFullAppTask:true mHomeTask:Task{cea7091 #1 type=home} mCurrentTopTask: Task{6937f45 #3070 type=standard A=10368:dev.leonardo.mt6899} mAssociatedTask: Task{6937f45 #3070 type=standard A=10368:dev.leonardo.mt6899} homeTaskonTop:false mLastAppBarVisible:true mLastHomeBarVisible:false isInSplitScreen:false
+11-08 08:27:29.750  1901  2630 D BarFollowAnimation:  showAppNavBar  packageName = dev.leonardo.mt6899 mHasHideAppSurface = false mIsKeyguardGoingAway = false mNavBarState = -1
+11-08 08:27:29.750  2708  2708 I MiuiWallpaper-ImageWallpaper: onVisibilityChanged, visible = false
+11-08 08:27:29.750  1901  2630 D BarFollowAnimation: calculateAppSurface: task=Task{6937f45 #3070 type=standard A=10368:dev.leonardo.mt6899} appSurface=Surface(name=NavigationBar Container of Task = 3070#66904)/@0xc005266
+11-08 08:27:29.754  5171  5171 D VRI[appfinder]: visibilityChanged oldVisibility=true newVisibility=false
+11-08 08:27:29.754  1182  1233 I mtkpower@impl: [setMode] type:6, enabled:0
+11-08 08:27:29.754  1182  1233 E mtkpower@impl: [setMode] unknown type
+11-08 08:27:29.754  2671  2671 D VRI[Launcher]: visibilityChanged oldVisibility=true newVisibility=false
+11-08 08:27:29.755  1901  2049 I PowerHalWrapper: amsBoostNotify pid:2671,activity:com.miui.home.launcher.Launcher, package:com.mi.android.globallauncher, mProcessCreatePackdev.leonardo.mt6899 
+11-08 08:27:29.758  1901  2049 I mtkpower_client: [PowerHal_Wrap_notifyAppState] com.mi.android.globallauncher/com.miui.home.launcher.Launcher pid=2671 activityId:267999159 state:0
+11-08 08:27:29.758  1164  1180 I vendor.mediatek.hardware.mtkpower_applist-service.mediatek: packName: com.mi.android.globallauncher actName: com.miui.home.launcher.Launcher pid: 2671 activityId: 267999159 uid: 10175 state: 0
+11-08 08:27:29.759  1164  1180 I MTK_APPList: [notifyAPPstate] com.mi.android.globallauncher/com.miui.home.launcher.Launcher, pid=2671, activityId=267999159, uid=10175, mode:Normal state:PAUSED, fps:-1, win:1
+11-08 08:27:29.759  1164  1180 I MTK_APPList: [notifyAPPstate] multi_resumed_app_count: 2
+11-08 08:27:29.759  1164  1180 I MTK_APPList: [notifyAPPstate] multi_resumed_app_info[0] app.morphe.android.youtube/app.morphe.android.youtube.morphe_black_1, pid:16508, activityId:170699198, fps:-1, isMultiWindow:0
+11-08 08:27:29.759  1164  1180 I MTK_APPList: [notifyAPPstate] multi_resumed_app_info[1] dev.leonardo.mt6899/dev.leonardo.mt6899.MainActivity, pid:31984, activityId:90678191, fps:-1, isMultiWindow:1
+11-08 08:27:29.759  1164  1180 I MTK_APPList: [getForegroundAPPCount] 2
+11-08 08:27:29.759  1164  1180 I MTK_APPList: [notifyNetdUID] 10368
+11-08 08:27:29.759  2963  3122 D MiuiDecorationHomeController: relayout::taskId=1, userId=0, visible=false, bounds=Rect(0, 0 - 1268, 2756), focused=false, activityType=2, displayId=0, baseActivity=ComponentInfo{com.mi.android.globallauncher/com.miui.home.launcher.Launcher}, topActivity=ComponentInfo{com.mi.android.globallauncher/com.miui.home.launcher.Launcher}, callers=com.android.wm.shell.multitasking.miuimultiwinswitch.miuiwindowdecor.decoration.MiuiDecorationController.relayout:4 com.android.wm.shell.multitasking.miuimultiwinswitch.miuiwindowdecor.MulWinSwitchDecorViewModel.onTaskInfoChanged:18 com.android.wm.shell.multitasking.common.taskmanager.MultiTaskingTaskListener.onTaskInfoChanged:47 com.android.wm.shell.ShellTaskOrganizer.onTaskInfoChanged:136 android.window.TaskOrganizer$1.lambda$onTaskInfoChanged$6:300 
+11-08 08:27:29.760  1164  1180 I MTK_APPList: [notifyPID] 31984
+11-08 08:27:29.762  1901  3154 D BarFollowAnimation: pairAppearanceRegionAndWin win=Window{3bc0f5 u0 dev.leonardo.mt6899/dev.leonardo.mt6899.MainActivity} 0
+11-08 08:27:29.762  1901  3154 D BarFollowAnimation: isAppTaskBarOnTop win:Window{3bc0f5 u0 dev.leonardo.mt6899/dev.leonardo.mt6899.MainActivity} (mCurrentTopTask:Task{6937f45 #3070 type=standard A=10368:dev.leonardo.mt6899} : true); (mAssociatedTask:Task{6937f45 #3070 type=standard A=10368:dev.leonardo.mt6899} : true); (mHomeTask:Task{cea7091 #1 type=home} : false); mReparentToOriginParent:false mLastAppBarVisible:true mLastHomeBarVisible:false
+11-08 08:27:29.768  1901  5843 D BarFollowAnimation: pairAppearanceRegionAndWin win=Window{3bc0f5 u0 dev.leonardo.mt6899/dev.leonardo.mt6899.MainActivity} 0
+11-08 08:27:29.768  1901  5843 D BarFollowAnimation: isAppTaskBarOnTop win:Window{3bc0f5 u0 dev.leonardo.mt6899/dev.leonardo.mt6899.MainActivity} (mCurrentTopTask:Task{6937f45 #3070 type=standard A=10368:dev.leonardo.mt6899} : true); (mAssociatedTask:Task{6937f45 #3070 type=standard A=10368:dev.leonardo.mt6899} : true); (mHomeTask:Task{cea7091 #1 type=home} : false); mReparentToOriginParent:false mLastAppBarVisible:true mLastHomeBarVisible:false
+11-08 08:27:29.770  1901  2050 D BarFollowAnimation: pairAppearanceRegionAndWin win=Window{3bc0f5 u0 dev.leonardo.mt6899/dev.leonardo.mt6899.MainActivity} 0
+11-08 08:27:29.770  1901  2050 D BarFollowAnimation: isAppTaskBarOnTop win:Window{3bc0f5 u0 dev.leonardo.mt6899/dev.leonardo.mt6899.MainActivity} (mCurrentTopTask:Task{6937f45 #3070 type=standard A=10368:dev.leonardo.mt6899} : true); (mAssociatedTask:Task{6937f45 #3070 type=standard A=10368:dev.leonardo.mt6899} : true); (mHomeTask:Task{cea7091 #1 type=home} : false); mReparentToOriginParent:false mLastAppBarVisible:true mLastHomeBarVisible:false
+11-08 08:27:29.784  5121  5121 I LauncherOverlayCallback: handleMessage WHAT_ACTIVITY_STATE_CHANGED what：0
+11-08 08:27:29.785  9240 19353 D ProcessObserverV15: onForegroundActivitiesChanged:pid = 2671,activity-uid=10175,foregroundActivities=false
+11-08 08:27:29.985  1901  2486 D Aurogon :  onForegroundActivitiesChanged packageName = com.mi.android.globallauncher
+11-08 08:27:30.019  1182  1272 I mtkpower@impl: [powerd_req] TIMER_MSG_PERF_LOCK_TIMEOUT hdl:103584
+11-08 08:27:30.021  1182  1272 I libPowerHal: [recordCPUFreqInfo] set cluster[0] min(MTKPOWER_HINT_AUDIO_POWER_DL): 400000 max(-1): -1 cluster[1] min(-1): -1 max(-1): -1 cluster[2] min(-1): -1 max(-1): -1
+11-08 08:27:30.111  1182  1272 I mtkpower@impl: [powerd_req] TIMER_MSG_PERF_LOCK_TIMEOUT hdl:103583
+11-08 08:27:30.125  1901  2565 D PerfMTKStubImpl: perfLockReleaseHandler: 103583
+11-08 08:27:30.125  1901  2565 I mtkpower_client: perf_lock_rel, hdl:103583, pid: 1901, tid:2565
+11-08 08:27:30.125  1901  2565 D MTKSchedBoost: stopBoostInternal
+11-08 08:27:30.126  1901  2565 D PerfMTKStubImpl: perfLockReleaseHandler: 0
+11-08 08:27:30.126  1901  2565 D MTKSchedBoost: stopBoostInternal
+11-08 08:27:30.126  1901  2565 D PerfMTKStubImpl: perfLockReleaseHandler: 0
+11-08 08:27:30.126  1901  2565 D MTKSchedBoost: stopBoostInternal
+11-08 08:27:30.189  1271  1271 I BufferQueueProducer: [dev.leonardo.mt6899/dev.leonardo.mt6899.MainActivity#67042](this:0xb400007adb246390,id:-1,api:0,p:-1,c:1271) queueBuffer: fps=118.79 dur=1001.76 max=25.13 min=7.40
+11-08 08:27:30.505  5431  9826 D android.media.audiofx.presenter.MTKEffectPresenter: isSpatialAudioActive: false, from: com.miui.powerkeeper
+11-08 08:27:30.509  5431  9826 D android.media.audiofx.presenter.MTKEffectPresenter: isSpatialAudioActive: false, from: com.miui.powerkeeper
+11-08 08:27:30.542  2671  2671 I TransitionCallback: clear leash = Surface(name=TL_Surface(name=Task=3070#66902)/@0xbe32e74_transition-leash#67040)/@0xb3e7f37, key = ComponentInfo{dev.leonardo.mt6899/dev.leonardo.mt6899.MainActivity}#3070
+11-08 08:27:30.715  1125  8614 D C2MtkVdec: MediaCodec[13] Last Second Decode  62  frame
+11-08 08:27:31.148  1901  1956 D GnssSsruImpl: onLocationPermissionsChanged provider:network packageName:com.android.chrome
+11-08 08:27:31.149  1901  1956 D GnssSsruImpl: onLocationPermissionsChanged provider:passive packageName:com.android.chrome
+11-08 08:27:31.191  1271  1271 I BufferQueueProducer: [dev.leonardo.mt6899/dev.leonardo.mt6899.MainActivity#67042](this:0xb400007adb246390,id:-1,api:0,p:-1,c:1271) queueBuffer: fps=120.74 dur=1002.12 max=8.97 min=7.57
+11-08 08:27:31.513 16508  8605 I MediaCodec: [mId: 13] [video-debug-dec] Stats 5007ms:Client:app.morphe.android.youtube,Component:c2.mtk.av1.decoder,Qin:314(Avg:15ms),DQin:0/0,Render:287(Avg:17ms),Drop:1,DQout:0/0
+11-08 08:27:31.662  2939  3669 D MTK_RIL_HOOK(com.android.phone): onSendAtCommandByMtkTelephonyManagerEx, atCmd= AT+ERFIDX=0,3
+11-08 08:27:31.662  2939  3669 D MTK_RIL_HOOK(com.android.phone): onGetByteCmd, atCmd AT+ERFIDX=0,3
+11-08 08:27:31.662  2939  3669 D MTK_RIL_HOOK(com.android.phone): CMD construct over
+11-08 08:27:31.662  2939  2939 E MtkPhoneIntfMgrEx: MainThreadHandler.handleMessage : 112
+11-08 08:27:31.662  2939  2939 I MtkPhoneIntfMgrEx: get main phone for instead
+11-08 08:27:31.666  1526  1975 D mtkfusionrild: [xiaomi_mtkril_hook.cpp:78] xiaomi_hook_header_judge: Not XIAOMI_MTK_HOOK header
+11-08 08:27:31.681  2939  2939 E MtkPhoneIntfMgrEx: MainThreadHandler.handleMessage : 113
+11-08 08:27:31.682  2939  3669 D MTK_RIL_HOOK(com.android.phone): ret is :6
+11-08 08:27:31.682  2939  3669 D MTK_RIL_HOOK(com.android.phone): ret>0
+11-08 08:27:31.682  2939  3669 D MTK_RIL_HOOK(com.android.phone): AT return string is:
+11-08 08:27:31.682  2939  3669 D MTK_RIL_HOOK(com.android.phone): OK
+11-08 08:27:31.682  2939  3669 D MTK_RIL_HOOK(com.android.phone): onMtkSendImbalanceAtCommand...
+11-08 08:27:31.682  2939  3669 D MTK_RIL_HOOK(com.android.phone): final data is MIPC_SET_DYNAMIC_ANT_BIAS2
+11-08 08:27:31.692  1526  1975 D mtkfusionrild: SUB[0][RfxXiaomiHandler.cpp:117] requestXiaomiHookStrings: instance = 0x7f427690
+11-08 08:27:31.692  1526  1975 D mtkfusionrild: SUB[0][RfxXiaomiHandler.cpp:133] requestXiaomiHookStrings: xiaomi process start, data[0] = MIPC_SET_DYNAMIC_ANT_BIAS, mipcId = 8
+11-08 08:27:31.692  1526  1975 D mtkfusionrild: SUB[0][RmmXiaomiMipcRequest.cpp:884] processXiaomiMipc: Received mipcMsg:MIPC_SET_DYNAMIC_ANT_BIAS, param num:2
+11-08 08:27:31.692  1526  1975 D mtkfusionrild: SUB[0][RmmXiaomiMipcRequest.cpp:465] requestSetDynamicAntBias: requestSetDynamicAntBias 2
+11-08 08:27:31.692  1526  1975 I mtkfusionrild: SUB[0][RfxXiaomiHandler.cpp:227] callToMipcMsgSyncEx: callToMipcMsgSyncEx mipcSlotId:1, mipcId:114d, timeout_ms:2000
+11-08 08:27:31.693  1526  1975 D mtkfusionrild: SUB[0][RfxXiaomiHandler.cpp:231] callToMipcMsgSyncEx: msgData = 0xbf3f9d50
+11-08 08:27:31.693  1526  1975 D mtkfusionrild: SUB[0][RfxXiaomiHandler.cpp:239] callToMipcMsgSyncEx: mipc_msg_set_timeout_once is called
+11-08 08:27:31.701  1526  1975 D mtkfusionrild: SUB[0][RfxXiaomiHandler.cpp:242] callToMipcMsgSyncEx: causeValue = 0x00000000
+11-08 08:27:31.701  1526  1975 I mtkfusionrild: SUB[0][RfxXiaomiHandler.cpp:251] callToMipcMsgSyncEx: callToMipcMsgSyncEx return mipcSlotId:1, mipcId:114e
+11-08 08:27:31.702  1526  1975 I mtkfusionrild: SUB[0][RmmOemRequestHandler.h:60] enqueueResponseMessageOfRfxDispatchThread: this = 0x7f427680, ptrRfxMclMessage = 0x5f3fa010
+11-08 08:27:31.702  1526  1975 D mtkfusionrild: SUB[0][RmmXiaomiMipcRequest.cpp:475] requestSetDynamicAntBias: modem received requestSetDynamicAntBias.
+11-08 08:27:31.702  1526  1975 D mtkfusionrild: SUB[0][RmmXiaomiDVCRequestHandler.cpp:1785] processXiaomiMipc: processXiaomiMipc Invalid MIPC Request.
+11-08 08:27:31.743  1620  1668 D AALService: [CRTC_116] onALIChanged: 18 -> 24
+11-08 08:27:31.765  1125  8614 D C2MtkVdec: MediaCodec[13] Last Second Decode  63  frame
+11-08 08:27:32.077  1182  1238 D ExtendedPerfBoost: [restore_callback_expires] thermalbreak callback
+11-08 08:27:32.077  1182  1238 D ExtendedPerfBoost: [trig_thermalbreak] curr target time is same last target time
+11-08 08:27:32.077  1182  1238 D ExtendedPerfBoost: [setThermalBreak] [setThermalBreak] : boost:0
+11-08 08:27:32.145  5431  9826 D android.media.audiofx.presenter.MTKEffectPresenter: isSpatialAudioActive: false, from: com.miui.powerkeeper
+11-08 08:27:32.149  5431  9826 D android.media.audiofx.presenter.MTKEffectPresenter: isSpatialAudioActive: false, from: com.miui.powerkeeper
+11-08 08:27:32.193  1271  1271 I BufferQueueProducer: [dev.leonardo.mt6899/dev.leonardo.mt6899.MainActivity#67042](this:0xb400007adb246390,id:-1,api:0,p:-1,c:1271) queueBuffer: fps=120.72 dur=1002.36 max=8.84 min=7.59
+
+========== INVENTÁRIO DE INTERFACES DO KERNEL - SOMENTE LEITURA ==========
+[exit_code=0]
+[módulos e parâmetros publicados]
+/sys/module/8250/parameters/nr_uarts | mode=644 | owner=root:root
+value=4  | root_writable=yes
+/sys/module/8250/parameters/share_irqs | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/8250/parameters/skip_txen_test | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/aee_aed/parameters/poffreason | mode=644 | owner=root:root
+value=AP_WDT  | root_writable=yes
+/sys/module/aee_aed/parameters/pureason | mode=644 | owner=root:root
+value=reboot  | root_writable=yes
+/sys/module/aee_aed/parameters/rr_reported | mode=600 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/apu_top/parameters/aputop_func_sel | mode=644 | owner=root:root
+value=aputop_func_sel:0  | root_writable=yes
+/sys/module/apu_top/parameters/fake_bin | mode=444 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/apu_top/parameters/fake_raise | mode=444 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/apu_top/parameters/fake_seg | mode=444 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/apu_top/parameters/fpga_type | mode=444 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/apusys/parameters/apu_pbm_func_sel | mode=644 | owner=root:root
+value=soc_apu_budget:0  | root_writable=yes
+/sys/module/binder/parameters/debug_mask | mode=644 | owner=root:root
+value=7  | root_writable=yes
+/sys/module/binder/parameters/devices | mode=444 | owner=root:root
+value=binder,hwbinder,vndbinder  | root_writable=yes
+/sys/module/binder/parameters/stop_on_user_error | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/binder_alloc/parameters/debug_mask | mode=644 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/blk_cgroup/parameters/blkcg_debug_stats | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/blk_crypto/parameters/num_prealloc_crypt_ctxs | mode=444 | owner=root:root
+value=128  | root_writable=yes
+/sys/module/block/parameters/events_dfl_poll_msecs | mode=644 | owner=root:root
+value=1000  | root_writable=yes
+/sys/module/block2mtd/parameters/block2mtd | mode=200 | owner=root:root
+value= | root_writable=yes
+/sys/module/bluetooth/parameters/disable_ertm | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/bluetooth/parameters/disable_esco | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/bluetooth/parameters/enable_ecred | mode=644 | owner=root:root
+value=Y  | root_writable=yes
+/sys/module/bootmonitor/parameters/blackbox | mode=600 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/bootmonitor/parameters/bootmode | mode=644 | owner=root:root
+value=  | root_writable=yes
+/sys/module/bootmonitor/parameters/devname | mode=644 | owner=root:root
+value=  | root_writable=yes
+/sys/module/bootmonitor/parameters/fingerprint | mode=644 | owner=root:root
+value=  | root_writable=yes
+/sys/module/bootprof/parameters/lk_t | mode=644 | owner=root:root
+value=1850  | root_writable=yes
+/sys/module/bootprof/parameters/logo_t | mode=644 | owner=root:root
+value=584  | root_writable=yes
+/sys/module/bootprof/parameters/pl_t | mode=644 | owner=root:root
+value=916  | root_writable=yes
+/sys/module/brd/parameters/max_part | mode=444 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/brd/parameters/rd_nr | mode=444 | owner=root:root
+value=16  | root_writable=yes
+/sys/module/brd/parameters/rd_size | mode=444 | owner=root:root
+value=8192  | root_writable=yes
+/sys/module/bt_drv_6899/parameters/btmtk_intf_num | mode=444 | owner=root:root
+value=4  | root_writable=yes
+/sys/module/c2k_usb/parameters/base_cache_cnt | mode=644 | owner=root:root
+value=1024  | root_writable=yes
+/sys/module/c2k_usb/parameters/c2k_usb_dbg_level | mode=644 | owner=root:root
+value=5  | root_writable=yes
+/sys/module/c2k_usb/parameters/drop_check_interval | mode=644 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/c2k_usb/parameters/dump_mask | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/c2k_usb/parameters/full_dump | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/c2k_usb/parameters/max_cache_cnt | mode=644 | owner=root:root
+value=2048  | root_writable=yes
+/sys/module/c2ps_perf_ioctl/parameters/debug_log_on | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/camera_dpe_isp8/parameters/DPE_debug_log_en | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/camera_dpe_isp8/parameters/dpe_egn_debug | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/camera_eeprom_v4l2/parameters/cam_eeprom_debug | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/can/parameters/stats_timer | mode=444 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/can_gw/parameters/max_hops | mode=444 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/cdc_ncm/parameters/prefer_mbim | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/cec/parameters/debug | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/cec/parameters/debug_phys_addr | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/cfg80211/parameters/bss_entries_limit | mode=644 | owner=root:root
+value=1000  | root_writable=yes
+/sys/module/cfg80211/parameters/cfg80211_disable_40mhz_24ghz | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/cfg80211/parameters/ieee80211_regdom | mode=444 | owner=root:root
+value=00  | root_writable=yes
+/sys/module/connfem/parameters/config_file | mode=644 | owner=root:root
+value=connfem.cfg  | root_writable=yes
+/sys/module/connfem/parameters/connfem_major | mode=644 | owner=root:root
+value=471  | root_writable=yes
+/sys/module/connfem/parameters/epa_elna_hwid | mode=644 | owner=root:root
+value=4294967295  | root_writable=yes
+/sys/module/connfem/parameters/hw_name | mode=644 | owner=root:root
+value=  | root_writable=yes
+/sys/module/connfem/parameters/hwid | mode=644 | owner=root:root
+value=4294967295  | root_writable=yes
+/sys/module/conninfra/parameters/g_conn_adaptor_major | mode=644 | owner=root:root
+value=164  | root_writable=yes
+/sys/module/cpufreq/parameters/default_governor | mode=444 | owner=root:root
+value=conservative  | root_writable=yes
+/sys/module/cpufreq/parameters/off | mode=444 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/cpuidle/parameters/governor | mode=444 | owner=root:root
+value=  | root_writable=yes
+/sys/module/cpuidle/parameters/off | mode=444 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/cryptomgr/parameters/notests | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/cryptomgr/parameters/panic_on_fail | mode=444 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/debug_kinfo/parameters/build_info | mode=200 | owner=root:root
+value= | root_writable=yes
+/sys/module/dm_bufio/parameters/allocated_get_free_pages_bytes | mode=444 | owner=root:root
+value=8757248  | root_writable=yes
+/sys/module/dm_bufio/parameters/allocated_kmem_cache_bytes | mode=444 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/dm_bufio/parameters/allocated_vmalloc_bytes | mode=444 | owner=root:root
+value=225280  | root_writable=yes
+/sys/module/dm_bufio/parameters/current_allocated_bytes | mode=444 | owner=root:root
+value=8982528  | root_writable=yes
+/sys/module/dm_bufio/parameters/max_age_seconds | mode=644 | owner=root:root
+value=86400  | root_writable=yes
+/sys/module/dm_bufio/parameters/max_cache_size_bytes | mode=644 | owner=root:root
+value=235032576  | root_writable=yes
+/sys/module/dm_bufio/parameters/peak_allocated_bytes | mode=644 | owner=root:root
+value=19103744  | root_writable=yes
+/sys/module/dm_bufio/parameters/retain_bytes | mode=644 | owner=root:root
+value=262144  | root_writable=yes
+/sys/module/dm_mod/parameters/dm_mq_nr_hw_queues | mode=644 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/dm_mod/parameters/dm_mq_queue_depth | mode=644 | owner=root:root
+value=2048  | root_writable=yes
+/sys/module/dm_mod/parameters/dm_numa_node | mode=644 | owner=root:root
+value=-1  | root_writable=yes
+/sys/module/dm_mod/parameters/kcopyd_subjob_size_kb | mode=644 | owner=root:root
+value=512  | root_writable=yes
+/sys/module/dm_mod/parameters/reserved_bio_based_ios | mode=644 | owner=root:root
+value=16  | root_writable=yes
+/sys/module/dm_mod/parameters/reserved_rq_based_ios | mode=644 | owner=root:root
+value=256  | root_writable=yes
+/sys/module/dm_mod/parameters/stats_current_allocated_bytes | mode=444 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/dm_mod/parameters/swap_bios | mode=644 | owner=root:root
+value=2048  | root_writable=yes
+/sys/module/dm_mod/parameters/use_blk_mq | mode=644 | owner=root:root
+value=Y  | root_writable=yes
+/sys/module/dm_snapshot/parameters/snapshot_copy_throttle | mode=644 | owner=root:root
+value=100  | root_writable=yes
+/sys/module/dm_snapshot/parameters/snapshot_cow_threshold | mode=644 | owner=root:root
+value=2048  | root_writable=yes
+/sys/module/dm_user/parameters/dm_user_daemon_timeout_msec | mode=644 | owner=root:root
+value=4000  | root_writable=yes
+/sys/module/dm_verity/parameters/prefetch_cluster | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/dm_verity/parameters/use_bh_bytes | mode=644 | owner=root:root
+value=8192,8192,8192,0  | root_writable=yes
+/sys/module/drm/parameters/debug | mode=600 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/drm/parameters/edid_fixup | mode=400 | owner=root:root
+value=6  | root_writable=yes
+/sys/module/drm/parameters/timestamp_precision_usec | mode=600 | owner=root:root
+value=20  | root_writable=yes
+/sys/module/drm/parameters/vblankoffdelay | mode=600 | owner=root:root
+value=5000  | root_writable=yes
+/sys/module/drm_display_helper/parameters/dp_aux_i2c_speed_khz | mode=644 | owner=root:root
+value=10  | root_writable=yes
+/sys/module/drm_display_helper/parameters/dp_aux_i2c_transfer_size | mode=644 | owner=root:root
+value=16  | root_writable=yes
+/sys/module/drm_kms_helper/parameters/poll | mode=600 | owner=root:root
+value=Y  | root_writable=yes
+/sys/module/dynamic_debug/parameters/verbose | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/edac_core/parameters/check_pci_errors | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/edac_core/parameters/edac_mc_log_ce | mode=644 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/edac_core/parameters/edac_mc_log_ue | mode=644 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/edac_core/parameters/edac_mc_panic_on_ue | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/edac_core/parameters/edac_mc_poll_msec | mode=644 | owner=root:root
+value=1000  | root_writable=yes
+/sys/module/edac_core/parameters/edac_pci_panic_on_pe | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/efi_pstore/parameters/pstore_disable | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/efi_pstore/parameters/record_size | mode=444 | owner=root:root
+value=1024  | root_writable=yes
+/sys/module/ehci_hcd/parameters/ignore_oc | mode=444 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/ehci_hcd/parameters/log2_irq_thresh | mode=444 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/ehci_hcd/parameters/park | mode=444 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/erofs/parameters/global_buffers | mode=444 | owner=root:root
+value=8  | root_writable=yes
+/sys/module/erofs/parameters/reserved_pages | mode=444 | owner=root:root
+value=64  | root_writable=yes
+/sys/module/f2fs/parameters/num_compress_pages | mode=444 | owner=root:root
+value=512  | root_writable=yes
+/sys/module/firmware_class/parameters/path | mode=644 | owner=root:root
+value=/vendor/firmware,/odm/firmware | root_writable=yes
+/sys/module/frs/parameters/frs_nl_id | mode=644 | owner=root:root
+value=31  | root_writable=yes
+/sys/module/frs/parameters/frs_pid | mode=644 | owner=root:root
+value=-1  | root_writable=yes
+/sys/module/fscrypto/parameters/num_prealloc_crypto_pages | mode=444 | owner=root:root
+value=32  | root_writable=yes
+/sys/module/ftdi_sio/parameters/ndi_latency_timer | mode=644 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/fuse/parameters/allow_sys_admin_access | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/fuse/parameters/max_user_bgreq | mode=644 | owner=root:root
+value=3659  | root_writable=yes
+/sys/module/fuse/parameters/max_user_congthresh | mode=644 | owner=root:root
+value=3659  | root_writable=yes
+/sys/module/ged/parameters/boost_gpu_enable | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/ged/parameters/g_gpu_timer_based_emu | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/ged/parameters/ged_boost_enable | mode=644 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/ged/parameters/ged_force_mdp_enable | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/ged/parameters/ged_log_perf_trace_enable | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/ged/parameters/ged_monitor_3D_fence_debug | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/ged/parameters/ged_monitor_3D_fence_disable | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/ged/parameters/ged_monitor_3D_fence_systrace | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/ged/parameters/ged_smart_boost | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/ged/parameters/gpu_block | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/ged/parameters/gpu_bottom_freq | mode=644 | owner=root:root
+value=260000  | root_writable=yes
+/sys/module/ged/parameters/gpu_cust_boost_freq | mode=644 | owner=root:root
+value=260000  | root_writable=yes
+/sys/module/ged/parameters/gpu_cust_upbound_freq | mode=644 | owner=root:root
+value=1508000  | root_writable=yes
+/sys/module/ged/parameters/gpu_debug_enable | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/ged/parameters/gpu_dvfs_enable | mode=644 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/ged/parameters/gpu_idle | mode=644 | owner=root:root
+value=62  | root_writable=yes
+/sys/module/ged/parameters/gpu_loading | mode=644 | owner=root:root
+value=38  | root_writable=yes
+/sys/module/ged/parameters/gpu_opp_logs_enable | mode=644 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/ged/parameters/is_GED_KPI_enabled | mode=644 | owner=root:root
+value=1  | root_writable=yes
+/sys/module/gspca_main/parameters/debug | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/hci_uart/parameters/irq_polarity | mode=444 | owner=root:root
+value=-1  | root_writable=yes
+/sys/module/hid/parameters/ignore_special_drivers | mode=600 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/hid_apple/parameters/fnmode | mode=644 | owner=root:root
+value=3  | root_writable=yes
+/sys/module/hid_apple/parameters/iso_layout | mode=644 | owner=root:root
+value=-1  | root_writable=yes
+/sys/module/hid_apple/parameters/swap_ctrl_cmd | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/hid_apple/parameters/swap_fn_leftctrl | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/hid_apple/parameters/swap_opt_cmd | mode=644 | owner=root:root
+value=0  | root_writable=yes
+/sys/module/hid_logitech_hidpp/parameters/disable_tap_to_click | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/hid_magicmouse/parameters/emulate_3button | mode=644 | owner=root:root
+value=Y  | root_writable=yes
+/sys/module/hid_magicmouse/parameters/emulate_scroll_wheel | mode=644 | owner=root:root
+value=Y  | root_writable=yes
+/sys/module/hid_magicmouse/parameters/report_undeciphered | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/hid_magicmouse/parameters/scroll_acceleration | mode=644 | owner=root:root
+value=N  | root_writable=yes
+/sys/module/hid_magicmouse/parameters/scroll_speed | mode=644 | owner=root:root
+value=32  | root_writable=yes
+[APU / NPU / DSP / VPU / MDLA / IOMMU]
+/sys/class/devfreq/13000000.mali
+/sys/class/misc/adsp
+/sys/class/misc/scp_chre_manager
+/sys/class/misc/mali0
+/sys/class/misc/adsp_1
+/sys/class/misc/apuext
+/sys/class/misc/apusys
+/sys/class/misc/apusys_sapu
+/sys/class/misc/uinput
+/sys/class/misc/adsp_0
+/sys/class/misc/scp
+/sys/bus/platform/devices/19019000.iommu
+/sys/bus/platform/devices/13000000.mali
+/sys/bus/platform/devices/1c400000.scp
+/sys/bus/platform/devices/190e1000.apusys-rv
+/sys/bus/platform/devices/mtk-apu-mem-code
+/sys/bus/platform/devices/19010000.iommu
+/sys/bus/platform/devices/19024000.apusys-hw-logger
+/sys/bus/platform/devices/disable-unused:disable-unused-pd-adsp-ao@9e
+/sys/bus/platform/devices/1033c000.m7-iommu2-apb
+/sys/bus/platform/devices/disable-unused:disable-unused-pd-adsp-infra@9d
+/sys/bus/platform/devices/soc:audio-dsp-hrt-bw
+/sys/bus/platform/devices/1e81e000.iommu
+/sys/bus/platform/devices/19015000.iommu
+/sys/bus/platform/devices/mtk-apu-mem-data
+/sys/bus/platform/devices/10334000.m4-iommu4-apb
+/sys/bus/platform/devices/10336000.m6-iommu1-apb
+/sys/bus/platform/devices/10330000.m4-iommu0-apb
+/sys/bus/platform/devices/1e816000.iommu
+/sys/bus/platform/devices/1e81a000.iommu
+/sys/bus/platform/devices/19011000.iommu
+/sys/bus/platform/devices/soc:vcp-iommu-venc
+/sys/bus/platform/devices/connscp
+/sys/bus/platform/devices/1033b000.m7-iommu1-apb
+/sys/bus/platform/devices/1e81f000.iommu
+/sys/bus/platform/devices/19016000.iommu
+/sys/bus/platform/devices/soc:vcu-iommu-venc
+/sys/bus/platform/devices/1025f000.mm-vpu-m1-sub-common
+/sys/bus/platform/devices/10339000.m6-iommu4-apb
+/sys/bus/platform/devices/10333000.m4-iommu3-apb
+/sys/bus/platform/devices/10335000.m6-iommu0-apb
+/sys/bus/platform/devices/1e817000.iommu
+/sys/bus/platform/devices/1e81b000.iommu
+/sys/bus/platform/devices/19012000.iommu
+/sys/bus/platform/devices/1c000000.apu-top-3
+/sys/bus/platform/devices/1025e000.mm-vpu-m0-sub-common
+/sys/bus/platform/devices/trusty:trusty-sapu
+/sys/bus/platform/devices/1e000000.adspsys
+/sys/bus/platform/devices/19017000.iommu
+/sys/bus/platform/devices/1033e000.m7-iommu4-apb
+/sys/bus/platform/devices/mdla
+/sys/bus/platform/devices/1023c000.ccci-scp
+/sys/bus/platform/devices/1033a000.m7-iommu0-apb
+/sys/bus/platform/devices/snd-audio-dsp
+/sys/bus/platform/devices/1e0c0000.adsp-core1
+/sys/bus/platform/devices/1e818000.iommu
+/sys/bus/platform/devices/10338000.m6-iommu3-apb
+/sys/bus/platform/devices/1cb21000.scp-clk-ctrl
+/sys/bus/platform/devices/10332000.m4-iommu2-apb
+/sys/bus/platform/devices/apusys-apummu
+/sys/bus/platform/devices/soc:vcp-iommu-sec
+/sys/bus/platform/devices/soc:scp-dvfs
+/sys/bus/platform/devices/mvpu
+/sys/bus/platform/devices/1e81c000.iommu
+/sys/bus/platform/devices/19013000.iommu
+/sys/bus/platform/devices/snd-scp-ultra
+/sys/bus/platform/devices/soc:mtkheap-page-sapu
+/sys/bus/platform/devices/19018000.iommu
+/sys/bus/platform/devices/soc:mtk-iommu-debug
+/sys/bus/platform/devices/1033d000.m7-iommu3-apb
+/sys/bus/platform/devices/1e050000.adsp-core0
+/sys/bus/platform/devices/1e819000.iommu
+/sys/bus/platform/devices/soc:vcp-iommu-vdec
+/sys/bus/platform/devices/disable-unused:disable-unused-pd-adsp-top-dormant@9c
+/sys/bus/platform/devices/soc:vcp-iommu-work
+/sys/bus/platform/devices/10337000.m6-iommu2-apb
+/sys/bus/platform/devices/1e81d000.iommu
+/sys/bus/platform/devices/10331000.m4-iommu1-apb
+/sys/bus/platform/devices/19014000.iommu
+/sys/bus/platform/devices/ged
+/sys/kernel/thermal/apu_atc
+/sys/kernel/thermal/is_apu_limit
+/sys/kernel/thermal/apu_info
+/sys/kernel/mm/transparent_hugepage/khugepaged
+/sys/kernel/tracing/events/iommu
+/sys/kernel/tracing/events/apu_power_events
+/sys/kernel/tracing/events/apupwr_events
+/sys/kernel/tracing/events/met_mdlasys_events
+/sys/kernel/tracing/events/met_vpusys_events
+/sys/kernel/tracing/events/vpu_events
+/sys/kernel/tracing/events/apusys_rv_events
+/sys/kernel/tracing/events/mtk_apu_events
+/sys/kernel/tracing/events/ged
+/sys/kernel/tracing/events/mali
+/sys/kernel/tracing/events/mtk_snd_dsp
+/sys/kernel/slab/iommu_iova
+/sys/kernel/slab/iommu_iova/total_objects
+/sys/kernel/slab/iommu_iova/cpu_slabs
+/sys/kernel/slab/iommu_iova/objects
+/sys/kernel/slab/iommu_iova/objects_partial
+/sys/kernel/slab/iommu_iova/cpu_partial
+/sys/kernel/slab/iommu_iova/validate
+/sys/kernel/slab/iommu_iova/skip_kfence
+/sys/kernel/slab/iommu_iova/min_partial
+/sys/kernel/slab/iommu_iova/poison
+/sys/kernel/slab/iommu_iova/red_zone
+/sys/kernel/slab/iommu_iova/slabs
+/sys/kernel/slab/iommu_iova/destroy_by_rcu
+/sys/kernel/slab/iommu_iova/usersize
+/sys/kernel/slab/iommu_iova/sanity_checks
+/sys/kernel/slab/iommu_iova/align
+/sys/kernel/slab/iommu_iova/aliases
+/sys/kernel/slab/iommu_iova/store_user
+/sys/kernel/slab/iommu_iova/trace
+/sys/kernel/slab/iommu_iova/reclaim_account
+/sys/kernel/slab/iommu_iova/order
+/sys/kernel/slab/iommu_iova/object_size
+/sys/kernel/slab/iommu_iova/shrink
+/sys/kernel/slab/iommu_iova/hwcache_align
+/sys/kernel/slab/iommu_iova/objs_per_slab
+/sys/kernel/slab/iommu_iova/partial
+/sys/kernel/slab/iommu_iova/slabs_cpu_partial
+/sys/kernel/slab/iommu_iova/ctor
+/sys/kernel/slab/iommu_iova/slab_size
+/sys/kernel/slab/khugepaged_mm_slot
+/sys/kernel/slab/khugepaged_mm_slot/total_objects
+/sys/kernel/slab/khugepaged_mm_slot/cpu_slabs
+/sys/kernel/slab/khugepaged_mm_slot/objects
+/sys/kernel/slab/khugepaged_mm_slot/objects_partial
+/sys/kernel/slab/khugepaged_mm_slot/cpu_partial
+/sys/kernel/slab/khugepaged_mm_slot/validate
+/sys/kernel/slab/khugepaged_mm_slot/skip_kfence
+/sys/kernel/slab/khugepaged_mm_slot/min_partial
+/sys/kernel/slab/khugepaged_mm_slot/poison
+/sys/kernel/slab/khugepaged_mm_slot/red_zone
+/sys/kernel/slab/khugepaged_mm_slot/slabs
+/sys/kernel/slab/khugepaged_mm_slot/destroy_by_rcu
+/sys/kernel/slab/khugepaged_mm_slot/usersize
+/sys/kernel/slab/khugepaged_mm_slot/sanity_checks
+/sys/kernel/slab/khugepaged_mm_slot/align
+/sys/kernel/slab/khugepaged_mm_slot/aliases
+/sys/kernel/slab/khugepaged_mm_slot/store_user
+/sys/kernel/slab/khugepaged_mm_slot/trace
+/sys/kernel/slab/khugepaged_mm_slot/reclaim_account
+/sys/kernel/slab/khugepaged_mm_slot/order
+/sys/kernel/slab/khugepaged_mm_slot/object_size
+/sys/kernel/slab/khugepaged_mm_slot/shrink
+/sys/kernel/slab/khugepaged_mm_slot/hwcache_align
+/sys/kernel/slab/khugepaged_mm_slot/objs_per_slab
+/sys/kernel/slab/khugepaged_mm_slot/partial
+/sys/kernel/slab/khugepaged_mm_slot/slabs_cpu_partial
+/sys/kernel/slab/khugepaged_mm_slot/ctor
+/sys/kernel/slab/khugepaged_mm_slot/slab_size
+/sys/kernel/slab/va-region-slab-mali0
+/sys/kernel/slab/va-region-slab-mali0/total_objects
+/sys/kernel/slab/va-region-slab-mali0/cpu_slabs
+/sys/kernel/slab/va-region-slab-mali0/objects
+/sys/kernel/slab/va-region-slab-mali0/objects_partial
+/sys/kernel/slab/va-region-slab-mali0/cpu_partial
+/sys/kernel/slab/va-region-slab-mali0/validate
+/sys/kernel/slab/va-region-slab-mali0/skip_kfence
+/sys/kernel/slab/va-region-slab-mali0/min_partial
+/sys/kernel/slab/va-region-slab-mali0/poison
+/sys/kernel/slab/va-region-slab-mali0/red_zone
+/sys/kernel/slab/va-region-slab-mali0/slabs
+/sys/kernel/slab/va-region-slab-mali0/destroy_by_rcu
+/sys/kernel/slab/va-region-slab-mali0/usersize
+/sys/kernel/slab/va-region-slab-mali0/sanity_checks
+/sys/kernel/slab/va-region-slab-mali0/align
+/sys/kernel/slab/va-region-slab-mali0/aliases
+/sys/kernel/slab/va-region-slab-mali0/store_user
+/sys/kernel/slab/va-region-slab-mali0/trace
+/sys/kernel/slab/va-region-slab-mali0/reclaim_account
+/sys/kernel/slab/va-region-slab-mali0/order
+/sys/kernel/slab/va-region-slab-mali0/object_size
+/sys/kernel/slab/va-region-slab-mali0/shrink
+/sys/kernel/slab/va-region-slab-mali0/hwcache_align
+/sys/kernel/slab/va-region-slab-mali0/objs_per_slab
+/sys/kernel/slab/va-region-slab-mali0/partial
+/sys/kernel/slab/va-region-slab-mali0/slabs_cpu_partial
+/sys/kernel/slab/va-region-slab-mali0/ctor
+/sys/kernel/slab/va-region-slab-mali0/slab_size
+/sys/kernel/iommu_groups
+/sys/kernel/iommu_groups/5
+/sys/kernel/iommu_groups/5/devices
+/sys/kernel/iommu_groups/5/type
+/sys/kernel/iommu_groups/5/reserved_regions
+/sys/kernel/iommu_groups/3
+/sys/kernel/iommu_groups/3/devices
+/sys/kernel/iommu_groups/3/type
+/sys/kernel/iommu_groups/3/reserved_regions
+/sys/kernel/iommu_groups/1
+/sys/kernel/iommu_groups/1/devices
+/sys/kernel/iommu_groups/1/type
+/sys/kernel/iommu_groups/1/reserved_regions
+/sys/kernel/iommu_groups/4
+/sys/kernel/iommu_groups/4/devices
+/sys/kernel/iommu_groups/4/type
+/sys/kernel/iommu_groups/4/reserved_regions
+/sys/kernel/iommu_groups/2
+/sys/kernel/iommu_groups/2/devices
+/sys/kernel/iommu_groups/2/type
+/sys/kernel/iommu_groups/2/reserved_regions
+/sys/kernel/iommu_groups/0
+/sys/kernel/iommu_groups/0/devices
+/sys/kernel/iommu_groups/0/type
+/sys/kernel/iommu_groups/0/reserved_regions
+/sys/kernel/mvpu
+/sys/kernel/mvpu/mvpu_img_sz
+/sys/kernel/mvpu/loglevel
+/sys/kernel/ged
+/sys/kernel/ged/hal
+/sys/kernel/ged/hal/loading_base_dvfs_step
+/sys/kernel/ged/hal/fw_idle
+/sys/kernel/ged/hal/timer_base_dvfs_margin
+/sys/kernel/ged/hal/fallback_timing
+/sys/kernel/ged/hal/apo_status
+/sys/kernel/ged/hal/opp_logs
+/sys/kernel/ged/hal/apo_autosuspend_delay_ms
+/sys/kernel/ged/hal/custom_boost_gpu_freq
+/sys/kernel/ged/hal/loading_stride_size
+/sys/kernel/ged/hal/gpu_utilization
+/sys/kernel/ged/hal/dvfs_loading_mode
+/sys/kernel/ged/hal/apo_autosuspend_delay_target_ref_count
+/sys/kernel/ged/hal/autosuspend_stress
+/sys/kernel/ged/hal/dcs_adjust_support
+/sys/kernel/ged/hal/gpu_fps
+/sys/kernel/ged/hal/dvfs_margin_value
+/sys/kernel/ged/hal/whitebox_power_force_state
+/sys/kernel/ged/hal/early_force_fallback_policy
+/sys/kernel/ged/hal/dcs_stress
+/sys/kernel/ged/hal/current_freqency
+/sys/kernel/ged/hal/dvfs_workload_mode
+/sys/kernel/ged/hal/previous_freqency
+/sys/kernel/ged/hal/gpu_boost_level
+/sys/kernel/ged/hal/apo_force_hint
+/sys/kernel/ged/hal/dcs_adjust_fr_cnt
+/sys/kernel/ged/hal/dcs_mode
+/sys/kernel/ged/hal/frame_base_optimize
+/sys/kernel/ged/hal/force_loading_base
+/sys/kernel/ged/hal/apo_thr_us
+/sys/kernel/ged/hal/gpu_power_on_off_test
+/sys/kernel/ged/hal/gpu_sum_loading
+/sys/kernel/ged/hal/pre_fence_chk
+/sys/kernel/ged/hal/target_fps_vsync
+/sys/kernel/ged/hal/dvfs_async_ratio
+/sys/kernel/ged/hal/default_fps_margin_support
+/sys/kernel/ged/hal/gpu_slc_policy
+/sys/kernel/ged/hal/ged_log_level
+/sys/kernel/ged/hal/loading_window_size
+/sys/kernel/ged/hal/fallback_interval
+/sys/kernel/ged/hal/total_gpu_freq_level_count
+/sys/kernel/ged/hal/apo_legacy
+/sys/kernel/ged/hal/fallback_frequency_adjust
+/sys/kernel/ged/hal/custom_upbound_gpu_freq
+/sys/kernel/ged/hal/whitebox_power_support
+/sys/kernel/ged/hal/gpu_power_state
+/sys/kernel/ged/hal/eb_dvfs_policy
+/sys/kernel/ged/hal/ged_kpi
+/sys/kernel/ged/hal/apo_wakeup_us
+/sys/kernel/ged/hal/apo_lp_thr_us
+/sys/kernel/ged/hal/fallback_window_size
+/sys/kernel/ged/hal/ged_fallback_tuning
+/sys/kernel/ged/gpu_debug
+/sys/kernel/ged/gpu_debug/gpu_debug_log
+/sys/kernel/ged/gpu_tuner
+/sys/kernel/ged/gpu_tuner/custom_hint_set
+/sys/kernel/ged/gpu_tuner/dump_status
+/sys/kernel/ged/gpu_tuner/debug
+/sys/kernel/edma_rv
+/sys/kernel/edma_rv/edma_rv_log_lv
+/sys/module/clk_mt6899_adsp
+/sys/module/clk_mt6899_adsp/initsize
+/sys/module/clk_mt6899_adsp/uevent
+/sys/module/clk_mt6899_adsp/notes
+/sys/module/clk_mt6899_adsp/notes/.note.Linux
+/sys/module/clk_mt6899_adsp/notes/.note.gnu.build-id
+/sys/module/clk_mt6899_adsp/notes/.note.gnu.property
+/sys/module/clk_mt6899_adsp/taint
+/sys/module/clk_mt6899_adsp/holders
+/sys/module/clk_mt6899_adsp/refcnt
+/sys/module/clk_mt6899_adsp/coresize
+/sys/module/clk_mt6899_adsp/drivers
+/sys/module/clk_mt6899_adsp/drivers/platform:clk-mt6899-adsp
+/sys/module/clk_mt6899_adsp/initstate
+/sys/module/clk_mt6899_adsp/sections
+/sys/module/clk_mt6899_adsp/sections/.plt
+/sys/module/clk_mt6899_adsp/sections/.text.ftrace_trampoline
+/sys/module/clk_mt6899_adsp/sections/.note.Linux
+/sys/module/clk_mt6899_adsp/sections/.strtab
+/sys/module/clk_mt6899_adsp/sections/.exit.text
+/sys/module/clk_mt6899_adsp/sections/.exit.data
+/sys/module/clk_mt6899_adsp/sections/.gnu.linkonce.this_module
+/sys/module/clk_mt6899_adsp/sections/.symtab
+/sys/module/clk_mt6899_adsp/sections/.rodata
+/sys/module/clk_mt6899_adsp/sections/.init.text
+/sys/module/clk_mt6899_adsp/sections/.note.gnu.build-id
+/sys/module/clk_mt6899_adsp/sections/.text
+/sys/module/clk_mt6899_adsp/sections/.init.data
+/sys/module/clk_mt6899_adsp/sections/.init.plt
+/sys/module/clk_mt6899_adsp/sections/.data
+/sys/module/clk_mt6899_adsp/sections/.rodata.str1.1
+/sys/module/clk_mt6899_adsp/sections/.init.eh_frame
+/sys/module/clk_mt6899_adsp/sections/.note.gnu.property
+/sys/module/mtk_gpu_hal/holders/mali_kbase_mt6899_r49
+/sys/module/mtk_gpu_hal/holders/ged
+/sys/module/mtk_vow/holders/mtk_scp_vow
+/sys/module/mrdump/holders/adsp
+/sys/module/mrdump/holders/apusys
+/sys/module/mrdump/holders/iommu_debug
+/sys/module/mrdump/holders/mali_kbase_mt6899_r49
+/sys/module/mtk_gpueb/holders/mali_kbase_mt6899_r49
+/sys/module/mtk_gpueb/holders/ged
+/sys/module/mtk_scpsys_mt6899
+/sys/module/mtk_scpsys_mt6899/initsize
+/sys/module/mtk_scpsys_mt6899/uevent
+/sys/module/mtk_scpsys_mt6899/notes
+/sys/module/mtk_scpsys_mt6899/notes/.note.Linux
+/sys/module/mtk_scpsys_mt6899/notes/.note.gnu.build-id
+/sys/module/mtk_scpsys_mt6899/notes/.note.gnu.property
+/sys/module/mtk_scpsys_mt6899/taint
+/sys/module/mtk_scpsys_mt6899/holders
+/sys/module/mtk_scpsys_mt6899/refcnt
+/sys/module/mtk_scpsys_mt6899/coresize
+/sys/module/mtk_scpsys_mt6899/drivers
+/sys/module/mtk_scpsys_mt6899/drivers/platform:mtk-scpsys-mt6899
+/sys/module/mtk_scpsys_mt6899/initstate
+/sys/module/mtk_scpsys_mt6899/sections
+/sys/module/mtk_scpsys_mt6899/sections/.altinstructions
+/sys/module/mtk_scpsys_mt6899/sections/__jump_table
+/sys/module/mtk_scpsys_mt6899/sections/.plt
+/sys/module/mtk_scpsys_mt6899/sections/.text.ftrace_trampoline
+/sys/module/mtk_scpsys_mt6899/sections/.note.Linux
+/sys/module/mtk_scpsys_mt6899/sections/.strtab
+/sys/module/mtk_scpsys_mt6899/sections/.exit.text
+/sys/module/mtk_scpsys_mt6899/sections/.exit.data
+/sys/module/mtk_scpsys_mt6899/sections/.bss
+/sys/module/mtk_scpsys_mt6899/sections
+
+========== FIM DO DIAGNÓSTICO ==========
+Total de caracteres: 158831
