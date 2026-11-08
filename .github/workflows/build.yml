@@ -31,17 +31,59 @@ jobs:
         with:
           validate-wrappers: false
 
+      # O wrapper baixa o Gradle de services.gradle.org (timeout de 10 s) e redireciona para o GitHub
+      # Releases, que respondeu 504 em várias execuções seguidas. Aqui o Gradle 8.9 (a mesma versão do
+      # wrapper) vem de várias fontes, confere o SHA-256 e fica em cache para os próximos builds.
+      - name: Cache do Gradle 8.9
+        id: gradle-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/gradle-dist
+          key: gradle-8.9-bin
+
+      - name: Instalar Gradle 8.9
+        if: steps.gradle-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          V=8.9
+          # usado só se o checksum oficial não puder ser baixado; se estiver errado, a conferência falha
+          FALLBACK_SHA=d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab
+          mkdir -p ~/gradle-dist
+          cd "$RUNNER_TEMP"
+          SHA=$(curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 --max-time 30 \
+            "https://services.gradle.org/distributions/gradle-$V-bin.zip.sha256" | tr -d '[:space:]' || true)
+          [[ "$SHA" =~ ^[0-9a-f]{64}$ ]] || SHA=$FALLBACK_SHA
+          echo "SHA-256 esperado: $SHA"
+          ok=0
+          for url in \
+            "https://services.gradle.org/distributions/gradle-$V-bin.zip" \
+            "https://github.com/gradle/gradle-distributions/releases/download/v$V.0/gradle-$V-bin.zip" \
+            "https://mirrors.cloud.tencent.com/gradle/gradle-$V-bin.zip" \
+            "https://repo.huaweicloud.com/gradle/gradle-$V-bin.zip"; do
+            rm -f gradle.zip
+            if curl -fsSL --retry 2 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 300 -o gradle.zip "$url" \
+               && echo "$SHA  gradle.zip" | sha256sum -c -; then
+              ok=1
+              break
+            fi
+            echo "::warning::Falha ao obter um Gradle válido de $url"
+          done
+          [ "$ok" = 1 ] || { echo "::error::Nenhuma fonte entregou um Gradle $V válido"; exit 1; }
+          unzip -q gradle.zip -d ~/gradle-dist
+
+      - name: Ativar Gradle 8.9
+        run: echo "$HOME/gradle-dist/gradle-8.9/bin" >> "$GITHUB_PATH"
+
       - name: Build release APK
         run: |
-          chmod +x gradlew
-          # O wrapper baixa o Gradle de services.gradle.org / GitHub Releases, que às vezes dá timeout ou 504.
-          # Tenta de novo; um erro de compilação de verdade falha as 4 vezes e derruba o job do mesmo jeito.
-          for attempt in 1 2 3 4; do
-            if ./gradlew --no-daemon assembleRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease -x lintVitalRelease; then
+          gradle --version
+          # as dependências também vêm da rede; tenta de novo antes de dar o build como falho
+          for attempt in 1 2 3; do
+            if gradle --no-daemon assembleRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease -x lintVitalRelease; then
               exit 0
             fi
-            echo "::warning::Tentativa $attempt de 4 falhou"
-            [ "$attempt" -lt 4 ] && sleep $((attempt * 30))
+            echo "::warning::Tentativa $attempt de 3 falhou"
+            [ "$attempt" -lt 3 ] && sleep $((attempt * 30))
           done
           exit 1
 
