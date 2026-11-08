@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class Phase { Loading, NoRoot, Ready }
 
@@ -260,6 +261,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun restoreSnapshot() = act("Restaurar snapshot") { engine.restoreSnapshot() }
+
+    fun prepareDiagnosticExport(onReady: (String) -> Unit) {
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true, message = "Coletando diagnóstico completo…") }
+            try {
+                val state = _ui.value
+                val stateText = buildString {
+                    appendLine("App: MT6899 Manager")
+                    appendLine("Fase: ${state.phase}")
+                    appendLine("Aba: ${state.tab.title}")
+                    appendLine("Perfil ativo: ${state.active ?: "nenhum"}")
+                    appendLine("Preferências: ${state.prefs}")
+                    appendLine("SoC detectado: ${state.info?.socModel ?: "indisponível"}")
+                    appendLine("Modelo: ${state.info?.marketName ?: "indisponível"}")
+                    appendLine("Kernel: ${state.info?.kernel ?: "indisponível"}")
+                    appendLine("Clusters CPU: ${state.info?.policies?.size ?: 0}")
+                    appendLine("OPPs GPU: ${state.info?.gpuOpps?.size ?: 0}")
+                    appendLine("Nós detectados: ${state.info?.nodes?.size ?: 0}")
+                    appendLine("Estado ao vivo: ${state.live ?: "indisponível"}")
+                    appendLine("Valores dos nós: ${state.nodeValues}")
+                    appendLine("Extras: ${state.extras}")
+                }
+                val report = withContext(Dispatchers.IO) {
+                    engine.diagnosticReport(LogBuffer.snapshot(), stateText)
+                }
+                _ui.update { it.copy(busy = false, message = "Diagnóstico pronto para exportar") }
+                onReady(report)
+            } catch (t: Throwable) {
+                LogBuffer.add("ERRO ao coletar diagnóstico: ${t.javaClass.simpleName}: ${t.message}")
+                _ui.update { it.copy(busy = false, message = "Falha ao coletar diagnóstico: ${t.message}") }
+            }
+        }
+    }
 
     fun clearLog() = LogBuffer.clear()
 
