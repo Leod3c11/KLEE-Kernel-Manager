@@ -836,26 +836,26 @@ class Engine(
         section("CPU - PPM, LIMITADORES E VÍNCULOS TÉRMICOS", """
             echo CPU cooling devices
             for p in /sys/class/thermal/cooling_device*; do
-              [ -d "$p" ] || continue
-              t=$(cat "$p/type" 2>/dev/null)
-              case "$t" in *cpu*|*cpufreq*|*cluster*|*ppm*|*mtk*) echo "----- $p type=$t -----"; for f in cur_state max_state stats/time_in_state; do [ -r "$p/$f" ] && { printf '%s=' "$f"; cat "$p/$f" 2>&1; }; done;; esac
+              [ -d "${'$'}p" ] || continue
+              t=$(cat "${'$'}p/type" 2>/dev/null)
+              case "${'$'}t" in *cpu*|*cpufreq*|*cluster*|*ppm*|*mtk*) echo "----- ${'$'}p type=${'$'}t -----"; for f in cur_state max_state stats/time_in_state; do [ -r "${'$'}p/${'$'}f" ] && { printf '%s=' "${'$'}f"; cat "${'$'}p/${'$'}f" 2>&1; }; done;; esac
             done
             echo PROC PPM performance nodes
             for f in /proc/ppm/* /proc/ppm/*/* /proc/cpufreq/* /proc/cpufreq/*/* /proc/mtk_perf/* /proc/mtk_perf/*/* /proc/thermal/* /proc/thermal/*/*; do
-              [ -f "$f" ] || continue
-              case "$f" in *limit*|*opp*|*policy*|*status*|*state*|*freq*|*dump*|*thermal*) echo "----- $f -----"; head -c 12000 "$f" 2>&1; echo;; esac
+              [ -f "${'$'}f" ] || continue
+              case "${'$'}f" in *limit*|*opp*|*policy*|*status*|*state*|*freq*|*dump*|*thermal*) echo "----- ${'$'}f -----"; head -c 12000 "${'$'}f" 2>&1; echo;; esac
             done
             echo SYSFS PPM performance nodes
             for f in /sys/devices/system/cpu/cpufreq/*/*limit* /sys/devices/system/cpu/cpufreq/*/*thermal* /sys/devices/platform/*/*ppm* /sys/devices/platform/*/*perf* /sys/kernel/*/*cpu*limit*; do
-              [ -f "$f" ] || continue
-              echo "----- $f -----"; head -c 6000 "$f" 2>&1; echo
+              [ -f "${'$'}f" ] || continue
+              echo "----- ${'$'}f -----"; head -c 6000 "${'$'}f" 2>&1; echo
             done
             echo Thermal trip points and bindings
             for z in /sys/class/thermal/thermal_zone*; do
-              [ -d "$z" ] || continue
-              echo "----- $z -----"
-              for f in type temp; do [ -r "$z/$f" ] && { printf '%s=' "$f"; cat "$z/$f" 2>&1; }; done
-              for f in "$z"/trip_point_*_type "$z"/trip_point_*_temp "$z"/cdev*; do [ -r "$f" ] && { echo "----- $f -----"; cat "$f" 2>&1; }; done
+              [ -d "${'$'}z" ] || continue
+              echo "----- ${'$'}z -----"
+              for f in type temp; do [ -r "${'$'}z/${'$'}f" ] && { printf '%s=' "${'$'}f"; cat "${'$'}z/${'$'}f" 2>&1; }; done
+              for f in "${'$'}z"/trip_point_*_type "${'$'}z"/trip_point_*_temp "${'$'}z"/cdev*; do [ -r "${'$'}f" ] && { echo "----- ${'$'}f -----"; cat "${'$'}f" 2>&1; }; done
             done
             echo Android power performance services
             getprop | grep -iE 'init\.svc\..*(thermal|perf|power|ppm|cpu)'
