@@ -172,21 +172,10 @@ class Engine(
             .map { it.trim() }.filter { Regex("^(sd[a-z]|mmcblk\\d+|nvme\\d+n\\d+)$").matches(it) }
 
         val cands = candidates(policies, ddr, ufs, gpuDev, blocks)
-        // Descobre TODOS os parâmetros de módulos publicados em /sys/module, sem filtro por fabricante.
-        // Eles entram no inventário e são lidos, mas ficam bloqueados para escrita até a semântica ser validada.
-        val modulePaths = sh.exec("find " + q(p("/sys/module")) + " -mindepth 3 -maxdepth 3 -type f -path '*/parameters/*' 2>/dev/null | sort").out
-            .lineSequence().map { it.trim().removePrefix(prefix) }.filter { it.startsWith("/sys/module/") }.distinct().toList()
-        val moduleNodes = modulePaths.map { path ->
-            val module = path.removePrefix("/sys/module/").substringBefore("/")
-            val name = path.substringAfterLast("/")
-            NodeSpec("module." + path.removePrefix("/sys/module/").replace("/", "."), "$module · $name", path,
-                "Inventário · parâmetros de módulos", Kind.TEXT, Risk.CAUTION,
-                "Detectado automaticamente. Leitura habilitada; escrita bloqueada até validar o significado e os valores aceitos.",
-                editable = false)
-        }
-        val allCandidates = (cands + moduleNodes).distinctBy { it.path }
-        val ex = readMany(allCandidates.map { it.path })
-        val nodes = allCandidates.filter { ex[it.path] != null }.map { n ->
+        // A detecção de inicialização deve permanecer limitada a controles conhecidos.
+        // Varreduras amplas de /sys/module são sob demanda e nunca entram no snapshot automático.
+        val ex = readMany(cands.map { it.path })
+        val nodes = cands.filter { ex[it.path] != null }.map { n ->
             // escolhas de scheduler vêm do próprio arquivo
             if (n.id.endsWith(".sched")) n.copy(choices = Parse.scheduler(ex[n.path]).second) else n
         }
@@ -991,7 +980,8 @@ class Engine(
     private fun snapPaths(i: SocInfo): List<String> {
         val l = ArrayList<String>()
         for (pc in i.policies) l += listOf("scaling_governor", "scaling_min_freq", "scaling_max_freq").map { "${pol(pc.id)}/$it" }
-        l += i.nodes.map { it.path }
+        // Nunca incluir interfaces classificadas como somente leitura/desconhecidas no snapshot.
+        l += i.nodes.filter { it.editable }.map { it.path }
         l += listOf(GED_UP, GED_BOOST)
         return l.distinct()
     }
