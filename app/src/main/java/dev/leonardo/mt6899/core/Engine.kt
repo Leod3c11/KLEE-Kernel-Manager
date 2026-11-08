@@ -785,7 +785,7 @@ class Engine(
      */
     fun diagnosticReport(appLog: List<String>, appState: String): String {
         val out = StringBuilder()
-        fun line(s: String = "") { out.append(s).append('\\n') }
+        fun line(s: String = "") { out.append(s).append('\n') }
         fun section(title: String, command: String) {
             line()
             line("========== $title ==========")
@@ -813,7 +813,7 @@ class Engine(
 
         section("IDENTIFICAÇÃO DO SISTEMA", """
             echo '[getprop - propriedades não sensíveis]'
-            getprop | grep -E '\\[(ro\\.product\\.(model|device|marketname|brand)|ro\\.soc\\.model|ro\\.board\\.platform|ro\\.build\\.(version\\.(release|sdk)|type|tags|fingerprint)|ro\\.boot\\.hardware)\\]'
+            getprop | grep -E '\[(ro\.product\.(model|device|marketname|brand)|ro\.soc\.model|ro\.board\.platform|ro\.build\.(version\.(release|sdk)|type|tags|fingerprint)|ro\.boot\.hardware)\]'
             echo '[kernel]'; uname -a
             echo '[uptime]'; cat /proc/uptime
             echo '[root identity]'; id
@@ -912,11 +912,11 @@ class Engine(
             for f in /proc/sys/kernel/sched_pelt_multiplier /proc/sys/kernel/sched_energy_aware /proc/interrupts /proc/pressure/cpu /proc/pressure/memory /proc/pressure/io; do
               [ -r "$f" ] && { echo "----- $f -----"; head -c 12000 "$f" 2>&1; echo; }
             done
-            echo '[cmdline filtrada]'; tr ' ' '\\n' < /proc/cmdline | grep -viE 'serial|imei|androidboot\\.serial'
+            echo '[cmdline filtrada]'; tr ' ' '\n' < /proc/cmdline | grep -viE 'serial|imei|androidboot\.serial'
         """.trimIndent())
 
         section("SERVIÇOS RELACIONADOS", """
-            echo '[serviços térmicos/performance]'; getprop | grep -iE 'init\\.svc\\..*(thermal|perf|power|ged|gpu|apu)'
+            echo '[serviços térmicos/performance]'; getprop | grep -iE 'init\.svc\..*(thermal|perf|power|ged|gpu|apu)'
             echo '[processos relacionados]'; ps -A 2>/dev/null | grep -iE 'thermal|perf|power|ged|gpu|klee' | grep -v grep
         """.trimIndent())
 
