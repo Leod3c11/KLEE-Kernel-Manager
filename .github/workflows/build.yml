@@ -34,7 +34,16 @@ jobs:
       - name: Build release APK
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease -x lintVitalRelease
+          # O wrapper baixa o Gradle de services.gradle.org / GitHub Releases, que às vezes dá timeout ou 504.
+          # Tenta de novo; um erro de compilação de verdade falha as 4 vezes e derruba o job do mesmo jeito.
+          for attempt in 1 2 3 4; do
+            if ./gradlew --no-daemon assembleRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease -x lintVitalRelease; then
+              exit 0
+            fi
+            echo "::warning::Tentativa $attempt de 4 falhou"
+            [ "$attempt" -lt 4 ] && sleep $((attempt * 30))
+          done
+          exit 1
 
       - uses: actions/upload-artifact@v4
         with:
