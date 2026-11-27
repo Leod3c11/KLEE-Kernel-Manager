@@ -16,6 +16,7 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.PermDeviceInformation
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.RocketLaunch
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Thermostat
@@ -61,14 +62,14 @@ fun HomeScreen(
 ) {
     val scroll = rememberScrollState()
     val modules = listOf(
-        HomeModuleItem("CPU Control", "Clusters, clocks e governors", "CPU", Icons.Rounded.Memory, KleeColors.Cpu),
-        HomeModuleItem("GPU Control", "Mali-G720, OPPs e gpufreqv2", "GPU", Icons.Rounded.GraphicEq, KleeColors.Gpu),
+        HomeModuleItem("CPU & UCLAMP", "3 clusters, sugov_ext e UCLAMP", "CPU", Icons.Rounded.Memory, KleeColors.Cpu),
+        HomeModuleItem("GPU, GED & DRAM", "Mali 1508MHz, GED e LPDDR5X", "GPU", Icons.Rounded.GraphicEq, KleeColors.Gpu),
+        HomeModuleItem("FPSGO & Metis", "Motor gaming MT6899 / HyperOS", "MTK_PERF", Icons.Rounded.RocketLaunch, KleeColors.Gaming),
         HomeModuleItem("Thermal", "Sensores, zonas e throttling", "THERMAL", Icons.Rounded.Thermostat, KleeColors.Thermal),
-        HomeModuleItem("Power", "Bateria, Watts e fontes", "POWER", Icons.Rounded.BatteryChargingFull, KleeColors.Power),
-        HomeModuleItem("Perfis & Gaming", "Modos rápidos e perfis salvos", "PROFILES", Icons.Rounded.SportsEsports, KleeColors.Gaming),
-        HomeModuleItem("Monitor", "Gráficos ao vivo e carga", "MONITOR", Icons.AutoMirrored.Rounded.ShowChart, KleeColors.Monitor),
-        HomeModuleItem("Memória & I/O", "ZRAM, VM, I/O e TCP", "TUNING", Icons.Rounded.Storage, KleeColors.Tuning),
-        HomeModuleItem("Dispositivo", "Info, relatório e logs root", "DEVICE", Icons.Rounded.PermDeviceInformation, KleeColors.Device)
+        HomeModuleItem("Power & Bypass", "Bateria 6500mAh e Bypass", "POWER", Icons.Rounded.BatteryChargingFull, KleeColors.Power),
+        HomeModuleItem("Perfis & Gaming", "Modos rápidos e perfis salvos", "PROFILES", Icons.Rounded.SportsEsports, Color(0xFFEC4899)),
+        HomeModuleItem("Monitor", "Gráficos CPU, GPU e SoC", "MONITOR", Icons.AutoMirrored.Rounded.ShowChart, KleeColors.Monitor),
+        HomeModuleItem("Memória & UFS", "ZRAM, MGLRU, UFS 4.0 e BBR", "TUNING", Icons.Rounded.Storage, KleeColors.Tuning)
     )
 
     Column(
@@ -101,7 +102,7 @@ fun HomeScreen(
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 StatusPill(
                     text = if (!summary.loaded) "Lendo..." else if (summary.root) "Root OK" else "Sem Root",
@@ -109,11 +110,25 @@ fun HomeScreen(
                     icon = if (summary.root) Icons.Rounded.VerifiedUser else Icons.Rounded.WarningAmber
                 )
                 IconButton(
+                    onClick = { onNavigate("DEVICE") },
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(KleeColors.CardElevated)
+                ) {
+                    Icon(
+                        Icons.Rounded.PermDeviceInformation,
+                        contentDescription = "Dispositivo e Logs",
+                        tint = KleeColors.Device,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                IconButton(
                     onClick = onRefresh,
                     enabled = !busy,
                     modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
                         .background(KleeColors.CardElevated)
                 ) {
                     Icon(
@@ -139,7 +154,7 @@ fun HomeScreen(
                 .border(1.dp, KleeColors.Primary.copy(alpha = 0.3f), RoundedCornerShape(22.dp))
                 .padding(16.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -156,17 +171,22 @@ fun HomeScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            "Telemetria em Tempo Real",
+                            "Telemetria MT6899",
                             color = KleeColors.TextSecondary,
                             style = MaterialTheme.typography.labelLarge
                         )
                     }
-                    StatusPill(text = "Perfil: $activeProfile", color = KleeColors.Primary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (summary.bypassActive) {
+                            StatusPill("Bypass", KleeColors.Warning)
+                        }
+                        StatusPill(text = activeProfile, color = KleeColors.Primary)
+                    }
                 }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     HeroMetricItem(
                         label = "CPU Pico",
@@ -176,14 +196,14 @@ fun HomeScreen(
                         modifier = Modifier.weight(1f)
                     )
                     HeroMetricItem(
-                        label = "GPU Mali",
+                        label = summary.gpuUtilization?.let { "GPU $it%" } ?: "GPU Mali",
                         value = if (summary.gpuMHz > 0) "${summary.gpuMHz}" else "--",
                         unit = "MHz",
                         accent = KleeColors.Gpu,
                         modifier = Modifier.weight(1f)
                     )
                     HeroMetricItem(
-                        label = "Temp SoC",
+                        label = "SoC Max",
                         value = summary.socTempC?.let { "%.1f".format(it) } ?: "--",
                         unit = "°C",
                         accent = summary.socTempC?.let { tempSeverityColor(it) } ?: KleeColors.Thermal,
@@ -196,6 +216,22 @@ fun HomeScreen(
                         accent = KleeColors.Power,
                         modifier = Modifier.weight(1f)
                     )
+                }
+
+                if (summary.dramMHz > 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("DRAM LPDDR5X (DVFSRC)", color = KleeColors.TextMuted, style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            "${summary.dramMHz} MHz",
+                            color = KleeColors.Gpu,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
 
                 if (summary.ramTotalMb > 0) {
@@ -337,7 +373,7 @@ private fun HeroMetricItem(
             .clip(RoundedCornerShape(14.dp))
             .background(KleeColors.Surface.copy(alpha = 0.85f))
             .border(1.dp, accent.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
-            .padding(horizontal = 8.dp, vertical = 10.dp),
+            .padding(horizontal = 6.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -352,7 +388,7 @@ private fun HeroMetricItem(
             Text(
                 text = value,
                 color = accent,
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
                 maxLines = 1

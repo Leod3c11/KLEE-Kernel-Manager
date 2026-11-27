@@ -14,8 +14,10 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.SdStorage
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.*
@@ -32,6 +34,7 @@ import dev.klee.kernelmanager.ActionLogEntry
 import dev.klee.kernelmanager.DeviceInfoSnapshot
 import dev.klee.kernelmanager.IoDevice
 import dev.klee.kernelmanager.TuningSnapshot
+import dev.klee.kernelmanager.UfsInfo
 import dev.klee.kernelmanager.ui.components.KleeCard
 import dev.klee.kernelmanager.ui.components.ProgressMeterBar
 import dev.klee.kernelmanager.ui.components.RootWarningCard
@@ -48,8 +51,11 @@ fun TuningScreen(
     busy: Boolean,
     onRefresh: () -> Unit,
     onApplyVm: (String, Int) -> Unit,
-    onApplyIo: (String, String?, Int?) -> Unit,
+    onApplyMglru: (Boolean) -> Unit,
+    onApplyUfsBool: (String, Boolean) -> Unit,
+    onApplyIo: (String, String?, Int?, Boolean?) -> Unit,
     onApplyTcp: (String) -> Unit,
+    onApplyTcpFastOpen: (Int) -> Unit,
     onDropCaches: () -> Unit
 ) {
     var confirmDrop by remember { mutableStateOf(false) }
@@ -62,8 +68,8 @@ fun TuningScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         SectionHeader(
-            title = "Memória, I/O & Rede",
-            subtitle = "Ajustes seguros de VM, ZRAM, escalonador de disco e TCP",
+            title = "Memória, UFS 4.0 & Rede",
+            subtitle = "ZRAM, MGLRU, VM, WriteBooster UFS, I/O e TCP BBR",
             trailing = {
                 FilledTonalIconButton(
                     onClick = onRefresh,
@@ -82,19 +88,21 @@ fun TuningScreen(
             RootWarningCard()
         }
 
-        // Memory & VM Section
+        // Memory, ZRAM Analytics & MGLRU
         state.memory?.let { mem ->
             val ramFrac = if (mem.totalMb > 0) (mem.usedMb.toFloat() / mem.totalMb.toFloat()).coerceIn(0f, 1f) else 0f
             val swapFrac = if (mem.swapTotalMb > 0) (mem.swapUsedMb.toFloat() / mem.swapTotalMb.toFloat()).coerceIn(0f, 1f) else 0f
 
-            KleeCard(modifier = Modifier.fillMaxWidth(), accentBorder = KleeColors.Tuning.copy(alpha = 0.3f)) {
+            KleeCard(modifier = Modifier.fillMaxWidth(), accentBorder = KleeColors.Tuning.copy(alpha = 0.35f)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("RAM & ZRAM", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
-                    StatusPill("ZRAM: ${mem.zramAlgo}", KleeColors.Tuning)
+                    Text("RAM & ZRAM (${mem.zramAlgo})", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                    if (mem.zramCompressionRatio > 0.1) {
+                        StatusPill("${"%.2f".format(mem.zramCompressionRatio)}x comp.", KleeColors.Success)
+                    }
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -108,10 +116,18 @@ fun TuningScreen(
                 if (mem.swapTotalMb > 0 || mem.zramDiskSizeMb > 0) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Swap / ZRAM (${mem.zramDiskSizeMb} MB)", color = KleeColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+                            Text("ZRAM (${mem.zramDiskSizeMb} MB)", color = KleeColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
                             Text("${mem.swapUsedMb} / ${mem.swapTotalMb} MB", color = KleeColors.TextPrimary, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                         }
                         ProgressMeterBar(fraction = swapFrac, color = KleeColors.Tuning, heightDp = 6)
+                    }
+                    if (mem.zramOrigMb > 0 && mem.zramComprMb > 0) {
+                        val saved = (mem.zramOrigMb - mem.zramComprMb).coerceAtLeast(0L)
+                        Text(
+                            "Dados comprimidos: ${mem.zramOrigMb} MB -> ${mem.zramComprMb} MB (economia real de ~$saved MB de RAM)",
+                            color = KleeColors.TextMuted,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
 
@@ -127,13 +143,54 @@ fun TuningScreen(
                 }
             }
 
+            // MGLRU Card (CONFIG_LRU_GEN=y confirmed in Linux 6.6.89!)
+            if (mem.mglruAvailable) {
+                KleeCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    accentBorder = (if (mem.mglruActive) KleeColors.Success else KleeColors.Border).copy(alpha = 0.5f)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Rounded.Memory, contentDescription = null, tint = KleeColors.Success, modifier = Modifier.size(20.dp))
+                            Column {
+                                Text("Multi-Gen LRU (MGLRU)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Estado: ${mem.mglruEnabledHex} · min_ttl=${mem.mglruMinTtlMs}ms",
+                                    color = KleeColors.TextMuted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = mem.mglruActive,
+                            onCheckedChange = { onApplyMglru(it) },
+                            enabled = !busy
+                        )
+                    }
+                    Text(
+                        "Algoritmo moderno de gerenciamento de páginas do Linux 6.6. Ativar MGLRU melhora multitarefa e reduz travamentos sob uso intenso de RAM.",
+                        color = KleeColors.TextSecondary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
             // VM Sliders Card
             KleeCard(modifier = Modifier.fillMaxWidth()) {
                 Text("Parâmetros de Memória Virtual (/proc/sys/vm)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
 
                 VmSliderRow(
                     title = "vm.swappiness",
-                    subtitle = "Tendência do kernel de mover páginas para ZRAM/Swap (0–200)",
+                    subtitle = "Tendência do kernel de mover páginas para ZRAM (0–200)",
                     currentValue = mem.swappiness,
                     range = 0f..200f,
                     enabled = !busy && mem.canWriteSwappiness,
@@ -157,36 +214,56 @@ fun TuningScreen(
                     enabled = !busy && mem.canWriteDirty,
                     onApply = { onApplyVm("dirty_ratio", it) }
                 )
+                HorizontalDivider(color = KleeColors.Border)
+                VmSliderRow(
+                    title = "vm.watermark_scale_factor",
+                    subtitle = "Antecipação de kswapd para liberar RAM em segundo plano (10–300)",
+                    currentValue = mem.watermarkScaleFactor.coerceIn(10, 300),
+                    range = 10f..300f,
+                    enabled = !busy && mem.canWriteWatermark,
+                    onApply = { onApplyVm("watermark_scale_factor", it) }
+                )
             }
+        }
+
+        // UFS 4.0 Storage Card (112b0000.ufshci)
+        if (state.ufs.available) {
+            UfsControlCard(state.ufs, busy, onApplyUfsBool)
         }
 
         // Block I/O Devices
         if (state.ioDevices.isNotEmpty()) {
-            Text("Escalonadores de I/O (Armazenamento)", color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelLarge)
+            Text("Escalonadores de I/O (Blocos)", color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelLarge)
             state.ioDevices.forEach { io ->
                 IoDeviceCard(io, busy, onApplyIo)
             }
         }
 
-        // TCP Congestion Control
+        // TCP Congestion Control + Fast Open
         state.tcp?.let { tcp ->
             if (tcp.available.isNotEmpty()) {
                 var selectedTcp by remember(tcp.current) { mutableStateOf(tcp.current) }
                 KleeCard(modifier = Modifier.fillMaxWidth(), accentBorder = KleeColors.Primary.copy(alpha = 0.28f)) {
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(Icons.Rounded.NetworkCheck, contentDescription = null, tint = KleeColors.Primary, modifier = Modifier.size(20.dp))
-                        Text("Controle de Congestionamento TCP", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Rounded.NetworkCheck, contentDescription = null, tint = KleeColors.Primary, modifier = Modifier.size(20.dp))
+                            Text("Rede & TCP", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                        }
+                        if (tcp.defaultQdisc.isNotBlank()) {
+                            StatusPill(tcp.defaultQdisc, KleeColors.Primary)
+                        }
                     }
                     Text(
-                        "Algoritmo ativo: ${tcp.current} · Disponíveis: ${tcp.available.joinToString()}",
+                        "Algoritmo ativo: ${tcp.current} (BBR recomendado para menor latência em Wi-Fi/5G)",
                         color = KleeColors.TextSecondary,
                         style = MaterialTheme.typography.bodySmall
                     )
                     SelectorBox(
-                        label = "Algoritmo TCP",
+                        label = "Controle de Congestionamento TCP",
                         selectedText = selectedTcp,
                         options = tcp.available,
                         enabled = tcp.canWrite,
@@ -202,6 +279,28 @@ fun TuningScreen(
                         Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Aplicar TCP ($selectedTcp)")
+                    }
+
+                    HorizontalDivider(color = KleeColors.Border)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("TCP Fast Open (TFO)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.bodyMedium)
+                            Text("Atual: ${tcp.tcpFastOpen} (3 = Cliente + Servidor)", color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(0, 1, 3).forEach { mode ->
+                                FilterChip(
+                                    selected = tcp.tcpFastOpen == mode,
+                                    onClick = { onApplyTcpFastOpen(mode) },
+                                    enabled = !busy && tcp.canWriteFastOpen,
+                                    label = { Text("$mode") }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -231,6 +330,65 @@ fun TuningScreen(
                 TextButton(onClick = { confirmDrop = false }) { Text("Cancelar") }
             }
         )
+    }
+}
+
+@Composable
+private fun UfsControlCard(
+    ufs: UfsInfo,
+    busy: Boolean,
+    onToggle: (String, Boolean) -> Unit
+) {
+    KleeCard(modifier = Modifier.fillMaxWidth(), accentBorder = KleeColors.Device.copy(alpha = 0.35f)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Rounded.SdStorage, contentDescription = null, tint = KleeColors.Device, modifier = Modifier.size(20.dp))
+                Column {
+                    Text("Armazenamento UFS 4.0", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                    Text("112b0000.ufshci", color = KleeColors.TextMuted, style = MaterialTheme.typography.labelMedium, fontFamily = FontFamily.Monospace)
+                }
+            }
+            if (ufs.currentMHz > 0) {
+                StatusPill("${ufs.currentMHz} / ${ufs.maxMHz} MHz", KleeColors.Device)
+            }
+        }
+
+        UfsSwitchRow("WriteBooster (wb_on)", "Cache SLC de alta velocidade para gravações rápidas", ufs.wbOn, !busy) {
+            onToggle("wb_on", it)
+        }
+        HorizontalDivider(color = KleeColors.Border)
+        UfsSwitchRow("Clock Scaling (clkscale_enable)", "Escalonamento dinâmico de clock UFS (273–499 MHz)", ufs.clkscaleEnable, !busy) {
+            onToggle("clkscale_enable", it)
+        }
+        HorizontalDivider(color = KleeColors.Border)
+        UfsSwitchRow("Clock Gating (clkgate_enable)", "Reduz consumo desligando clock UFS em repouso", ufs.clkgateEnable, !busy) {
+            onToggle("clkgate_enable", it)
+        }
+    }
+}
+
+@Composable
+private fun UfsSwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean?,
+    enabled: Boolean,
+    onChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+            Text(title, color = KleeColors.TextPrimary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(subtitle, color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked == true, onCheckedChange = onChange, enabled = enabled && checked != null)
     }
 }
 
@@ -286,10 +444,11 @@ private fun VmSliderRow(
 private fun IoDeviceCard(
     io: IoDevice,
     busy: Boolean,
-    onApply: (String, String?, Int?) -> Unit
+    onApply: (String, String?, Int?, Boolean?) -> Unit
 ) {
     var selectedSched by remember(io.name, io.currentScheduler) { mutableStateOf(io.currentScheduler) }
     var selectedRa by remember(io.name, io.readAheadKb) { mutableIntStateOf(io.readAheadKb) }
+    var ioStats by remember(io.name, io.ioStatsEnabled) { mutableStateOf(io.ioStatsEnabled) }
     val raOptions = listOf(128, 256, 512, 1024, 2048).let { base ->
         if (base.contains(io.readAheadKb)) base else (base + io.readAheadKb).sorted()
     }
@@ -330,15 +489,29 @@ private fun IoDeviceCard(
             )
         }
 
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("I/O Stats (desativar reduz overhead)", color = KleeColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+            Switch(
+                checked = ioStats,
+                onCheckedChange = { ioStats = it },
+                enabled = !busy && io.canWriteIoStats
+            )
+        }
+
         Button(
             onClick = {
                 onApply(
                     io.name,
                     selectedSched.takeIf { io.canWriteScheduler && io.availableSchedulers.size > 1 },
-                    selectedRa.takeIf { io.canWriteReadAhead }
+                    selectedRa.takeIf { io.canWriteReadAhead },
+                    ioStats.takeIf { io.canWriteIoStats }
                 )
             },
-            enabled = !busy && (io.canWriteScheduler || io.canWriteReadAhead),
+            enabled = !busy && (io.canWriteScheduler || io.canWriteReadAhead || io.canWriteIoStats),
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = KleeColors.Tuning, contentColor = Color.White)
@@ -394,6 +567,9 @@ fun DeviceScreen(
             DeviceRow("Modelo", "${info.brand} ${info.model}".trim())
             DeviceRow("Codinome", info.device)
             DeviceRow("SoC / Plataforma", "${info.soc} (${info.hardware.ifBlank { "MTK" }})")
+            if (info.hyperOsVersion.isNotBlank()) {
+                DeviceRow("HyperOS", info.hyperOsVersion)
+            }
             DeviceRow("Android", "${info.androidVersion} (API ${info.sdkInt})")
             DeviceRow("Patch de Segurança", info.securityPatch)
             DeviceRow("SELinux", info.selinuxMode)
@@ -417,7 +593,7 @@ fun DeviceScreen(
         KleeCard(modifier = Modifier.fillMaxWidth()) {
             Text("Relatório de Diagnóstico Completo", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
             Text(
-                "Coleta CPU, GPU, OPPs, sensores térmicos, bateria, memória e I/O em um texto formatado para depuração ou suporte.",
+                "Coleta CPU, UCLAMP, GPU/GED, DRAM, FPSGO/Metis, sensores térmicos, bateria, ZRAM/MGLRU e UFS em texto formatado.",
                 color = KleeColors.TextSecondary,
                 style = MaterialTheme.typography.bodySmall
             )

@@ -31,6 +31,7 @@ import dev.klee.kernelmanager.ui.screens.DeviceScreen
 import dev.klee.kernelmanager.ui.screens.GpuScreen
 import dev.klee.kernelmanager.ui.screens.HomeScreen
 import dev.klee.kernelmanager.ui.screens.MonitorScreen
+import dev.klee.kernelmanager.ui.screens.MtkPerfScreen
 import dev.klee.kernelmanager.ui.screens.PowerScreen
 import dev.klee.kernelmanager.ui.screens.ProfilesScreen
 import dev.klee.kernelmanager.ui.screens.ThermalScreen
@@ -66,6 +67,7 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
     val dashboard by vm.dashboard.collectAsState()
     val cpu by vm.cpu.collectAsState()
     val gpu by vm.gpu.collectAsState()
+    val mtkPerf by vm.mtkPerf.collectAsState()
     val thermal by vm.thermal.collectAsState()
     val power by vm.power.collectAsState()
     val monitor by vm.monitor.collectAsState()
@@ -91,13 +93,12 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
         )
     }
 
-    val isSubModule = currentRoute in setOf("CPU", "GPU", "THERMAL", "POWER", "TUNING", "DEVICE")
+    val isSubModule = currentRoute in setOf("CPU", "GPU", "MTK_PERF", "THERMAL", "POWER", "TUNING", "DEVICE")
 
     BackHandler(enabled = currentRoute != "HOME") {
         currentRoute = "HOME"
     }
 
-    // Auto-dismiss success feedback after 5 seconds
     LaunchedEffect(feedback?.id) {
         val current = feedback
         if (current != null && !current.isError) {
@@ -108,12 +109,12 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
         }
     }
 
-    // Load data when entering screens
     LaunchedEffect(currentRoute) {
         when (currentRoute) {
             "HOME" -> vm.loadDashboard()
             "CPU" -> vm.loadCpu()
             "GPU" -> vm.loadGpu()
+            "MTK_PERF" -> vm.loadMtkPerf()
             "CONTROL" -> {
                 if (cpu.cpuPolicies.isEmpty()) vm.loadCpu()
                 if (gpu.gpu == null) vm.loadGpu()
@@ -125,7 +126,6 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
         }
     }
 
-    // Live monitor polling loop
     LaunchedEffect(currentRoute, monitorPaused, monitorIntervalMs) {
         if (currentRoute == "MONITOR" && !monitorPaused) {
             while (true) {
@@ -234,23 +234,40 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
                         onRefreshCpu = vm::loadCpu,
                         onApplyCpu = vm::applyCpu,
                         onResetCpu = vm::resetCpuPolicy,
+                        onApplyUclamp = vm::applyUclamp,
                         onRefreshGpu = vm::loadGpu,
                         onApplyGpu = vm::applyGpu,
-                        onResetGpu = vm::resetGpu
+                        onResetGpu = vm::resetGpu,
+                        onApplyGedToggle = vm::applyGedToggle,
+                        onApplyGedInt = vm::applyGedInt,
+                        onApplyDram = vm::applyDram,
+                        onResetDram = vm::resetDram
                     )
                     "CPU" -> CpuScreen(
                         state = cpu,
                         busy = busy,
                         onRefresh = vm::loadCpu,
                         onApply = vm::applyCpu,
-                        onReset = vm::resetCpuPolicy
+                        onReset = vm::resetCpuPolicy,
+                        onApplyUclamp = vm::applyUclamp
                     )
                     "GPU" -> GpuScreen(
                         state = gpu,
                         busy = busy,
                         onRefresh = vm::loadGpu,
                         onApply = vm::applyGpu,
-                        onReset = vm::resetGpu
+                        onReset = vm::resetGpu,
+                        onApplyGedToggle = vm::applyGedToggle,
+                        onApplyGedInt = vm::applyGedInt,
+                        onApplyDram = vm::applyDram,
+                        onResetDram = vm::resetDram
+                    )
+                    "MTK_PERF" -> MtkPerfScreen(
+                        state = mtkPerf,
+                        busy = busy,
+                        onRefresh = vm::loadMtkPerf,
+                        onToggle = vm::applyMtkPerfBool,
+                        onApplyPreset = vm::applyMtkPerfPreset
                     )
                     "THERMAL" -> ThermalScreen(
                         state = thermal,
@@ -260,7 +277,8 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
                     "POWER" -> PowerScreen(
                         state = power,
                         busy = busy,
-                        onRefresh = vm::loadPower
+                        onRefresh = vm::loadPower,
+                        onToggleBypass = vm::applyBypassCharging
                     )
                     "MONITOR" -> MonitorScreen(
                         sample = monitor,
@@ -286,8 +304,11 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
                         busy = busy,
                         onRefresh = vm::loadTuning,
                         onApplyVm = vm::applyVmParam,
+                        onApplyMglru = vm::applyMglru,
+                        onApplyUfsBool = vm::applyUfsBool,
                         onApplyIo = vm::applyIoDevice,
                         onApplyTcp = vm::applyTcp,
+                        onApplyTcpFastOpen = vm::applyTcpFastOpen,
                         onDropCaches = vm::dropCaches
                     )
                     "DEVICE" -> DeviceScreen(
@@ -306,11 +327,12 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
 }
 
 private fun routeTitle(route: String): String = when (route) {
-    "CPU" -> "CPU Control"
-    "GPU" -> "GPU Control"
+    "CPU" -> "CPU & UCLAMP"
+    "GPU" -> "GPU, GED & DRAM"
+    "MTK_PERF" -> "FPSGO & Metis"
     "THERMAL" -> "Monitor Térmico"
-    "POWER" -> "Bateria & Energia"
-    "TUNING" -> "Memória, I/O & Rede"
+    "POWER" -> "Bateria & Bypass"
+    "TUNING" -> "Memória, UFS 4.0 & Rede"
     "DEVICE" -> "Dispositivo & Logs"
     else -> "KLEE Kernel Manager"
 }

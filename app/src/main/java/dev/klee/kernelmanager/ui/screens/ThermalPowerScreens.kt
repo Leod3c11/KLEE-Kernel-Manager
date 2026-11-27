@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Power
+import androidx.compose.material.icons.rounded.PowerOff
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Thermostat
@@ -43,13 +44,18 @@ fun ThermalScreen(
 ) {
     var filter by remember { mutableStateOf("ALL") }
     var search by remember { mutableStateOf("") }
+    var showInactive by remember { mutableStateOf(false) }
 
-    val peakTemp = state.zones.maxOfOrNull { it.tempCelsius }
-    val avgTemp = state.zones.takeIf { it.isNotEmpty() }?.map { it.tempCelsius }?.average()
+    val activeZones = state.zones.filter { it.tempCelsius > 0.5 }
+    val socMax = activeZones.firstOrNull { it.name.equals("soc_max", ignoreCase = true) }?.tempCelsius
+        ?: activeZones.maxOfOrNull { it.tempCelsius }
+    val bigCore = activeZones.firstOrNull { it.name.contains("cpu-big", ignoreCase = true) }?.tempCelsius
+    val batteryTemp = activeZones.firstOrNull { it.name.equals("battery", ignoreCase = true) }?.tempCelsius
     val activeCoolingCount = state.coolingDevices.count { it.curState > 0 }
 
     val query = search.trim().lowercase()
-    val filteredZones = state.zones.filter { query.isEmpty() || it.name.lowercase().contains(query) }
+    val baseZones = if (showInactive) state.zones else activeZones
+    val filteredZones = baseZones.filter { query.isEmpty() || it.name.lowercase().contains(query) }
     val filteredCooling = state.coolingDevices.filter { query.isEmpty() || it.name.lowercase().contains(query) }
     val filteredExtras = state.mtkExtras.filter { query.isEmpty() || it.key.lowercase().contains(query) }
 
@@ -62,7 +68,7 @@ fun ThermalScreen(
     ) {
         SectionHeader(
             title = "Monitor Térmico",
-            subtitle = "Zonas térmicas, cooling devices e nós MediaTek",
+            subtitle = "Zonas térmicas MT6899, cooling devices e nós Xiaomi",
             trailing = {
                 FilledTonalIconButton(
                     onClick = onRefresh,
@@ -81,23 +87,29 @@ fun ThermalScreen(
             RootWarningCard()
         }
 
-        // Summary KPI row
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Key MT6899 Thermal KPI row
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThermalKpiBox(
-                label = "Pico",
-                value = peakTemp?.let { "${"%.1f".format(it)} °C" } ?: "--",
-                accent = peakTemp?.let { tempSeverityColor(it) } ?: KleeColors.Thermal,
+                label = "SoC Max",
+                value = socMax?.let { "${"%.1f".format(it)}°C" } ?: "--",
+                accent = socMax?.let { tempSeverityColor(it) } ?: KleeColors.Thermal,
                 modifier = Modifier.weight(1f)
             )
             ThermalKpiBox(
-                label = "Média",
-                value = avgTemp?.let { "${"%.1f".format(it)} °C" } ?: "--",
-                accent = avgTemp?.let { tempSeverityColor(it) } ?: KleeColors.Primary,
+                label = "CPU Big",
+                value = bigCore?.let { "${"%.1f".format(it)}°C" } ?: "--",
+                accent = bigCore?.let { tempSeverityColor(it) } ?: KleeColors.Cpu,
+                modifier = Modifier.weight(1f)
+            )
+            ThermalKpiBox(
+                label = "Bateria",
+                value = batteryTemp?.let { "${"%.1f".format(it)}°C" } ?: "--",
+                accent = batteryTemp?.let { tempSeverityColor(it) } ?: KleeColors.Power,
                 modifier = Modifier.weight(1f)
             )
             ThermalKpiBox(
                 label = "Throttling",
-                value = "$activeCoolingCount / ${state.coolingDevices.size}",
+                value = "$activeCoolingCount/${state.coolingDevices.size}",
                 accent = if (activeCoolingCount > 0) KleeColors.Warning else KleeColors.Power,
                 modifier = Modifier.weight(1f)
             )
@@ -106,7 +118,7 @@ fun ThermalScreen(
         OutlinedTextField(
             value = search,
             onValueChange = { search = it },
-            placeholder = { Text("Filtrar sensor ou dispositivo...") },
+            placeholder = { Text("Filtrar sensor ou cooling...") },
             leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = KleeColors.TextMuted) },
             singleLine = true,
             shape = RoundedCornerShape(14.dp),
@@ -123,7 +135,7 @@ fun ThermalScreen(
                 "ALL" to "Todos",
                 "ZONES" to "Sensores (${filteredZones.size})",
                 "COOL" to "Cooling (${filteredCooling.size})",
-                "MTK" to "MediaTek (${filteredExtras.size})"
+                "MTK" to "Xiaomi (${filteredExtras.size})"
             ).forEach { (key, label) ->
                 FilterChip(
                     selected = filter == key,
@@ -131,6 +143,11 @@ fun ThermalScreen(
                     label = { Text(label) }
                 )
             }
+            FilterChip(
+                selected = showInactive,
+                onClick = { showInactive = !showInactive },
+                label = { Text("Inativos (0°C)") }
+            )
         }
 
         if (state.message.isNotBlank() && state.zones.isEmpty()) {
@@ -141,7 +158,7 @@ fun ThermalScreen(
 
         if ((filter == "ALL" || filter == "MTK") && filteredExtras.isNotEmpty()) {
             KleeCard(modifier = Modifier.fillMaxWidth(), accentBorder = KleeColors.Thermal.copy(alpha = 0.3f)) {
-                Text("Nós MediaTek (thermal_message)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                Text("Nós Xiaomi (thermal_message)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
                 filteredExtras.forEach { extra ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -239,20 +256,21 @@ fun ThermalScreen(
 private fun ThermalKpiBox(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(KleeColors.Card)
-            .border(1.dp, accent.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-            .padding(12.dp),
+            .border(1.dp, accent.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+            .padding(vertical = 10.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        Text(label, color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
+        Text(label, color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelMedium, maxLines = 1)
         Text(
             value,
             color = accent,
-            fontSize = 16.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1
         )
     }
 }
@@ -261,8 +279,11 @@ private fun ThermalKpiBox(label: String, value: String, accent: Color, modifier:
 fun PowerScreen(
     state: PowerSnapshot,
     busy: Boolean,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onToggleBypass: (Boolean) -> Unit
 ) {
+    var confirmBypassTarget by remember { mutableStateOf<Boolean?>(null) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -271,8 +292,8 @@ fun PowerScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         SectionHeader(
-            title = "Bateria & Energia",
-            subtitle = "Telemetria elétrica, potência e fontes de alimentação",
+            title = "Bateria & Bypass Charging",
+            subtitle = "Telemetria elétrica, saúde real e controle de carregamento",
             trailing = {
                 FilledTonalIconButton(
                     onClick = onRefresh,
@@ -355,12 +376,59 @@ fun PowerScreen(
             }
         }
 
+        // Bypass Charging Card (input_suspend)
+        if (state.inputSuspend != null) {
+            val bypassOn = state.inputSuspend == true
+            val bypassColor = if (bypassOn) KleeColors.Warning else KleeColors.Power
+            KleeCard(
+                modifier = Modifier.fillMaxWidth(),
+                accentBorder = bypassColor.copy(alpha = 0.45f)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            if (bypassOn) Icons.Rounded.PowerOff else Icons.Rounded.Bolt,
+                            contentDescription = null,
+                            tint = bypassColor,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Column {
+                            Text("Bypass Charging (Pausar Carga)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                if (bypassOn) "Carregamento suspenso (input_suspend=1)" else "Carregamento normal ativo (input_suspend=0)",
+                                color = bypassColor,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = bypassOn,
+                        onCheckedChange = { target -> confirmBypassTarget = target },
+                        enabled = !busy && state.canWriteInputSuspend
+                    )
+                }
+                Text(
+                    "Suspende a entrada de carga na bateria para reduzir aquecimento e desgaste ao jogar conectado na tomada. Lembre-se de desativar para voltar a carregar.",
+                    color = KleeColors.TextMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
         KleeCard(modifier = Modifier.fillMaxWidth()) {
-            Text("Saúde & Capacidade", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+            Text("Saúde & Capacidade Real", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
             PowerInfoRow("Estado de saúde", state.health)
             state.cycleCount?.let { PowerInfoRow("Ciclos de carga", "$it ciclos") }
-            state.chargeCounterMah?.let { PowerInfoRow("Carga atual", "$it mAh") }
-            state.chargeFullMah?.let { PowerInfoRow("Capacidade real", "$it mAh") }
+            state.chargeCounterMah?.let { PowerInfoRow("Carga restante", "$it mAh") }
+            state.chargeFullMah?.let { PowerInfoRow("Capacidade atual máxima", "$it mAh") }
             state.chargeDesignMah?.let { design ->
                 PowerInfoRow("Capacidade nominal", "$design mAh")
                 state.chargeFullMah?.let { full ->
@@ -413,6 +481,37 @@ fun PowerScreen(
         }
 
         Spacer(Modifier.height(12.dp))
+    }
+
+    confirmBypassTarget?.let { enable ->
+        AlertDialog(
+            onDismissRequest = { confirmBypassTarget = null },
+            containerColor = KleeColors.CardElevated,
+            title = {
+                Text(
+                    if (enable) "Ativar Bypass Charging?" else "Retomar Carregamento Normal?",
+                    color = KleeColors.TextPrimary
+                )
+            },
+            text = {
+                Text(
+                    if (enable)
+                        "Isso escreverá 1 em /sys/class/power_supply/battery/input_suspend, pausando o carregamento da bateria. Ideal para jogos na tomada sem aquecer a bateria."
+                    else
+                        "Isso restaurará input_suspend=0 para o aparelho voltar a carregar normalmente.",
+                    color = KleeColors.TextSecondary
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    confirmBypassTarget = null
+                    onToggleBypass(enable)
+                }) { Text("Confirmar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmBypassTarget = null }) { Text("Cancelar") }
+            }
+        )
     }
 }
 

@@ -1,5 +1,6 @@
 package dev.klee.kernelmanager
 
+import java.util.Locale
 import kotlin.math.abs
 
 class KernelControlRepository(private val shell: RootShell) {
@@ -26,7 +27,9 @@ class KernelControlRepository(private val shell: RootShell) {
             "printf 'CPU|%s\\n' \"\$(cat \"\$d/scaling_cur_freq\" 2>/dev/null)\"; done; " +
             "for d in /sys/class/devfreq/13000000.mali /sys/class/devfreq/*mali* /sys/class/devfreq/*gpu*; do [ -d \"\$d\" ] || continue; " +
             "printf 'GPU|%s\\n' \"\$(cat \"\$d/cur_freq\" 2>/dev/null)\"; break; done; " +
-            "printf 'BATT|%s|%s\\n' \"\$(cat /sys/class/power_supply/battery/capacity 2>/dev/null)\" \"\$(cat /sys/class/power_supply/battery/status 2>/dev/null)\"; " +
+            "[ -r /sys/kernel/ged/hal/gpu_utilization ] && printf 'GPU_UTIL|%s\\n' \"\$(cat /sys/kernel/ged/hal/gpu_utilization 2>/dev/null)\"; " +
+            "[ -r /sys/class/devfreq/mtk-dvfsrc-devfreq/cur_freq ] && printf 'DRAM|%s\\n' \"\$(cat /sys/class/devfreq/mtk-dvfsrc-devfreq/cur_freq 2>/dev/null)\"; " +
+            "printf 'BATT|%s|%s|%s\\n' \"\$(cat /sys/class/power_supply/battery/capacity 2>/dev/null)\" \"\$(cat /sys/class/power_supply/battery/status 2>/dev/null)\" \"\$(cat /sys/class/power_supply/battery/input_suspend 2>/dev/null)\"; " +
             "for d in /sys/class/thermal/thermal_zone[0-9]*; do [ -d \"\$d\" ] || continue; " +
             "t=\$(cat \"\$d/type\" 2>/dev/null); v=\$(cat \"\$d/temp\" 2>/dev/null); " +
             "[ -n \"\$t\" ] && [ -n \"\$v\" ] && printf 'TEMP|%s|%s\\n' \"\$t\" \"\$v\"; done; " +
@@ -41,10 +44,14 @@ class KernelControlRepository(private val shell: RootShell) {
         var cpuPeakKHz = 0L
         var clusterCount = 0
         var gpuHz = 0L
+        var gpuUtil: Int? = null
+        var dramHz = 0L
         var battPct = 0
         var battStatus = ""
+        var bypassActive = false
         var memTotalKb = 0L
         var memAvailKb = 0L
+        var exactSocMax: Double? = null
         val socTemps = mutableListOf<Double>()
         val fallbackTemps = mutableListOf<Double>()
 
@@ -62,20 +69,21 @@ class KernelControlRepository(private val shell: RootShell) {
                     if (cur > cpuPeakKHz) cpuPeakKHz = cur
                 }
                 "GPU" -> gpuHz = p.getOrNull(1)?.trim()?.toLongOrNull() ?: 0L
+                "GPU_UTIL" -> gpuUtil = parseFirstInt(p.getOrNull(1))
+                "DRAM" -> dramHz = p.getOrNull(1)?.trim()?.toLongOrNull() ?: 0L
                 "BATT" -> {
                     battPct = p.getOrNull(1)?.trim()?.toIntOrNull() ?: 0
                     battStatus = p.getOrNull(2)?.trim() ?: ""
+                    bypassActive = p.getOrNull(3)?.trim() == "1"
                 }
                 "TEMP" -> {
                     val name = p.getOrNull(1)?.lowercase() ?: ""
                     val raw = p.getOrNull(2)?.trim()?.toLongOrNull() ?: return@forEach
                     val c = normalizeTemp(raw)
                     if (c in 5.0..120.0) {
-                        if (name.contains("soc") || name.contains("cpu") || name.contains("ap") || name.contains("mtktscpu")) {
-                            socTemps.add(c)
-                        } else {
-                            fallbackTemps.add(c)
-                        }
+                        if (name == "soc_max") exactSocMax = c
+                        else if (name.contains("soc") || name.contains("cpu") || name.contains("mtktsap")) socTemps.add(c)
+                        else fallbackTemps.add(c)
                     }
                 }
                 "MEM" -> {
@@ -90,7 +98,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val ramTotalMb = memTotalKb / 1024L
         val ramUsedMb = ((memTotalKb - memAvailKb).coerceAtLeast(0L)) / 1024L
         val displaySoc = soc.ifBlank { board.uppercase().ifBlank { "MT6899" } }
-        val socTemp = socTemps.maxOrNull() ?: fallbackTemps.maxOrNull()
+        val socTemp = exactSocMax ?: socTemps.maxOrNull() ?: fallbackTemps.maxOrNull()
 
         return DashboardSummary(
             root = true,
@@ -102,8 +110,11 @@ class KernelControlRepository(private val shell: RootShell) {
             cpuPeakMHz = cpuPeakKHz / 1000L,
             cpuClusterCount = clusterCount,
             gpuMHz = gpuHz / 1_000_000L,
+            gpuUtilization = gpuUtil,
+            dramMHz = dramHz / 1_000_000L,
             batteryPercent = battPct,
             batteryStatus = battStatus,
+            bypassActive = bypassActive,
             socTempC = socTemp,
             ramUsedMb = ramUsedMb,
             ramTotalMb = ramTotalMb
@@ -134,7 +145,15 @@ class KernelControlRepository(private val shell: RootShell) {
             "cid=\${c##*cpu}; case \"\$cid\" in *[!0-9]*) continue;; esac; " +
             "on=1; [ -r \"\$c/online\" ] && on=\$(cat \"\$c/online\" 2>/dev/null); " +
             "cf=\$(cat \"\$c/cpufreq/scaling_cur_freq\" 2>/dev/null); " +
-            "printf 'CORE|%s|%s|%s\\n' \"\$cid\" \"\$on\" \"\$cf\"; done"
+            "printf 'CORE|%s|%s|%s\\n' \"\$cid\" \"\$on\" \"\$cf\"; done; " +
+            "u=/dev/cpuctl/top-app; if [ -d \"\$u\" ]; then " +
+            "printf 'UCLAMP|%s|%s|%s|%s|%s|%s\\n' " +
+            "\"\$(cat \"\$u/cpu.uclamp.min\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$u/cpu.uclamp.max\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$u/cpu.uclamp.latency_sensitive\" 2>/dev/null)\" " +
+            "\"\$( [ -w \"\$u/cpu.uclamp.min\" ] && echo 1 || echo 0 )\" " +
+            "\"\$( [ -w \"\$u/cpu.uclamp.max\" ] && echo 1 || echo 0 )\" " +
+            "\"\$( [ -w \"\$u/cpu.uclamp.latency_sensitive\" ] && echo 1 || echo 0 )\"; fi"
 
         val r = shell.runReadOnly(s)
         if (!r.success) return ControlSnapshot(true, message = r.stderr.joinToString("\n"))
@@ -172,12 +191,44 @@ class KernelControlRepository(private val shell: RootShell) {
             )
         }.sortedBy { it.coreId }
 
+        val uclamp = r.stdout.firstOrNull { it.startsWith("UCLAMP|") }?.split("|")?.let { p ->
+            if (p.size < 7) null else {
+                val minVal = p[1].trim().toFloatOrNull() ?: 0f
+                val maxRaw = p[2].trim()
+                val maxVal = if (maxRaw.equals("max", ignoreCase = true)) 100f else (maxRaw.toFloatOrNull() ?: 100f)
+                UclampInfo(
+                    group = "top-app",
+                    minPercent = minVal.coerceIn(0f, 100f),
+                    maxPercent = maxVal.coerceIn(0f, 100f),
+                    latencySensitive = p[3].trim() == "1",
+                    canWriteMin = p[4].trim() == "1",
+                    canWriteMax = p[5].trim() == "1",
+                    canWriteLatency = p[6].trim() == "1"
+                )
+            }
+        }
+
         return ControlSnapshot(
             root = true,
             cpuPolicies = list,
             cpuCores = cores,
+            uclamp = uclamp,
             message = if (list.isEmpty()) "Nenhuma policy CPUFreq encontrada." else ""
         )
+    }
+
+    fun applyUclamp(minPct: Int, maxPct: Int, latencySensitive: Boolean): String {
+        require(minPct in 0..100 && maxPct in 0..100 && minPct <= maxPct) { "Faixa UCLAMP inválida (0–100%)." }
+        val minStr = String.format(Locale.US, "%.2f", minPct.toDouble())
+        val maxStr = if (maxPct >= 100) "max" else String.format(Locale.US, "%.2f", maxPct.toDouble())
+        val latStr = if (latencySensitive) "1" else "0"
+        val script =
+            "u=/dev/cpuctl/top-app; [ -d \"\$u\" ] || { echo 'UCLAMP_NOT_FOUND'; exit 2; }; " +
+            "if [ -w \"\$u/cpu.uclamp.max\" ]; then printf '%s' '$maxStr' > \"\$u/cpu.uclamp.max\" || { echo 'UCLAMP_MAX_FAILED'; exit 3; }; fi; " +
+            "if [ -w \"\$u/cpu.uclamp.min\" ]; then printf '%s' '$minStr' > \"\$u/cpu.uclamp.min\" || { echo 'UCLAMP_MIN_FAILED'; exit 4; }; fi; " +
+            "if [ -w \"\$u/cpu.uclamp.latency_sensitive\" ]; then printf '%s' '$latStr' > \"\$u/cpu.uclamp.latency_sensitive\" || { echo 'UCLAMP_LAT_FAILED'; exit 5; }; fi; " +
+            "echo \"OK UCLAMP top-app min=\$(cat \"\$u/cpu.uclamp.min\" 2>/dev/null) max=\$(cat \"\$u/cpu.uclamp.max\" 2>/dev/null) latency=\$(cat \"\$u/cpu.uclamp.latency_sensitive\" 2>/dev/null)\""
+        return result(shell.runRoot(script), "Falha ao aplicar UCLAMP.")
     }
 
     fun readGpu(): ControlSnapshot {
@@ -186,40 +237,80 @@ class KernelControlRepository(private val shell: RootShell) {
             "found=0; for d in /sys/class/devfreq/13000000.mali /sys/class/devfreq/*mali* /sys/class/devfreq/*gpu*; do " +
             "[ -d \"\$d\" ] || continue; [ \"\$found\" = 0 ] || continue; found=1; " +
             "printf 'GPU|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\\n' " +
-            "\"\$d\" " +
-            "\"\$(cat \"\$d/name\" 2>/dev/null)\" " +
-            "\"\$(cat \"\$d/cur_freq\" 2>/dev/null)\" " +
-            "\"\$(cat \"\$d/min_freq\" 2>/dev/null)\" " +
-            "\"\$(cat \"\$d/max_freq\" 2>/dev/null)\" " +
-            "\"\$(cat \"\$d/min_freq\" 2>/dev/null)\" " +
-            "\"\$(cat \"\$d/max_freq\" 2>/dev/null)\" " +
-            "\"\$(cat \"\$d/governor\" 2>/dev/null)\" " +
-            "\"\$(cat \"\$d/available_governors\" 2>/dev/null)\" " +
+            "\"\$d\" \"\$(cat \"\$d/name\" 2>/dev/null)\" \"\$(cat \"\$d/cur_freq\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$d/min_freq\" 2>/dev/null)\" \"\$(cat \"\$d/max_freq\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$d/min_freq\" 2>/dev/null)\" \"\$(cat \"\$d/max_freq\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$d/governor\" 2>/dev/null)\" \"\$(cat \"\$d/available_governors\" 2>/dev/null)\" " +
             "\"\$(cat \"\$d/available_frequencies\" 2>/dev/null)\" " +
             "\"\$( [ -w \"\$d/min_freq\" ] && echo 1 || echo 0 )\" " +
             "\"\$( [ -w \"\$d/max_freq\" ] && echo 1 || echo 0 )\" " +
             "\"\$( [ -w \"\$d/governor\" ] && echo 1 || echo 0 )\"; done; " +
-            "[ \"\$found\" = 1 ] || printf 'GPU_MISSING\\n'"
+            "[ \"\$found\" = 1 ] || printf 'GPU_MISSING\\n'; " +
+            "g=/sys/kernel/ged/hal; gp=/sys/module/ged/parameters; " +
+            "if [ -d \"\$g\" ] || [ -d \"\$gp\" ]; then " +
+            "printf 'GED|%s|%s|%s|%s|%s|%s|%s\\n' " +
+            "\"\$(cat \"\$g/gpu_utilization\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$g/gpu_boost_level\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$g/dvfs_margin_value\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$g/dcs_mode\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$gp/ged_smart_boost\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$gp/boost_gpu_enable\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$gp/is_GED_KPI_enabled\" 2>/dev/null)\"; fi; " +
+            "dr=/sys/class/devfreq/mtk-dvfsrc-devfreq; if [ -d \"\$dr\" ]; then " +
+            "printf 'DRAM|%s|%s|%s|%s|%s|%s|%s\\n' " +
+            "\"\$(cat \"\$dr/cur_freq\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$dr/min_freq\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$dr/max_freq\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$dr/governor\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$dr/available_frequencies\" 2>/dev/null)\" " +
+            "\"\$( [ -w \"\$dr/min_freq\" ] && echo 1 || echo 0 )\" " +
+            "\"\$( [ -w \"\$dr/max_freq\" ] && echo 1 || echo 0 )\"; fi"
 
         val r = shell.runReadOnly(s)
+        // Safe gpufreqv2 read-only diagnostics (never touches whitebox_test or power control)
         val diagCmd =
-            "for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/gpu_working_opp_table /proc/gpufreqv2/limit_table /proc/gpufreqv2/fix_target_opp_index; do " +
-            "[ -r \"\$f\" ] && { echo \"=== \$(basename \"\$f\") ===\"; head -n 40 \"\$f\" 2>/dev/null; }; done"
+            "for f in /proc/gpufreqv2/gpufreq_status /proc/gpufreqv2/limit_table; do " +
+            "[ -r \"\$f\" ] && { echo \"=== \$(basename \"\$f\") ===\"; head -n 35 \"\$f\" 2>/dev/null; }; done"
         val diagText = shell.runReadOnly(diagCmd).stdout.joinToString("\n")
+
+        val ged = r.stdout.firstOrNull { it.startsWith("GED|") }?.split("|")?.let { p ->
+            if (p.size < 8) GedControlInfo() else GedControlInfo(
+                available = true,
+                gpuUtilization = parseFirstInt(p[1]),
+                gpuBoostLevel = parseFirstInt(p[2]),
+                dvfsMarginValue = parseFirstInt(p[3]),
+                dcsMode = parseBool01(p[4]),
+                gedSmartBoost = parseBool01(p[5]),
+                boostGpuEnable = parseBool01(p[6]),
+                gedKpiEnabled = parseBool01(p[7])
+            )
+        } ?: GedControlInfo()
+
+        val dram = r.stdout.firstOrNull { it.startsWith("DRAM|") }?.split("|")?.let { p ->
+            if (p.size < 8) null else DramDevfreqInfo(
+                path = "/sys/class/devfreq/mtk-dvfsrc-devfreq",
+                currentHz = p[1].trim().toLongOrNull() ?: 0L,
+                minHz = p[2].trim().toLongOrNull() ?: 0L,
+                maxHz = p[3].trim().toLongOrNull() ?: 0L,
+                governor = p[4].trim(),
+                frequenciesHz = p[5].split(Regex("\\s+")).mapNotNull(String::toLongOrNull).distinct().sorted(),
+                canWriteMin = p[6].trim() == "1",
+                canWriteMax = p[7].trim() == "1"
+            )
+        }
 
         if (r.stdout.any { it.contains("GPU_MISSING") }) {
             return ControlSnapshot(
                 root = true,
+                ged = ged,
+                dram = dram,
                 message = "Devfreq Mali ausente. Diagnóstico gpufreqv2:\n" +
                     diagText.ifBlank { "Os nós gpufreqv2 não estão legíveis neste kernel." }
             )
         }
         val p = r.stdout.firstOrNull { it.startsWith("GPU|") }?.split("|")
-            ?: return ControlSnapshot(true, message = "Falha ao consultar Mali devfreq: " + result(r, "sem saída"))
-        if (p.getOrNull(1) == "MISSING") {
-            return ControlSnapshot(true, message = "Nó devfreq não encontrado; GED/gpufreqv2 ainda requer identificação específica.")
-        }
-        if (p.size < 14) return ControlSnapshot(true, message = "Resposta GPU incompleta.")
+            ?: return ControlSnapshot(true, ged = ged, dram = dram, message = "Falha ao consultar Mali devfreq: " + result(r, "sem saída"))
+        if (p.size < 14) return ControlSnapshot(true, ged = ged, dram = dram, message = "Resposta GPU incompleta.")
         fun n(i: Int) = p[i].trim().toLongOrNull() ?: 0L
         val freqs = p[10].split(Regex("\\s+")).mapNotNull(String::toLongOrNull).distinct().sorted()
         val hwMin = freqs.firstOrNull() ?: n(4)
@@ -243,8 +334,136 @@ class KernelControlRepository(private val shell: RootShell) {
         return ControlSnapshot(
             root = true,
             gpu = g,
+            ged = ged,
+            dram = dram,
             message = if (g.frequenciesHz.isEmpty()) "OPPs indisponíveis; controle GPU bloqueado por segurança." else ""
         )
+    }
+
+    fun applyGedToggle(key: String, enabled: Boolean): String {
+        val allowed = mapOf(
+            "dcs_mode" to "/sys/kernel/ged/hal/dcs_mode",
+            "ged_smart_boost" to "/sys/module/ged/parameters/ged_smart_boost",
+            "boost_gpu_enable" to "/sys/module/ged/parameters/boost_gpu_enable",
+            "is_GED_KPI_enabled" to "/sys/module/ged/parameters/is_GED_KPI_enabled"
+        )
+        val path = allowed[key] ?: error("Parâmetro GED não suportado: $key")
+        val v = if (enabled) "1" else "0"
+        val script =
+            "n='$path'; [ -w \"\$n\" ] || { echo 'GED_NODE_NOT_WRITABLE'; exit 2; }; " +
+            "if ! printf '%s' '$v' > \"\$n\"; then echo 'GED_WRITE_FAILED'; exit 3; fi; " +
+            "echo \"OK GED $key=\$(cat \"\$n\" 2>/dev/null)\""
+        return result(shell.runRoot(script), "Falha ao aplicar GED $key.")
+    }
+
+    fun applyGedInt(key: String, value: Int): String {
+        val allowed = mapOf(
+            "gpu_boost_level" to ("/sys/kernel/ged/hal/gpu_boost_level" to (-1..100)),
+            "dvfs_margin_value" to ("/sys/kernel/ged/hal/dvfs_margin_value" to (0..100))
+        )
+        val (path, range) = allowed[key] ?: error("Parâmetro GED não suportado: $key")
+        require(value in range) { "Valor fora da faixa segura (${range.first}..${range.last})." }
+        val script =
+            "n='$path'; [ -w \"\$n\" ] || { echo 'GED_NODE_NOT_WRITABLE'; exit 2; }; " +
+            "if ! printf '%s' '$value' > \"\$n\"; then echo 'GED_WRITE_FAILED'; exit 3; fi; " +
+            "echo \"OK GED $key=\$(cat \"\$n\" 2>/dev/null)\""
+        return result(shell.runRoot(script), "Falha ao aplicar GED $key.")
+    }
+
+    fun applyDram(minHz: Long, maxHz: Long): String {
+        require(minHz > 0 && maxHz >= minHz) { "Faixa de frequência DRAM inválida." }
+        val d = "/sys/class/devfreq/mtk-dvfsrc-devfreq"
+        val s =
+            "d='$d'; [ -r \"\$d/available_frequencies\" ] && [ -w \"\$d/min_freq\" ] && [ -w \"\$d/max_freq\" ] || { echo 'DRAM_NODES_UNAVAILABLE'; exit 2; }; " +
+            "oldmin=\$(cat \"\$d/min_freq\") || exit 2; oldmax=\$(cat \"\$d/max_freq\") || exit 2; " +
+            "freqs=\$(cat \"\$d/available_frequencies\" 2>/dev/null); hasmin=0; hasmax=0; " +
+            "for f in \$freqs; do [ \"\$f\" = '$minHz' ] && hasmin=1; [ \"\$f\" = '$maxHz' ] && hasmax=1; done; " +
+            "[ \"\$hasmin\" = 1 ] && [ \"\$hasmax\" = 1 ] || { echo 'DRAM_FREQ_NOT_IN_TABLE'; exit 3; }; " +
+            "rollback(){ printf '%s' \"\$oldmin\" > \"\$d/min_freq\" 2>/dev/null; printf '%s' \"\$oldmax\" > \"\$d/max_freq\" 2>/dev/null; }; " +
+            "if [ '$minHz' -gt \"\$oldmax\" ]; then " +
+            "printf '%s' '$maxHz' > \"\$d/max_freq\" || { rollback; echo 'DRAM_MAX_FAILED'; exit 4; }; " +
+            "printf '%s' '$minHz' > \"\$d/min_freq\" || { rollback; echo 'DRAM_MIN_FAILED'; exit 5; }; " +
+            "else " +
+            "printf '%s' '$minHz' > \"\$d/min_freq\" || { rollback; echo 'DRAM_MIN_FAILED'; exit 5; }; " +
+            "printf '%s' '$maxHz' > \"\$d/max_freq\" || { rollback; echo 'DRAM_MAX_FAILED'; exit 4; }; fi; " +
+            "echo \"OK DRAM min=\$(cat \"\$d/min_freq\") max=\$(cat \"\$d/max_freq\")\""
+        return result(shell.runRoot(s), "Falha ao ajustar DRAM.")
+    }
+
+    fun readMtkPerf(): MtkPerfSnapshot {
+        if (!shell.rootCheck()) return MtkPerfSnapshot(false, message = "Autorize o KLEE no KernelSU.")
+        val script =
+            "if [ -d /sys/kernel/fpsgo ]; then echo 'HAS_FPSGO|1'; " +
+            "printf 'FP|fpsgo_enable|%s\\n' \"\$(cat /sys/kernel/fpsgo/common/fpsgo_enable 2>/dev/null)\"; " +
+            "printf 'FP|boost_ta|%s\\n' \"\$(cat /sys/kernel/fpsgo/fbt/boost_ta 2>/dev/null)\"; " +
+            "printf 'FP|boost_VIP|%s\\n' \"\$(cat /sys/kernel/fpsgo/fbt/boost_VIP 2>/dev/null)\"; " +
+            "printf 'FP|rescue_enable|%s\\n' \"\$(cat /sys/kernel/fpsgo/fbt/rescue_enable 2>/dev/null)\"; " +
+            "printf 'FP|ultra_rescue|%s\\n' \"\$(cat /sys/kernel/fpsgo/fbt/ultra_rescue 2>/dev/null)\"; " +
+            "printf 'FP|powerRL_enable|%s\\n' \"\$(cat /sys/kernel/fpsgo/fbt/powerRL_enable 2>/dev/null)\"; " +
+            "printf 'FP|status|%s\\n' \"\$(head -n 3 /sys/kernel/fpsgo/fstb/fpsgo_status 2>/dev/null | tr '\\n' ' ')\"; fi; " +
+            "if [ -d /sys/module/metis/parameters ]; then echo 'HAS_METIS|1'; " +
+            "for k in mi_fboost_enable speed_touch_enable vip_link_enable metis_io_enabled in_perf_mod thermal_break_enable; do " +
+            "printf 'MT|%s|%s\\n' \"\$k\" \"\$(cat \"/sys/module/metis/parameters/\$k\" 2>/dev/null)\"; done; fi"
+
+        val r = shell.runReadOnly(script)
+        var hasFpsgo = false
+        var hasMetis = false
+        val fp = mutableMapOf<String, String>()
+        val mt = mutableMapOf<String, String>()
+
+        r.stdout.forEach { line ->
+            val p = line.split("|")
+            when (p.firstOrNull()) {
+                "HAS_FPSGO" -> hasFpsgo = true
+                "HAS_METIS" -> hasMetis = true
+                "FP" -> if (p.size >= 3) fp[p[1]] = p[2].trim()
+                "MT" -> if (p.size >= 3) mt[p[1]] = p[2].trim()
+            }
+        }
+
+        return MtkPerfSnapshot(
+            root = true,
+            fpsgoAvailable = hasFpsgo,
+            fpsgoEnable = parseBool01(fp["fpsgo_enable"]),
+            boostTa = parseBool01(fp["boost_ta"]),
+            boostVip = parseBool01(fp["boost_VIP"]),
+            rescueEnable = parseBool01(fp["rescue_enable"]),
+            ultraRescue = parseBool01(fp["ultra_rescue"]),
+            powerRlEnable = parseBool01(fp["powerRL_enable"]),
+            fpsgoStatus = fp["status"].orEmpty(),
+            metisAvailable = hasMetis,
+            miFboostEnable = parseBool01(mt["mi_fboost_enable"]),
+            speedTouchEnable = parseBool01(mt["speed_touch_enable"]),
+            vipLinkEnable = parseBool01(mt["vip_link_enable"]),
+            metisIoEnabled = parseBool01(mt["metis_io_enabled"]),
+            inPerfMod = parseBool01(mt["in_perf_mod"]),
+            thermalBreakEnable = parseBool01(mt["thermal_break_enable"]),
+            message = if (!hasFpsgo && !hasMetis) "FPSGO e Metis não detectados neste kernel." else ""
+        )
+    }
+
+    fun applyMtkPerfBool(key: String, enabled: Boolean): String {
+        val allowed = mapOf(
+            "fpsgo_enable" to "/sys/kernel/fpsgo/common/fpsgo_enable",
+            "boost_ta" to "/sys/kernel/fpsgo/fbt/boost_ta",
+            "boost_VIP" to "/sys/kernel/fpsgo/fbt/boost_VIP",
+            "rescue_enable" to "/sys/kernel/fpsgo/fbt/rescue_enable",
+            "ultra_rescue" to "/sys/kernel/fpsgo/fbt/ultra_rescue",
+            "powerRL_enable" to "/sys/kernel/fpsgo/fbt/powerRL_enable",
+            "mi_fboost_enable" to "/sys/module/metis/parameters/mi_fboost_enable",
+            "speed_touch_enable" to "/sys/module/metis/parameters/speed_touch_enable",
+            "vip_link_enable" to "/sys/module/metis/parameters/vip_link_enable",
+            "metis_io_enabled" to "/sys/module/metis/parameters/metis_io_enabled",
+            "in_perf_mod" to "/sys/module/metis/parameters/in_perf_mod",
+            "thermal_break_enable" to "/sys/module/metis/parameters/thermal_break_enable"
+        )
+        val path = allowed[key] ?: error("Parâmetro MTK/Metis não permitido: $key")
+        val v = if (enabled) "1" else "0"
+        val script =
+            "n='$path'; [ -w \"\$n\" ] || { echo 'NODE_NOT_WRITABLE'; exit 2; }; " +
+            "if ! printf '%s' '$v' > \"\$n\"; then echo 'WRITE_FAILED'; exit 3; fi; " +
+            "echo \"OK $key=\$(cat \"\$n\" 2>/dev/null)\""
+        return result(shell.runRoot(script), "Falha ao ajustar $key.")
     }
 
     fun applyCpu(id: String, minKHz: Long, maxKHz: Long, governor: String?): String {
@@ -294,7 +513,7 @@ class KernelControlRepository(private val shell: RootShell) {
         devicePath: String = "/sys/class/devfreq/13000000.mali"
     ): String {
         require(minHz > 0 && maxHz >= minHz) { "Faixa de frequência da GPU inválida." }
-        require(governor == null || governor.matches(Regex("[A-Za-z0-9_]+"))) { "Governor da GPU inválido." }
+        require(governor == null || governor.matches(Regex("[A-Za-z0-9_-]+"))) { "Governor da GPU inválido." }
         require(devicePath.matches(Regex("^/sys/class/devfreq/[A-Za-z0-9._-]+$"))) { "Caminho devfreq inválido." }
         val govCheck = if (governor == null) "" else
             "available=\$(cat \"\$d/available_governors\" 2>/dev/null); case \" \$available \" in *' $governor '*) ;; *) echo 'GPU_GOVERNOR_UNAVAILABLE'; exit 7;; esac; "
@@ -385,8 +604,9 @@ class KernelControlRepository(private val shell: RootShell) {
         if (!shell.rootCheck()) return PowerSnapshot(false, message = "Autorize o KLEE no KernelSU.")
         val script =
             "d=/sys/class/power_supply/battery; " +
-            "for n in status capacity voltage_now current_now temp health technology cycle_count charge_full charge_full_design charge_counter; do " +
+            "for n in status capacity voltage_now current_now temp health technology cycle_count charge_full charge_full_design charge_counter input_suspend; do " +
             "[ -r \"\$d/\$n\" ] && printf 'BAT|%s|%s\\n' \"\$n\" \"\$(cat \"\$d/\$n\" 2>/dev/null)\"; done; " +
+            "printf 'BAT|can_write_suspend|%s\\n' \"\$( [ -w \"\$d/input_suspend\" ] && echo 1 || echo 0 )\"; " +
             "for s in /sys/class/power_supply/*; do [ -d \"\$s\" ] || continue; " +
             "on=''; [ -r \"\$s/online\" ] && on=\$(cat \"\$s/online\" 2>/dev/null); " +
             "printf 'SUPPLY|%s|%s|%s\\n' \"\$(basename \"\$s\")\" \"\$(cat \"\$s/type\" 2>/dev/null)\" \"\$on\"; done"
@@ -444,14 +664,27 @@ class KernelControlRepository(private val shell: RootShell) {
             powerWatts = powerWatts,
             tempCelsius = tempC,
             health = bat["health"] ?: "Desconhecida",
-            technology = bat["technology"] ?: "Li-ion",
+            technology = bat["technology"] ?: "Li-poly",
             cycleCount = bat["cycle_count"]?.toIntOrNull(),
             chargeFullMah = toMah(bat["charge_full"]?.toLongOrNull()),
             chargeDesignMah = toMah(bat["charge_full_design"]?.toLongOrNull()),
             chargeCounterMah = toMah(bat["charge_counter"]?.toLongOrNull()),
+            inputSuspend = parseBool01(bat["input_suspend"]),
+            canWriteInputSuspend = bat["can_write_suspend"] == "1",
             supplies = supplies.sortedByDescending { it.online == true },
             message = if (bat.isEmpty()) "Não foi possível ler /sys/class/power_supply/battery." else ""
         )
+    }
+
+    fun applyBypassCharging(suspend: Boolean): String {
+        val v = if (suspend) "1" else "0"
+        val script =
+            "n=/sys/class/power_supply/battery/input_suspend; [ -w \"\$n\" ] || { echo 'BYPASS_NODE_NOT_WRITABLE'; exit 2; }; " +
+            "if ! printf '%s' '$v' > \"\$n\"; then echo 'BYPASS_WRITE_FAILED'; exit 3; fi; " +
+            "actual=\$(cat \"\$n\" 2>/dev/null); " +
+            "[ \"\$actual\" = '$v' ] || { echo \"BYPASS_READBACK_MISMATCH actual=\$actual\"; exit 4; }; " +
+            "echo \"OK Bypass Charging (input_suspend=\$actual)\""
+        return result(shell.runRoot(script), "Falha ao alterar Bypass Charging.")
     }
 
     fun readMonitorSample(previousTicks: CpuStatTicks?): MonitorSample {
@@ -462,6 +695,9 @@ class KernelControlRepository(private val shell: RootShell) {
             "printf 'CPU|%s|%s|%s|%s\\n' \"\$id\" \"\$(cat \"\$d/scaling_cur_freq\" 2>/dev/null)\" \"\$(cat \"\$d/cpuinfo_max_freq\" 2>/dev/null)\" \"\$(cat \"\$d/scaling_governor\" 2>/dev/null)\"; done; " +
             "for d in /sys/class/devfreq/13000000.mali /sys/class/devfreq/*mali* /sys/class/devfreq/*gpu*; do [ -d \"\$d\" ] || continue; " +
             "printf 'GPU|%s|%s\\n' \"\$(cat \"\$d/cur_freq\" 2>/dev/null)\" \"\$(cat \"\$d/governor\" 2>/dev/null)\"; break; done; " +
+            "[ -r /sys/kernel/ged/hal/gpu_utilization ] && printf 'GPU_UTIL|%s\\n' \"\$(cat /sys/kernel/ged/hal/gpu_utilization 2>/dev/null)\"; " +
+            "[ -r /sys/class/devfreq/mtk-dvfsrc-devfreq/cur_freq ] && printf 'DRAM|%s\\n' \"\$(cat /sys/class/devfreq/mtk-dvfsrc-devfreq/cur_freq 2>/dev/null)\"; " +
+            "[ -r /sys/class/devfreq/112b0000.ufshci/cur_freq ] && printf 'UFS|%s\\n' \"\$(cat /sys/class/devfreq/112b0000.ufshci/cur_freq 2>/dev/null)\"; " +
             "printf 'LOAD|%s\\n' \"\$(cat /proc/loadavg 2>/dev/null)\"; " +
             "printf 'STAT|%s\\n' \"\$(head -n 1 /proc/stat 2>/dev/null)\"; " +
             "printf 'UPTIME|%s\\n' \"\$(cat /proc/uptime 2>/dev/null)\"; " +
@@ -474,11 +710,15 @@ class KernelControlRepository(private val shell: RootShell) {
         val r = shell.runReadOnly(script)
         val clusters = mutableListOf<ClusterLiveMetric>()
         var gpuMHz = 0L
+        var gpuUtil: Int? = null
         var gpuGov = ""
+        var dramMHz = 0L
+        var ufsMHz = 0L
         var loadAvg = ""
         var uptimeSec = 0L
         var statTicks: CpuStatTicks? = null
         var batTemp: Double? = null
+        var exactSocMax: Double? = null
         val socTemps = mutableListOf<Double>()
         val allTemps = mutableListOf<Double>()
         var memTotalKb = 0L
@@ -500,6 +740,9 @@ class KernelControlRepository(private val shell: RootShell) {
                     gpuMHz = (p.getOrNull(1)?.trim()?.toLongOrNull() ?: 0L) / 1_000_000L
                     gpuGov = p.getOrNull(2)?.trim() ?: ""
                 }
+                "GPU_UTIL" -> gpuUtil = parseFirstInt(p.getOrNull(1))
+                "DRAM" -> dramMHz = (p.getOrNull(1)?.trim()?.toLongOrNull() ?: 0L) / 1_000_000L
+                "UFS" -> ufsMHz = (p.getOrNull(1)?.trim()?.toLongOrNull() ?: 0L) / 1_000_000L
                 "LOAD" -> loadAvg = p.getOrNull(1)?.trim()?.split(Regex("\\s+"))?.take(3)?.joinToString(" · ") ?: ""
                 "UPTIME" -> uptimeSec = p.getOrNull(1)?.trim()?.substringBefore(" ")?.toDoubleOrNull()?.toLong() ?: 0L
                 "STAT" -> {
@@ -522,9 +765,8 @@ class KernelControlRepository(private val shell: RootShell) {
                     val c = normalizeTemp(raw)
                     if (c in 5.0..120.0) {
                         allTemps.add(c)
-                        if (name.contains("soc") || name.contains("cpu") || name.contains("mtktscpu")) {
-                            socTemps.add(c)
-                        }
+                        if (name == "soc_max") exactSocMax = c
+                        else if (name.contains("soc") || name.contains("cpu") || name.contains("mtktsap")) socTemps.add(c)
                     }
                 }
                 "MEM" -> {
@@ -552,8 +794,11 @@ class KernelControlRepository(private val shell: RootShell) {
             cpuUsagePercent = cpuPct,
             peakCpuMHz = sortedClusters.maxOfOrNull { it.currentMHz } ?: 0L,
             gpuMHz = gpuMHz,
+            gpuUtilization = gpuUtil,
             gpuGovernor = gpuGov,
-            socTempC = socTemps.maxOrNull() ?: allTemps.maxOrNull(),
+            dramMHz = dramMHz,
+            ufsMHz = ufsMHz,
+            socTempC = exactSocMax ?: socTemps.maxOrNull() ?: allTemps.maxOrNull(),
             batteryTempC = batTemp,
             ramUsedMb = ((memTotalKb - memAvailKb).coerceAtLeast(0L)) / 1024L,
             ramTotalMb = memTotalKb / 1024L,
@@ -571,22 +816,37 @@ class KernelControlRepository(private val shell: RootShell) {
         if (!shell.rootCheck()) return TuningSnapshot(false, message = "Autorize o KLEE no KernelSU.")
         val script =
             "awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/{printf \"MEM|%s|%s\\n\", \$1, \$2}' /proc/meminfo 2>/dev/null; " +
-            "printf 'ZRAM|%s|%s\\n' \"\$(cat /sys/block/zram0/disksize 2>/dev/null)\" \"\$(cat /sys/block/zram0/comp_algorithm 2>/dev/null)\"; " +
-            "printf 'VM|%s|%s|%s|%s|%s|%s|%s\\n' " +
+            "printf 'ZRAM|%s|%s|%s\\n' \"\$(cat /sys/block/zram0/disksize 2>/dev/null)\" \"\$(cat /sys/block/zram0/comp_algorithm 2>/dev/null)\" \"\$(cat /sys/block/zram0/mm_stat 2>/dev/null)\"; " +
+            "printf 'VM|%s|%s|%s|%s|%s|%s|%s|%s|%s\\n' " +
             "\"\$(cat /proc/sys/vm/swappiness 2>/dev/null)\" " +
             "\"\$(cat /proc/sys/vm/vfs_cache_pressure 2>/dev/null)\" " +
             "\"\$(cat /proc/sys/vm/dirty_ratio 2>/dev/null)\" " +
             "\"\$(cat /proc/sys/vm/dirty_background_ratio 2>/dev/null)\" " +
+            "\"\$(cat /proc/sys/vm/watermark_scale_factor 2>/dev/null)\" " +
             "\"\$( [ -w /proc/sys/vm/swappiness ] && echo 1 || echo 0 )\" " +
             "\"\$( [ -w /proc/sys/vm/vfs_cache_pressure ] && echo 1 || echo 0 )\" " +
-            "\"\$( [ -w /proc/sys/vm/dirty_ratio ] && echo 1 || echo 0 )\"; " +
-            "for b in sda sdb sdc mmcblk0 dm-0; do d=/sys/block/\$b/queue; [ -d \"\$d\" ] || continue; " +
-            "printf 'IO|%s|%s|%s|%s|%s\\n' \"\$b\" \"\$(cat \"\$d/scheduler\" 2>/dev/null)\" \"\$(cat \"\$d/read_ahead_kb\" 2>/dev/null)\" " +
-            "\"\$( [ -w \"\$d/scheduler\" ] && echo 1 || echo 0 )\" \"\$( [ -w \"\$d/read_ahead_kb\" ] && echo 1 || echo 0 )\"; done; " +
-            "printf 'TCP|%s|%s|%s\\n' " +
+            "\"\$( [ -w /proc/sys/vm/dirty_ratio ] && echo 1 || echo 0 )\" " +
+            "\"\$( [ -w /proc/sys/vm/watermark_scale_factor ] && echo 1 || echo 0 )\"; " +
+            "if [ -r /sys/kernel/mm/lru_gen/enabled ]; then " +
+            "printf 'MGLRU|%s|%s\\n' \"\$(cat /sys/kernel/mm/lru_gen/enabled 2>/dev/null)\" \"\$(cat /sys/kernel/mm/lru_gen/min_ttl_ms 2>/dev/null)\"; fi; " +
+            "u=/sys/devices/platform/soc/112b0000.ufshci; if [ -d \"\$u\" ]; then " +
+            "printf 'UFS|%s|%s|%s|%s|%s|%s\\n' " +
+            "\"\$(cat /sys/class/devfreq/112b0000.ufshci/cur_freq 2>/dev/null)\" " +
+            "\"\$(cat /sys/class/devfreq/112b0000.ufshci/max_freq 2>/dev/null)\" " +
+            "\"\$(cat \"\$u/wb_on\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$u/clkscale_enable\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$u/clkgate_enable\" 2>/dev/null)\" " +
+            "\"\$(cat \"\$u/auto_hibern8\" 2>/dev/null)\"; fi; " +
+            "for b in sda sdb sdc mmcblk0; do d=/sys/block/\$b/queue; [ -d \"\$d\" ] || continue; " +
+            "printf 'IO|%s|%s|%s|%s|%s|%s|%s\\n' \"\$b\" \"\$(cat \"\$d/scheduler\" 2>/dev/null)\" \"\$(cat \"\$d/read_ahead_kb\" 2>/dev/null)\" \"\$(cat \"\$d/iostats\" 2>/dev/null)\" " +
+            "\"\$( [ -w \"\$d/scheduler\" ] && echo 1 || echo 0 )\" \"\$( [ -w \"\$d/read_ahead_kb\" ] && echo 1 || echo 0 )\" \"\$( [ -w \"\$d/iostats\" ] && echo 1 || echo 0 )\"; done; " +
+            "printf 'TCP|%s|%s|%s|%s|%s|%s\\n' " +
             "\"\$(cat /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null)\" " +
             "\"\$(cat /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null)\" " +
-            "\"\$( [ -w /proc/sys/net/ipv4/tcp_congestion_control ] && echo 1 || echo 0 )\""
+            "\"\$(cat /proc/sys/net/ipv4/tcp_fastopen 2>/dev/null)\" " +
+            "\"\$(cat /proc/sys/net/core/default_qdisc 2>/dev/null)\" " +
+            "\"\$( [ -w /proc/sys/net/ipv4/tcp_congestion_control ] && echo 1 || echo 0 )\" " +
+            "\"\$( [ -w /proc/sys/net/ipv4/tcp_fastopen ] && echo 1 || echo 0 )\""
 
         val r = shell.runReadOnly(script)
         var memTotalKb = 0L
@@ -595,13 +855,23 @@ class KernelControlRepository(private val shell: RootShell) {
         var swapFreeKb = 0L
         var zramBytes = 0L
         var zramAlgo = ""
-        var swappiness = 60
+        var zramOrigMb = 0L
+        var zramComprMb = 0L
+        var zramRatio = 0.0
+        var swappiness = 100
         var vfs = 100
         var dirty = 20
         var dirtyBg = 10
+        var watermark = 80
         var wSwap = false
         var wVfs = false
         var wDirty = false
+        var wWatermark = false
+        var mglruAvail = false
+        var mglruHex = ""
+        var mglruActive = false
+        var mglruTtl = 0
+        var ufsInfo = UfsInfo()
         val ioDevices = mutableListOf<IoDevice>()
         var tcp: TcpCongestionInfo? = null
 
@@ -623,15 +893,41 @@ class KernelControlRepository(private val shell: RootShell) {
                     val rawAlgo = p.getOrNull(2)?.trim() ?: ""
                     val activeMatch = Regex("\\[([^\\]]+)]").find(rawAlgo)
                     zramAlgo = activeMatch?.groupValues?.getOrNull(1) ?: rawAlgo.substringBefore(" ")
+                    val stats = p.getOrNull(3)?.trim()?.split(Regex("\\s+"))?.mapNotNull(String::toLongOrNull) ?: emptyList()
+                    if (stats.size >= 2 && stats[1] > 0) {
+                        zramOrigMb = stats[0] / (1024L * 1024L)
+                        zramComprMb = stats[1] / (1024L * 1024L)
+                        zramRatio = stats[0].toDouble() / stats[1].toDouble()
+                    }
                 }
                 "VM" -> {
-                    swappiness = p.getOrNull(1)?.trim()?.toIntOrNull() ?: 60
+                    swappiness = p.getOrNull(1)?.trim()?.toIntOrNull() ?: 100
                     vfs = p.getOrNull(2)?.trim()?.toIntOrNull() ?: 100
                     dirty = p.getOrNull(3)?.trim()?.toIntOrNull() ?: 20
                     dirtyBg = p.getOrNull(4)?.trim()?.toIntOrNull() ?: 10
-                    wSwap = p.getOrNull(5)?.trim() == "1"
-                    wVfs = p.getOrNull(6)?.trim() == "1"
-                    wDirty = p.getOrNull(7)?.trim() == "1"
+                    watermark = p.getOrNull(5)?.trim()?.toIntOrNull() ?: 80
+                    wSwap = p.getOrNull(6)?.trim() == "1"
+                    wVfs = p.getOrNull(7)?.trim() == "1"
+                    wDirty = p.getOrNull(8)?.trim() == "1"
+                    wWatermark = p.getOrNull(9)?.trim() == "1"
+                }
+                "MGLRU" -> {
+                    mglruAvail = true
+                    mglruHex = p.getOrNull(1)?.trim() ?: "0x0000"
+                    val parsed = mglruHex.removePrefix("0x").toIntOrNull(16) ?: 0
+                    mglruActive = parsed != 0
+                    mglruTtl = p.getOrNull(2)?.trim()?.toIntOrNull() ?: 0
+                }
+                "UFS" -> {
+                    ufsInfo = UfsInfo(
+                        available = true,
+                        currentMHz = (p.getOrNull(1)?.trim()?.toLongOrNull() ?: 0L) / 1_000_000L,
+                        maxMHz = (p.getOrNull(2)?.trim()?.toLongOrNull() ?: 0L) / 1_000_000L,
+                        wbOn = parseBool01(p.getOrNull(3)),
+                        clkscaleEnable = parseBool01(p.getOrNull(4)),
+                        clkgateEnable = parseBool01(p.getOrNull(5)),
+                        autoHibern8Us = p.getOrNull(6)?.trim()?.toLongOrNull()
+                    )
                 }
                 "IO" -> {
                     val name = p.getOrNull(1)?.trim() ?: return@forEach
@@ -642,14 +938,17 @@ class KernelControlRepository(private val shell: RootShell) {
                         ?: tokens.firstOrNull() ?: "none"
                     val available = tokens.map { it.removeSurrounding("[", "]") }.distinct()
                     val ra = p.getOrNull(3)?.trim()?.toIntOrNull() ?: 128
+                    val iostats = p.getOrNull(4)?.trim() != "0"
                     ioDevices.add(
                         IoDevice(
                             name = name,
                             currentScheduler = active,
                             availableSchedulers = available,
                             readAheadKb = ra,
-                            canWriteScheduler = p.getOrNull(4)?.trim() == "1",
-                            canWriteReadAhead = p.getOrNull(5)?.trim() == "1"
+                            ioStatsEnabled = iostats,
+                            canWriteScheduler = p.getOrNull(5)?.trim() == "1",
+                            canWriteReadAhead = p.getOrNull(6)?.trim() == "1",
+                            canWriteIoStats = p.getOrNull(7)?.trim() == "1"
                         )
                     )
                 }
@@ -659,7 +958,10 @@ class KernelControlRepository(private val shell: RootShell) {
                     tcp = TcpCongestionInfo(
                         current = cur,
                         available = avail,
-                        canWrite = p.getOrNull(3)?.trim() == "1"
+                        tcpFastOpen = p.getOrNull(3)?.trim()?.toIntOrNull() ?: 1,
+                        defaultQdisc = p.getOrNull(4)?.trim().orEmpty(),
+                        canWrite = p.getOrNull(5)?.trim() == "1",
+                        canWriteFastOpen = p.getOrNull(6)?.trim() == "1"
                     )
                 }
             }
@@ -673,21 +975,55 @@ class KernelControlRepository(private val shell: RootShell) {
             swapUsedMb = ((swapTotalKb - swapFreeKb).coerceAtLeast(0L)) / 1024L,
             zramDiskSizeMb = zramBytes / (1024L * 1024L),
             zramAlgo = zramAlgo.ifBlank { "N/D" },
+            zramOrigMb = zramOrigMb,
+            zramComprMb = zramComprMb,
+            zramCompressionRatio = zramRatio,
             swappiness = swappiness,
             vfsCachePressure = vfs,
             dirtyRatio = dirty,
             dirtyBackgroundRatio = dirtyBg,
+            watermarkScaleFactor = watermark,
+            mglruEnabledHex = mglruHex,
+            mglruActive = mglruActive,
+            mglruAvailable = mglruAvail,
+            mglruMinTtlMs = mglruTtl,
             canWriteSwappiness = wSwap,
             canWriteVfs = wVfs,
-            canWriteDirty = wDirty
+            canWriteDirty = wDirty,
+            canWriteWatermark = wWatermark
         )
 
         return TuningSnapshot(
             root = true,
             memory = memInfo,
+            ufs = ufsInfo,
             ioDevices = ioDevices,
             tcp = tcp
         )
+    }
+
+    fun applyMglru(enabled: Boolean): String {
+        val target = if (enabled) "y" else "n"
+        val script =
+            "n=/sys/kernel/mm/lru_gen/enabled; [ -w \"\$n\" ] || { echo 'MGLRU_NOT_WRITABLE'; exit 2; }; " +
+            "if ! printf '%s' '$target' > \"\$n\"; then echo 'MGLRU_WRITE_FAILED'; exit 3; fi; " +
+            "echo \"OK MGLRU enabled=\$(cat \"\$n\" 2>/dev/null)\""
+        return result(shell.runRoot(script), "Falha ao alterar MGLRU.")
+    }
+
+    fun applyUfsBool(key: String, enabled: Boolean): String {
+        val allowed = mapOf(
+            "wb_on" to "/sys/devices/platform/soc/112b0000.ufshci/wb_on",
+            "clkscale_enable" to "/sys/devices/platform/soc/112b0000.ufshci/clkscale_enable",
+            "clkgate_enable" to "/sys/devices/platform/soc/112b0000.ufshci/clkgate_enable"
+        )
+        val path = allowed[key] ?: error("Parâmetro UFS não permitido: $key")
+        val v = if (enabled) "1" else "0"
+        val script =
+            "n='$path'; [ -w \"\$n\" ] || { echo 'UFS_NODE_NOT_WRITABLE'; exit 2; }; " +
+            "if ! printf '%s' '$v' > \"\$n\"; then echo 'UFS_WRITE_FAILED'; exit 3; fi; " +
+            "echo \"OK UFS $key=\$(cat \"\$n\" 2>/dev/null)\""
+        return result(shell.runRoot(script), "Falha ao alterar UFS $key.")
     }
 
     fun applyVmParam(param: String, value: Int): String {
@@ -695,7 +1031,8 @@ class KernelControlRepository(private val shell: RootShell) {
             "swappiness" to (0..200),
             "vfs_cache_pressure" to (10..500),
             "dirty_ratio" to (5..80),
-            "dirty_background_ratio" to (1..50)
+            "dirty_background_ratio" to (1..50),
+            "watermark_scale_factor" to (10..500)
         )
         val range = allowed[param] ?: error("Parâmetro VM não permitido: $param")
         require(value in range) { "Valor fora da faixa segura (${range.first}..${range.last})." }
@@ -710,7 +1047,7 @@ class KernelControlRepository(private val shell: RootShell) {
         return result(shell.runRoot(script), "Falha ao aplicar vm.$param.")
     }
 
-    fun applyIoScheduler(device: String, scheduler: String?, readAheadKb: Int?): String {
+    fun applyIoScheduler(device: String, scheduler: String?, readAheadKb: Int?, ioStats: Boolean? = null): String {
         require(device.matches(Regex("^(sd[a-z]|mmcblk[0-9]+|dm-[0-9]+)$"))) { "Dispositivo de bloco inválido." }
         require(scheduler == null || scheduler.matches(Regex("^[A-Za-z0-9_-]+$"))) { "Scheduler inválido." }
         require(readAheadKb == null || readAheadKb in 64..4096) { "Read-ahead fora da faixa segura (64..4096 KB)." }
@@ -725,10 +1062,14 @@ class KernelControlRepository(private val shell: RootShell) {
             "if ! printf '%s' '$readAheadKb' > \"\$d/read_ahead_kb\"; then echo 'IO_RA_WRITE_FAILED'; exit 5; fi; " +
             "actualra=\$(cat \"\$d/read_ahead_kb\" 2>/dev/null); " +
             "[ \"\$actualra\" = '$readAheadKb' ] || { echo \"IO_RA_READBACK_MISMATCH \$actualra\"; exit 6; }; fi; "
+        val statsPart = if (ioStats == null) "" else {
+            val sv = if (ioStats) "1" else "0"
+            "if [ -w \"\$d/iostats\" ]; then printf '%s' '$sv' > \"\$d/iostats\" || { echo 'IO_STATS_WRITE_FAILED'; exit 7; }; fi; "
+        }
         val script =
             "d='$d'; [ -d \"\$d\" ] || { echo 'IO_DEVICE_NOT_FOUND'; exit 2; }; " +
-            schedPart + raPart +
-            "echo \"OK I/O $device sched=\$(cat \"\$d/scheduler\" 2>/dev/null) ra=\$(cat \"\$d/read_ahead_kb\" 2>/dev/null)KB\""
+            schedPart + raPart + statsPart +
+            "echo \"OK I/O $device sched=\$(cat \"\$d/scheduler\" 2>/dev/null) ra=\$(cat \"\$d/read_ahead_kb\" 2>/dev/null)KB iostats=\$(cat \"\$d/iostats\" 2>/dev/null)\""
         return result(shell.runRoot(script), "Falha ao aplicar I/O em $device.")
     }
 
@@ -746,6 +1087,15 @@ class KernelControlRepository(private val shell: RootShell) {
         return result(shell.runRoot(script), "Falha ao alterar controle TCP.")
     }
 
+    fun applyTcpFastOpen(value: Int): String {
+        require(value in setOf(0, 1, 3)) { "Valor tcp_fastopen inválido (use 0, 1 ou 3)." }
+        val script =
+            "n=/proc/sys/net/ipv4/tcp_fastopen; [ -w \"\$n\" ] || { echo 'TCP_FO_NOT_WRITABLE'; exit 2; }; " +
+            "if ! printf '%s' '$value' > \"\$n\"; then echo 'TCP_FO_WRITE_FAILED'; exit 3; fi; " +
+            "echo \"OK tcp_fastopen=\$(cat \"\$n\" 2>/dev/null)\""
+        return result(shell.runRoot(script), "Falha ao alterar TCP Fast Open.")
+    }
+
     fun dropCaches(): String {
         val script = "sync && printf '3' > /proc/sys/vm/drop_caches && echo 'OK Caches liberados com sucesso'"
         return result(shell.runRoot(script), "Falha ao liberar caches.")
@@ -759,6 +1109,7 @@ class KernelControlRepository(private val shell: RootShell) {
             "printf 'BRAND|%s\\n' \"\$(getprop ro.product.brand 2>/dev/null)\"; " +
             "printf 'SOC|%s\\n' \"\$(getprop ro.soc.model 2>/dev/null)\"; " +
             "printf 'HW|%s\\n' \"\$(getprop ro.board.platform 2>/dev/null)\"; " +
+            "printf 'HYPEROS|%s\\n' \"\$(getprop ro.mi.os.version.name 2>/dev/null)\"; " +
             "printf 'KERNEL|%s\\n' \"\$(uname -a 2>/dev/null)\"; " +
             "printf 'ANDROID|%s\\n' \"\$(getprop ro.build.version.release 2>/dev/null)\"; " +
             "printf 'SDK|%s\\n' \"\$(getprop ro.build.version.sdk 2>/dev/null)\"; " +
@@ -767,7 +1118,7 @@ class KernelControlRepository(private val shell: RootShell) {
             "printf 'ROOT|%s\\n' \"\$(su -v 2>/dev/null | head -n 1)\"; " +
             "printf 'ABI|%s\\n' \"\$(getprop ro.product.cpu.abi 2>/dev/null)\"; " +
             "printf 'UPTIME|%s\\n' \"\$(cat /proc/uptime 2>/dev/null)\"; " +
-            "printf 'CORES|%s\\n' \"\$(nproc 2>/dev/null)\"; " +
+            "cores=0; for c in /sys/devices/system/cpu/cpu[0-9]*; do [ -d \"\$c\" ] && cores=\$((cores+1)); done; printf 'CORES|%s\\n' \"\$cores\"; " +
             "awk '/^MemTotal:/{printf \"MEM|%s\\n\", \$2}' /proc/meminfo 2>/dev/null"
 
         val r = shell.runReadOnly(script)
@@ -784,6 +1135,7 @@ class KernelControlRepository(private val shell: RootShell) {
             brand = map["BRAND"].orEmpty(),
             soc = map["SOC"].orEmpty().ifBlank { map["HW"].orEmpty().uppercase().ifBlank { "MT6899" } },
             hardware = map["HW"].orEmpty(),
+            hyperOsVersion = map["HYPEROS"].orEmpty(),
             kernelVersion = map["KERNEL"].orEmpty(),
             androidVersion = map["ANDROID"].orEmpty(),
             sdkInt = map["SDK"].orEmpty(),
@@ -792,7 +1144,7 @@ class KernelControlRepository(private val shell: RootShell) {
             rootProvider = map["ROOT"].orEmpty().ifBlank { "Root (uid=0)" },
             abi = map["ABI"].orEmpty(),
             uptimeSeconds = map["UPTIME"]?.substringBefore(" ")?.toDoubleOrNull()?.toLong() ?: 0L,
-            cpuCores = map["CORES"]?.toIntOrNull() ?: 0,
+            cpuCores = map["CORES"]?.toIntOrNull() ?: 8,
             totalRamMb = (map["MEM"]?.toLongOrNull() ?: 0L) / 1024L
         )
     }
@@ -801,13 +1153,14 @@ class KernelControlRepository(private val shell: RootShell) {
         val dev = readDeviceInfo()
         val cpu = readCpu()
         val gpu = readGpu()
+        val mtkPerf = readMtkPerf()
         val thermal = readThermalDetailed()
         val power = readPowerDetailed()
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager - Relatório de Diagnóstico ===")
-            appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device})")
+            appendLine("=== KLEE Kernel Manager v0.3.0 - Relatório de Diagnóstico ===")
+            appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
             appendLine("Android: ${dev.androidVersion} (SDK ${dev.sdkInt}) · Patch: ${dev.securityPatch}")
@@ -821,42 +1174,51 @@ class KernelControlRepository(private val shell: RootShell) {
                     "limits=${p.minKHz / 1000}-${p.maxKHz / 1000}MHz hw=${p.hardwareMinKHz / 1000}-${p.hardwareMaxKHz / 1000}MHz " +
                     "gov=${p.governor} driver=${p.driver}"
                 )
-                appendLine("  Governors: ${p.governors.joinToString()}")
-                appendLine("  Freqs (MHz): ${p.frequenciesKHz.joinToString { (it / 1000).toString() }}")
+            }
+            cpu.uclamp?.let { u ->
+                appendLine("UCLAMP top-app: min=${u.minPercent}% max=${u.maxPercent}% latency_sensitive=${u.latencySensitive}")
             }
             appendLine()
-            appendLine("--- GPU ---")
+            appendLine("--- GPU, GED & DRAM ---")
             gpu.gpu?.let { g ->
-                appendLine("${g.name} (${g.path})")
-                appendLine("  cur=${g.currentHz / 1_000_000}MHz limits=${g.minHz / 1_000_000}-${g.maxHz / 1_000_000}MHz gov=${g.governor}")
-                appendLine("  Governors: ${g.governors.joinToString()}")
-                appendLine("  OPPs (MHz): ${g.frequenciesHz.joinToString { (it / 1_000_000).toString() }}")
-            } ?: appendLine(gpu.message)
+                appendLine("${g.name} (${g.path}): cur=${g.currentHz / 1_000_000}MHz limits=${g.minHz / 1_000_000}-${g.maxHz / 1_000_000}MHz gov=${g.governor}")
+            }
+            if (gpu.ged.available) {
+                appendLine("GED: util=${gpu.ged.gpuUtilization}% boost=${gpu.ged.gpuBoostLevel} margin=${gpu.ged.dvfsMarginValue} dcs=${gpu.ged.dcsMode} smart_boost=${gpu.ged.gedSmartBoost}")
+            }
+            gpu.dram?.let { dr ->
+                appendLine("DRAM (dvfsrc): cur=${dr.currentHz / 1_000_000}MHz limits=${dr.minHz / 1_000_000}-${dr.maxHz / 1_000_000}MHz")
+            }
             appendLine()
-            appendLine("--- Thermal (Top 10 sensores) ---")
-            thermal.zones.take(10).forEach { z ->
+            appendLine("--- FPSGO & Xiaomi Metis ---")
+            appendLine("FPSGO: enable=${mtkPerf.fpsgoEnable} boost_ta=${mtkPerf.boostTa} rescue=${mtkPerf.rescueEnable} ultra=${mtkPerf.ultraRescue}")
+            appendLine("Metis: fboost=${mtkPerf.miFboostEnable} speed_touch=${mtkPerf.speedTouchEnable} vip_link=${mtkPerf.vipLinkEnable} perf=${mtkPerf.inPerfMod}")
+            appendLine()
+            appendLine("--- Thermal (Top 10 ativos) ---")
+            thermal.zones.filter { it.tempCelsius > 0.5 }.take(10).forEach { z ->
                 appendLine("  ${z.name}: ${"%.1f".format(z.tempCelsius)} °C")
             }
-            val activeCool = thermal.coolingDevices.filter { it.curState > 0 }
-            appendLine("  Cooling ativos: ${activeCool.size}/${thermal.coolingDevices.size}")
-            activeCool.forEach { c -> appendLine("    ${c.name}: ${c.curState}/${c.maxState}") }
             appendLine()
-            appendLine("--- Power ---")
+            appendLine("--- Power & Bypass ---")
             appendLine(
-                "Bateria: ${power.capacity}% (${power.status}) · ${"%.2f".format(power.voltageVolts)}V · " +
-                "${"%.0f".format(power.currentMa)}mA · ${"%.2f".format(power.powerWatts)}W · ${"%.1f".format(power.tempCelsius)}°C"
+                "Bateria: ${power.capacity}% (${power.status}) · ${"%.3f".format(power.voltageVolts)}V · " +
+                "${"%.0f".format(power.currentMa)}mA · ${"%.2f".format(power.powerWatts)}W · ${"%.1f".format(power.tempCelsius)}°C · " +
+                "Bypass=${power.inputSuspend}"
             )
             appendLine()
-            appendLine("--- Memória, I/O & TCP ---")
+            appendLine("--- Memória, UFS & Rede ---")
             tuning.memory?.let { m ->
-                appendLine("RAM: ${m.usedMb}/${m.totalMb} MB · Swap: ${m.swapUsedMb}/${m.swapTotalMb} MB · ZRAM: ${m.zramDiskSizeMb} MB (${m.zramAlgo})")
-                appendLine("VM: swappiness=${m.swappiness}, vfs_cache_pressure=${m.vfsCachePressure}, dirty=${m.dirtyRatio}/${m.dirtyBackgroundRatio}")
+                appendLine("RAM: ${m.usedMb}/${m.totalMb} MB · ZRAM: ${m.zramDiskSizeMb} MB (${m.zramAlgo}, ${"%.2f".format(m.zramCompressionRatio)}x) · MGLRU=${m.mglruEnabledHex}")
+                appendLine("VM: swappiness=${m.swappiness} vfs=${m.vfsCachePressure} dirty=${m.dirtyRatio} watermark=${m.watermarkScaleFactor}")
+            }
+            if (tuning.ufs.available) {
+                appendLine("UFS 4.0: ${tuning.ufs.currentMHz}/${tuning.ufs.maxMHz}MHz wb_on=${tuning.ufs.wbOn} clkscale=${tuning.ufs.clkscaleEnable} clkgate=${tuning.ufs.clkgateEnable}")
             }
             tuning.ioDevices.forEach { io ->
-                appendLine("I/O ${io.name}: sched=${io.currentScheduler} [${io.availableSchedulers.joinToString()}] ra=${io.readAheadKb}KB")
+                appendLine("I/O ${io.name}: sched=${io.currentScheduler} ra=${io.readAheadKb}KB iostats=${io.ioStatsEnabled}")
             }
             tuning.tcp?.let { t ->
-                appendLine("TCP: ${t.current} [${t.available.joinToString()}]")
+                appendLine("TCP: ${t.current} [${t.available.joinToString()}] fastopen=${t.tcpFastOpen} qdisc=${t.defaultQdisc}")
             }
         }
     }
@@ -865,5 +1227,19 @@ class KernelControlRepository(private val shell: RootShell) {
         abs(raw) > 1000L -> raw / 1000.0
         abs(raw) > 150L -> raw / 10.0
         else -> raw.toDouble()
+    }
+
+    private fun parseFirstInt(raw: String?): Int? {
+        if (raw.isNullOrBlank()) return null
+        return Regex("-?[0-9]+").find(raw)?.value?.toIntOrNull()
+    }
+
+    private fun parseBool01(raw: String?): Boolean? {
+        val t = raw?.trim()?.lowercase() ?: return null
+        return when {
+            t == "1" || t == "y" || t == "true" || t.startsWith("1 ") -> true
+            t == "0" || t == "n" || t == "false" || t.startsWith("0 ") -> false
+            else -> null
+        }
     }
 }

@@ -104,10 +104,23 @@ fun MonitorScreen(
             maxBound = 100f
         )
 
+        // Live GPU Utilization Graph (MTK GED)
+        val gpuPoints = history.mapNotNull { it.gpuUtilization?.toFloat() }
+        if (gpuPoints.isNotEmpty() || sample.gpuUtilization != null) {
+            LiveLineChart(
+                title = "Uso de GPU Mali (GED)",
+                unit = "%",
+                values = gpuPoints,
+                accent = KleeColors.Gpu,
+                minBound = 0f,
+                maxBound = 100f
+            )
+        }
+
         // Live Temperature Graph
         val tempPoints = history.mapNotNull { it.socTempC?.toFloat() }
         LiveLineChart(
-            title = "Temperatura SoC",
+            title = "Temperatura SoC Max",
             unit = "°C",
             values = tempPoints,
             accent = sample.socTempC?.let { tempSeverityColor(it) } ?: KleeColors.Thermal,
@@ -115,7 +128,7 @@ fun MonitorScreen(
             maxBound = 85f
         )
 
-        // Live Clusters & GPU card
+        // Live Clusters, GPU, DRAM & UFS Clocks card
         KleeCard(modifier = Modifier.fillMaxWidth()) {
             Text("Clocks em Tempo Real", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
             sample.clusters.forEach { c ->
@@ -149,12 +162,46 @@ fun MonitorScreen(
                 Column {
                     Text("GPU Mali", color = KleeColors.TextPrimary, style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        sample.gpuGovernor.ifBlank { "devfreq" },
+                        sample.gpuGovernor.ifBlank { "devfreq" } +
+                            (sample.gpuUtilization?.let { " · carga $it%" } ?: ""),
                         color = KleeColors.TextMuted,
                         style = MaterialTheme.typography.labelMedium
                     )
                 }
                 StatusPill("${sample.gpuMHz} MHz", KleeColors.Gpu)
+            }
+
+            if (sample.dramMHz > 0 || sample.ufsMHz > 0) {
+                HorizontalDivider(color = KleeColors.Border)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (sample.dramMHz > 0) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(KleeColors.Surface)
+                                .padding(10.dp)
+                        ) {
+                            Text("DRAM LPDDR5X", color = KleeColors.TextMuted, style = MaterialTheme.typography.labelMedium)
+                            Text("${sample.dramMHz} MHz", color = KleeColors.Monitor, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (sample.ufsMHz > 0) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(KleeColors.Surface)
+                                .padding(10.dp)
+                        ) {
+                            Text("UFS 4.0 Clock", color = KleeColors.TextMuted, style = MaterialTheme.typography.labelMedium)
+                            Text("${sample.ufsMHz} MHz", color = KleeColors.Tuning, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
         }
 

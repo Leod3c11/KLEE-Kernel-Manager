@@ -15,6 +15,8 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,7 +31,10 @@ import androidx.compose.ui.unit.sp
 import dev.klee.kernelmanager.ControlSnapshot
 import dev.klee.kernelmanager.CpuCoreStatus
 import dev.klee.kernelmanager.CpuPolicy
+import dev.klee.kernelmanager.DramDevfreqInfo
+import dev.klee.kernelmanager.GedControlInfo
 import dev.klee.kernelmanager.GpuControl
+import dev.klee.kernelmanager.UclampInfo
 import dev.klee.kernelmanager.ui.components.KleeCard
 import dev.klee.kernelmanager.ui.components.ProgressMeterBar
 import dev.klee.kernelmanager.ui.components.RootWarningCard
@@ -38,6 +43,7 @@ import dev.klee.kernelmanager.ui.components.SelectorBox
 import dev.klee.kernelmanager.ui.components.StatusPill
 import dev.klee.kernelmanager.ui.components.governorDescription
 import dev.klee.kernelmanager.ui.theme.KleeColors
+import kotlin.math.roundToInt
 
 @Composable
 fun CpuGpuTabScreen(
@@ -48,9 +54,14 @@ fun CpuGpuTabScreen(
     onRefreshCpu: () -> Unit,
     onApplyCpu: (String, Long, Long, String?) -> Unit,
     onResetCpu: (CpuPolicy) -> Unit,
+    onApplyUclamp: (Int, Int, Boolean) -> Unit,
     onRefreshGpu: () -> Unit,
     onApplyGpu: (String, Long, Long, String?) -> Unit,
-    onResetGpu: (GpuControl) -> Unit
+    onResetGpu: (GpuControl) -> Unit,
+    onApplyGedToggle: (String, Boolean) -> Unit,
+    onApplyGedInt: (String, Int) -> Unit,
+    onApplyDram: (Long, Long) -> Unit,
+    onResetDram: (DramDevfreqInfo) -> Unit
 ) {
     var selectedTab by remember(initialTab) { mutableIntStateOf(initialTab) }
 
@@ -68,21 +79,24 @@ fun CpuGpuTabScreen(
             Tab(
                 selected = selectedTab == 0,
                 onClick = { selectedTab = 0 },
-                text = { Text("CPU Clusters", fontWeight = FontWeight.SemiBold) },
+                text = { Text("CPU & UCLAMP", fontWeight = FontWeight.SemiBold) },
                 icon = { Icon(Icons.Rounded.Memory, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedTab == 1,
                 onClick = { selectedTab = 1 },
-                text = { Text("GPU Mali", fontWeight = FontWeight.SemiBold) },
+                text = { Text("GPU, GED & DRAM", fontWeight = FontWeight.SemiBold) },
                 icon = { Icon(Icons.Rounded.GraphicEq, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
         }
 
         if (selectedTab == 0) {
-            CpuScreen(cpuState, busy, onRefreshCpu, onApplyCpu, onResetCpu)
+            CpuScreen(cpuState, busy, onRefreshCpu, onApplyCpu, onResetCpu, onApplyUclamp)
         } else {
-            GpuScreen(gpuState, busy, onRefreshGpu, onApplyGpu, onResetGpu)
+            GpuScreen(
+                gpuState, busy, onRefreshGpu, onApplyGpu, onResetGpu,
+                onApplyGedToggle, onApplyGedInt, onApplyDram, onResetDram
+            )
         }
     }
 }
@@ -93,7 +107,8 @@ fun CpuScreen(
     busy: Boolean,
     onRefresh: () -> Unit,
     onApply: (String, Long, Long, String?) -> Unit,
-    onReset: (CpuPolicy) -> Unit
+    onReset: (CpuPolicy) -> Unit,
+    onApplyUclamp: (Int, Int, Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -103,8 +118,8 @@ fun CpuScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         SectionHeader(
-            title = "Controle de CPU",
-            subtitle = "Escalonamento seguro com verificação de leitura e rollback",
+            title = "Controle de CPU & UCLAMP",
+            subtitle = "3 clusters MT6899 (sugov_ext) com rollback seguro",
             trailing = {
                 FilledTonalIconButton(
                     onClick = onRefresh,
@@ -137,9 +152,9 @@ fun CpuScreen(
         state.cpuPolicies.forEachIndexed { idx, policy ->
             val rank = sortedPolicies.indexOfFirst { it.id == policy.id }
             val clusterTitle = when {
-                state.cpuPolicies.size == 3 && rank == 0 -> "Cluster Eficiência (Little)"
-                state.cpuPolicies.size == 3 && rank == 1 -> "Cluster Desempenho (Big)"
-                state.cpuPolicies.size == 3 && rank == 2 -> "Cluster Prime (Ultra)"
+                state.cpuPolicies.size == 3 && rank == 0 -> "Cluster Eficiência (Little · C0–C3)"
+                state.cpuPolicies.size == 3 && rank == 1 -> "Cluster Desempenho (Medium · C4–C6)"
+                state.cpuPolicies.size == 3 && rank == 2 -> "Cluster Prime (Big · C7)"
                 state.cpuPolicies.size == 2 && rank == 0 -> "Cluster Eficiência"
                 state.cpuPolicies.size == 2 && rank == 1 -> "Cluster Desempenho"
                 else -> "Cluster ${idx + 1}"
@@ -153,7 +168,100 @@ fun CpuScreen(
             )
         }
 
+        state.uclamp?.let { uclamp ->
+            UclampControlCard(uclamp, busy, onApplyUclamp)
+        }
+
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun UclampControlCard(
+    uclamp: UclampInfo,
+    busy: Boolean,
+    onApply: (Int, Int, Boolean) -> Unit
+) {
+    var minVal by remember(uclamp.minPercent) { mutableFloatStateOf(uclamp.minPercent) }
+    var maxVal by remember(uclamp.maxPercent) { mutableFloatStateOf(uclamp.maxPercent) }
+    var latSens by remember(uclamp.latencySensitive) { mutableStateOf(uclamp.latencySensitive) }
+
+    KleeCard(modifier = Modifier.fillMaxWidth(), accentBorder = KleeColors.Primary.copy(alpha = 0.3f)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Rounded.Tune, contentDescription = null, tint = KleeColors.Primary, modifier = Modifier.size(18.dp))
+                Column {
+                    Text("UCLAMP (top-app)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                    Text("Controle de utilização mínima/máxima do app ativo", color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            StatusPill("${minVal.roundToInt()}% – ${maxVal.roundToInt()}%", KleeColors.Primary)
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("uclamp.min: ${minVal.roundToInt()}% (piso de responsividade)", color = KleeColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = minVal,
+                onValueChange = {
+                    minVal = it
+                    if (maxVal < it) maxVal = it
+                },
+                valueRange = 0f..100f,
+                enabled = !busy && uclamp.canWriteMin
+            )
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("uclamp.max: ${maxVal.roundToInt()}% (teto de utilização)", color = KleeColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = maxVal,
+                onValueChange = {
+                    maxVal = it
+                    if (minVal > it) minVal = it
+                },
+                valueRange = 0f..100f,
+                enabled = !busy && uclamp.canWriteMax
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Latency Sensitive", color = KleeColors.TextPrimary, style = MaterialTheme.typography.bodyMedium)
+                Text("Prioriza alocação imediata de núcleos rápidos para UI/jogos", color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(
+                checked = latSens,
+                onCheckedChange = { latSens = it },
+                enabled = !busy && uclamp.canWriteLatency
+            )
+        }
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = { onApply(0, 100, true) },
+                enabled = !busy && uclamp.canWriteMin,
+                modifier = Modifier.weight(0.42f),
+                shape = RoundedCornerShape(12.dp)
+            ) { Text("Padrão") }
+            Button(
+                onClick = { onApply(minVal.roundToInt(), maxVal.roundToInt(), latSens) },
+                enabled = !busy && (uclamp.canWriteMin || uclamp.canWriteMax),
+                modifier = Modifier.weight(0.58f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Aplicar UCLAMP")
+            }
+        }
     }
 }
 
@@ -251,7 +359,7 @@ private fun CpuPolicyControlCard(
             ProgressMeterBar(fraction = curFraction, color = KleeColors.Cpu, heightDp = 7)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("HW Mín: ${policy.hardwareMinKHz / 1000} MHz", color = KleeColors.TextMuted, style = MaterialTheme.typography.labelMedium)
-                Text("Atual: ${policy.minKHz / 1000}–${policy.maxKHz / 1000} MHz", color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
+                Text("Limites: ${policy.minKHz / 1000}–${policy.maxKHz / 1000} MHz", color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
                 Text("HW Máx: ${policy.hardwareMaxKHz / 1000} MHz", color = KleeColors.TextMuted, style = MaterialTheme.typography.labelMedium)
             }
         }
@@ -365,14 +473,6 @@ private fun CpuPolicyControlCard(
                 Text("Aplicar Policy ${policy.id}")
             }
         }
-
-        if (!policy.canWriteMin || !policy.canWriteMax) {
-            Text(
-                "Este kernel não permite escrita nos limites desta policy.",
-                color = KleeColors.Danger,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
     }
 }
 
@@ -382,7 +482,11 @@ fun GpuScreen(
     busy: Boolean,
     onRefresh: () -> Unit,
     onApply: (String, Long, Long, String?) -> Unit,
-    onReset: (GpuControl) -> Unit
+    onReset: (GpuControl) -> Unit,
+    onApplyGedToggle: (String, Boolean) -> Unit,
+    onApplyGedInt: (String, Int) -> Unit,
+    onApplyDram: (Long, Long) -> Unit,
+    onResetDram: (DramDevfreqInfo) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -392,8 +496,8 @@ fun GpuScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         SectionHeader(
-            title = "Controle de GPU",
-            subtitle = "Mali-G720 Devfreq com validação estrita de tabela OPP",
+            title = "GPU Mali, GED & DRAM",
+            subtitle = "49 OPPs (260–1508 MHz), motor MTK GED e barramento LPDDR5X",
             trailing = {
                 FilledTonalIconButton(
                     onClick = onRefresh,
@@ -413,7 +517,15 @@ fun GpuScreen(
         }
 
         state.gpu?.let { gpu ->
-            GpuControlDetailCard(gpu, busy, onApply, onReset)
+            GpuControlDetailCard(gpu, state.ged.gpuUtilization, busy, onApply, onReset)
+        }
+
+        if (state.ged.available) {
+            GedControlCard(state.ged, busy, onApplyGedToggle, onApplyGedInt)
+        }
+
+        state.dram?.let { dram ->
+            DramControlCard(dram, busy, onApplyDram, onResetDram)
         }
 
         if (state.message.isNotBlank()) {
@@ -434,6 +546,7 @@ fun GpuScreen(
 @Composable
 private fun GpuControlDetailCard(
     gpu: GpuControl,
+    gpuUtil: Int?,
     busy: Boolean,
     onApply: (String, Long, Long, String?) -> Unit,
     onReset: (GpuControl) -> Unit
@@ -459,14 +572,17 @@ private fun GpuControlDetailCard(
                 Text(gpu.name, color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
                 Text(gpu.path, color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
             }
-            StatusPill("${gpu.currentHz / 1_000_000} MHz", KleeColors.Gpu)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                gpuUtil?.let { StatusPill("Uso $it%", KleeColors.Primary) }
+                StatusPill("${gpu.currentHz / 1_000_000} MHz", KleeColors.Gpu)
+            }
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             ProgressMeterBar(fraction = curFrac, color = KleeColors.Gpu, heightDp = 8)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Mín: ${gpu.minHz / 1_000_000} MHz", color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
-                Text("${gpu.frequenciesHz.size} OPPs detectadas", color = KleeColors.TextMuted, style = MaterialTheme.typography.labelMedium)
+                Text("${gpu.frequenciesHz.size} OPPs", color = KleeColors.TextMuted, style = MaterialTheme.typography.labelMedium)
                 Text("Máx: ${gpu.maxHz / 1_000_000} MHz", color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
             }
         }
@@ -515,6 +631,7 @@ private fun GpuControlDetailCard(
             onSelected = { selectedGovernor = it },
             modifier = Modifier.fillMaxWidth()
         )
+        Text(governorDescription(selectedGovernor), color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -549,14 +666,6 @@ private fun GpuControlDetailCard(
                 Text("Aplicar GPU")
             }
         }
-
-        if (!gpu.canWriteMin || !gpu.canWriteMax || gpu.frequenciesHz.isEmpty()) {
-            Text(
-                "Nós de controle ou tabela OPP indisponíveis. A escrita fica bloqueada para segurança.",
-                color = KleeColors.Danger,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
     }
 
     if (gpu.gpufreqDiag.isNotBlank()) {
@@ -583,6 +692,169 @@ private fun GpuControlDetailCard(
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GedControlCard(
+    ged: GedControlInfo,
+    busy: Boolean,
+    onToggle: (String, Boolean) -> Unit,
+    onApplyInt: (String, Int) -> Unit
+) {
+    KleeCard(modifier = Modifier.fillMaxWidth(), accentBorder = KleeColors.Gpu.copy(alpha = 0.28f)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("MediaTek GED (DVFS GPU)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+            ged.gpuUtilization?.let { StatusPill("Carga: $it%", KleeColors.Gpu) }
+        }
+
+        GedSwitchRow("Smart Boost (ged_smart_boost)", "Impulso inteligente de GPU sob carga 3D", ged.gedSmartBoost, !busy) {
+            onToggle("ged_smart_boost", it)
+        }
+        HorizontalDivider(color = KleeColors.Border)
+        GedSwitchRow("GPU Boost (boost_gpu_enable)", "Habilita aceleração de transição de OPP", ged.boostGpuEnable, !busy) {
+            onToggle("boost_gpu_enable", it)
+        }
+        HorizontalDivider(color = KleeColors.Border)
+        GedSwitchRow("GED KPI (is_GED_KPI_enabled)", "Escalonamento orientado ao frame-time real", ged.gedKpiEnabled, !busy) {
+            onToggle("is_GED_KPI_enabled", it)
+        }
+        HorizontalDivider(color = KleeColors.Border)
+        GedSwitchRow("Dynamic Core Scaling (dcs_mode)", "Desliga shader cores ociosos para economizar bateria", ged.dcsMode, !busy) {
+            onToggle("dcs_mode", it)
+        }
+
+        ged.dvfsMarginValue?.let { curMargin ->
+            var marginVal by remember(curMargin) { mutableFloatStateOf(curMargin.coerceIn(0, 100).toFloat()) }
+            HorizontalDivider(color = KleeColors.Border)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("DVFS Margin (dvfs_margin_value)", color = KleeColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+                    Text("${marginVal.roundToInt()}", color = KleeColors.Gpu, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Slider(
+                        value = marginVal,
+                        onValueChange = { marginVal = it },
+                        valueRange = 0f..100f,
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f)
+                    )
+                    FilledTonalButton(
+                        onClick = { onApplyInt("dvfs_margin_value", marginVal.roundToInt()) },
+                        enabled = !busy && marginVal.roundToInt() != curMargin,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) { Text("Salvar") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GedSwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean?,
+    enabled: Boolean,
+    onChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+            Text(title, color = KleeColors.TextPrimary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(subtitle, color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked == true, onCheckedChange = onChange, enabled = enabled && checked != null)
+    }
+}
+
+@Composable
+private fun DramControlCard(
+    dram: DramDevfreqInfo,
+    busy: Boolean,
+    onApply: (Long, Long) -> Unit,
+    onReset: (DramDevfreqInfo) -> Unit
+) {
+    var selectedMin by remember(dram.minHz) { mutableLongStateOf(dram.minHz) }
+    var selectedMax by remember(dram.maxHz) { mutableLongStateOf(dram.maxHz) }
+    val hwMin = dram.frequenciesHz.firstOrNull() ?: dram.minHz
+    val hwMax = dram.frequenciesHz.lastOrNull() ?: dram.maxHz
+    val frac = ((dram.currentHz - hwMin).toFloat() / (hwMax - hwMin).coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+
+    KleeCard(modifier = Modifier.fillMaxWidth(), accentBorder = KleeColors.Monitor.copy(alpha = 0.3f)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Rounded.Speed, contentDescription = null, tint = KleeColors.Monitor, modifier = Modifier.size(18.dp))
+                Column {
+                    Text("DRAM LPDDR5X (DVFSRC)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                    Text("${dram.frequenciesHz.size} degraus · ${hwMin / 1_000_000}–${hwMax / 1_000_000} MHz", color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            StatusPill("${dram.currentHz / 1_000_000} MHz", KleeColors.Monitor)
+        }
+
+        ProgressMeterBar(fraction = frac, color = KleeColors.Monitor, heightDp = 6)
+
+        if (dram.frequenciesHz.isNotEmpty()) {
+            val options = dram.frequenciesHz.map { "${it / 1_000_000} MHz" }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SelectorBox(
+                    label = "Piso DRAM",
+                    selectedText = "${selectedMin / 1_000_000} MHz",
+                    options = options,
+                    enabled = dram.canWriteMin,
+                    accent = KleeColors.Monitor,
+                    onSelected = { label ->
+                        val hz = dram.frequenciesHz.firstOrNull { "${it / 1_000_000} MHz" == label } ?: return@SelectorBox
+                        selectedMin = hz
+                        if (selectedMax < hz) selectedMax = hz
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                SelectorBox(
+                    label = "Teto DRAM",
+                    selectedText = "${selectedMax / 1_000_000} MHz",
+                    options = options,
+                    enabled = dram.canWriteMax,
+                    accent = KleeColors.Monitor,
+                    onSelected = { label ->
+                        val hz = dram.frequenciesHz.firstOrNull { "${it / 1_000_000} MHz" == label } ?: return@SelectorBox
+                        selectedMax = hz
+                        if (selectedMin > hz) selectedMin = hz
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = { onReset(dram) },
+                    enabled = !busy && dram.canWriteMin && dram.canWriteMax,
+                    modifier = Modifier.weight(0.4f),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Reset") }
+                Button(
+                    onClick = { onApply(selectedMin, selectedMax) },
+                    enabled = !busy && dram.canWriteMin && dram.canWriteMax,
+                    modifier = Modifier.weight(0.6f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = KleeColors.Monitor, contentColor = Color.Black)
+                ) { Text("Aplicar DRAM", fontWeight = FontWeight.SemiBold) }
             }
         }
     }

@@ -436,13 +436,15 @@ fun tempSeverityColor(tempC: Double): Color = when {
 }
 
 fun governorDescription(gov: String): String = when (gov.lowercase()) {
-    "schedutil" -> "Dinâmico integrado ao escalonador do kernel (equilibrado)."
+    "sugov_ext" -> "Governor nativo MediaTek MT6899 com integração EAS/FPSGO (recomendado)."
+    "schedutil" -> "Dinâmico padrão integrado ao escalonador Linux."
     "walt" -> "Escalonador avançado de carga em tempo real (baixa latência)."
     "performance" -> "Mantém a frequência travada no limite máximo definido."
     "powersave" -> "Mantém a frequência travada no limite mínimo definido."
-    "conservative" -> "Aumenta clocks gradualmente para priorizar economia."
+    "conservative" -> "Aumenta clocks gradualmente para priorizar economia e menos calor."
     "ondemand" -> "Escala rapidamente para o pico sob demanda de carga."
     "userspace" -> "Permite controle manual de frequência por espaço de usuário."
-    "simple_ondemand" -> "Escalonamento dinâmico padrão de GPU devfreq."
+    "dummy" -> "Modo pass-through MTK: DVFS controlado nativamente pelo GED/gpufreqv2."
+    "simple_ondemand" -> "Escalonamento dinâmico padrão de devfreq."
     else -> "Governor disponibilizado pelo driver do kernel."
 }

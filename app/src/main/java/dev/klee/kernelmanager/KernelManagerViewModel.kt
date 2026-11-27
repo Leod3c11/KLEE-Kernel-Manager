@@ -30,8 +30,11 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
     private val _cpu = MutableStateFlow(ControlSnapshot(false, message = "Toque em Atualizar para consultar as policies CPUFreq."))
     val cpu = _cpu.asStateFlow()
 
-    private val _gpu = MutableStateFlow(ControlSnapshot(false, message = "Toque em Atualizar para consultar o controlador Mali devfreq."))
+    private val _gpu = MutableStateFlow(ControlSnapshot(false, message = "Toque em Atualizar para consultar Mali, GED e DRAM."))
     val gpu = _gpu.asStateFlow()
+
+    private val _mtkPerf = MutableStateFlow(MtkPerfSnapshot(false, message = "Toque em Atualizar para consultar FPSGO e Metis."))
+    val mtkPerf = _mtkPerf.asStateFlow()
 
     private val _thermal = MutableStateFlow(ThermalSnapshot(false, message = "Toque em Atualizar para ler sensores térmicos."))
     val thermal = _thermal.asStateFlow()
@@ -110,6 +113,10 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         _gpu.value = snap
     }
 
+    fun loadMtkPerf() = runTask {
+        _mtkPerf.value = withContext(Dispatchers.IO) { repository.readMtkPerf() }
+    }
+
     fun loadThermal() = runTask {
         _thermal.value = withContext(Dispatchers.IO) { repository.readThermalDetailed() }
     }
@@ -154,12 +161,23 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         val base = baselineCpu[policy.id]
         val targetMin = policy.hardwareMinKHz.takeIf { it > 0 } ?: policy.minKHz
         val targetMax = policy.hardwareMaxKHz.takeIf { it > 0 } ?: policy.maxKHz
-        val targetGov = (base?.governor ?: policy.governor).takeIf { policy.canWriteGovernor && it.isNotBlank() }
+        val targetGov = (base?.governor ?: policy.governors.firstOrNull { it == "sugov_ext" } ?: policy.governor)
+            .takeIf { policy.canWriteGovernor && it.isNotBlank() }
         val result = withContext(Dispatchers.IO) {
             repository.applyCpu(policy.id, targetMin, targetMax, targetGov)
         }
         val isErr = !result.startsWith("OK")
         recordLog("Reset CPU Policy ${policy.id}", result, isErr)
+        _feedback.value = UiFeedback(text = result, isError = isErr)
+        _cpu.value = withContext(Dispatchers.IO) { repository.readCpu() }
+    }
+
+    fun applyUclamp(minPct: Int, maxPct: Int, latencySensitive: Boolean) = runTask {
+        val result = withContext(Dispatchers.IO) {
+            repository.applyUclamp(minPct, maxPct, latencySensitive)
+        }
+        val isErr = !result.startsWith("OK")
+        recordLog("UCLAMP top-app ($minPct%–$maxPct%, lat=$latencySensitive)", result, isErr)
         _feedback.value = UiFeedback(text = result, isError = isErr)
         _cpu.value = withContext(Dispatchers.IO) { repository.readCpu() }
     }
@@ -188,6 +206,105 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         _gpu.value = withContext(Dispatchers.IO) { repository.readGpu() }
     }
 
+    fun applyGedToggle(key: String, enabled: Boolean) = runTask {
+        val res = withContext(Dispatchers.IO) { repository.applyGedToggle(key, enabled) }
+        val isErr = !res.startsWith("OK")
+        recordLog("GED $key=${if (enabled) 1 else 0}", res, isErr)
+        _feedback.value = UiFeedback(text = res, isError = isErr)
+        _gpu.value = withContext(Dispatchers.IO) { repository.readGpu() }
+    }
+
+    fun applyGedInt(key: String, value: Int) = runTask {
+        val res = withContext(Dispatchers.IO) { repository.applyGedInt(key, value) }
+        val isErr = !res.startsWith("OK")
+        recordLog("GED $key=$value", res, isErr)
+        _feedback.value = UiFeedback(text = res, isError = isErr)
+        _gpu.value = withContext(Dispatchers.IO) { repository.readGpu() }
+    }
+
+    fun applyDram(minHz: Long, maxHz: Long) = runTask {
+        val res = withContext(Dispatchers.IO) { repository.applyDram(minHz, maxHz) }
+        val isErr = !res.startsWith("OK")
+        recordLog("DRAM (${minHz / 1_000_000}–${maxHz / 1_000_000} MHz)", res, isErr)
+        _feedback.value = UiFeedback(text = res, isError = isErr)
+        _gpu.value = withContext(Dispatchers.IO) { repository.readGpu() }
+    }
+
+    fun resetDram(dram: DramDevfreqInfo) = runTask {
+        val min = dram.frequenciesHz.firstOrNull() ?: dram.minHz
+        val max = dram.frequenciesHz.lastOrNull() ?: dram.maxHz
+        val res = withContext(Dispatchers.IO) { repository.applyDram(min, max) }
+        val isErr = !res.startsWith("OK")
+        recordLog("Reset DRAM", res, isErr)
+        _feedback.value = UiFeedback(text = res, isError = isErr)
+        _gpu.value = withContext(Dispatchers.IO) { repository.readGpu() }
+    }
+
+    fun applyMtkPerfBool(key: String, enabled: Boolean) = runTask {
+        val res = withContext(Dispatchers.IO) { repository.applyMtkPerfBool(key, enabled) }
+        val isErr = !res.startsWith("OK")
+        recordLog("MTK/Metis $key=${if (enabled) 1 else 0}", res, isErr)
+        _feedback.value = UiFeedback(text = res, isError = isErr)
+        _mtkPerf.value = withContext(Dispatchers.IO) { repository.readMtkPerf() }
+    }
+
+    fun applyMtkPerfPreset(preset: String) = runTask {
+        val changes: List<Pair<String, Boolean>> = when (preset) {
+            "GAMING" -> listOf(
+                "fpsgo_enable" to true,
+                "boost_ta" to true,
+                "boost_VIP" to true,
+                "rescue_enable" to true,
+                "ultra_rescue" to true,
+                "mi_fboost_enable" to true,
+                "speed_touch_enable" to true,
+                "vip_link_enable" to true,
+                "metis_io_enabled" to true,
+                "in_perf_mod" to true
+            )
+            "COOL" -> listOf(
+                "fpsgo_enable" to true,
+                "boost_ta" to false,
+                "ultra_rescue" to false,
+                "powerRL_enable" to true,
+                "in_perf_mod" to false,
+                "thermal_break_enable" to true
+            )
+            else -> listOf(
+                "fpsgo_enable" to true,
+                "boost_ta" to true,
+                "rescue_enable" to true,
+                "ultra_rescue" to false,
+                "mi_fboost_enable" to true,
+                "in_perf_mod" to false,
+                "thermal_break_enable" to true
+            )
+        }
+        val errors = mutableListOf<String>()
+        changes.forEach { (k, v) ->
+            val r = withContext(Dispatchers.IO) { repository.applyMtkPerfBool(k, v) }
+            if (!r.startsWith("OK")) errors.add("$k: $r")
+        }
+        _mtkPerf.value = withContext(Dispatchers.IO) { repository.readMtkPerf() }
+        val label = when (preset) {
+            "GAMING" -> "Gaming Anti-Stutter"
+            "COOL" -> "Frio / Estável"
+            else -> "Stock HyperOS"
+        }
+        val msg = if (errors.isEmpty()) "Preset $label aplicado em FPSGO & Metis." else "Aplicado parcialmente: ${errors.take(2).joinToString("; ")}"
+        recordLog("Preset FPSGO/Metis ($label)", msg, errors.isNotEmpty())
+        _feedback.value = UiFeedback(text = msg, isError = errors.isNotEmpty())
+    }
+
+    fun applyBypassCharging(suspend: Boolean) = runTask {
+        val res = withContext(Dispatchers.IO) { repository.applyBypassCharging(suspend) }
+        val isErr = !res.startsWith("OK")
+        recordLog("Bypass Charging (${if (suspend) "ATIVO" else "DESATIVADO"})", res, isErr)
+        _feedback.value = UiFeedback(text = res, isError = isErr)
+        _power.value = withContext(Dispatchers.IO) { repository.readPowerDetailed() }
+        loadDashboard()
+    }
+
     fun applyBuiltInProfile(profile: BuiltInProfile, includeGpuBoost: Boolean = false) = runTask {
         val cpuSnap = withContext(Dispatchers.IO) { repository.readCpu() }
         if (!cpuSnap.root || cpuSnap.cpuPolicies.isEmpty()) {
@@ -207,25 +324,25 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
             val (targetMin, targetMax, targetGov) = when (profile) {
                 BuiltInProfile.ECO -> {
                     val ecoMax = pickClosestFrequency(freqs, hwMin + ((hwMax - hwMin) * 0.65).toLong(), hwMin, hwMax)
-                    val gov = listOf("powersave", "conservative", "schedutil", "walt")
+                    val gov = listOf("conservative", "sugov_ext", "powersave", "schedutil")
                         .firstOrNull { policy.governors.contains(it) }
                     Triple(hwMin, ecoMax.coerceAtLeast(hwMin), gov)
                 }
                 BuiltInProfile.BALANCED -> {
                     val base = baselineCpu[policy.id]
                     val gov = base?.governor?.takeIf { policy.governors.contains(it) }
-                        ?: listOf("schedutil", "walt", "interactive").firstOrNull { policy.governors.contains(it) }
+                        ?: listOf("sugov_ext", "schedutil", "walt").firstOrNull { policy.governors.contains(it) }
                     Triple(hwMin, hwMax, gov)
                 }
                 BuiltInProfile.PERFORMANCE -> {
                     val perfMin = pickClosestFrequency(freqs, hwMin + ((hwMax - hwMin) * 0.35).toLong(), hwMin, hwMax)
-                    val gov = listOf("walt", "schedutil", "performance")
+                    val gov = listOf("sugov_ext", "schedutil", "performance")
                         .firstOrNull { policy.governors.contains(it) }
                     Triple(perfMin.coerceAtMost(hwMax), hwMax, gov)
                 }
                 BuiltInProfile.GAMING -> {
                     val gov = if (policy.governors.contains("performance")) "performance"
-                    else listOf("walt", "schedutil").firstOrNull { policy.governors.contains(it) }
+                    else listOf("sugov_ext", "schedutil").firstOrNull { policy.governors.contains(it) }
                     Triple(hwMin, hwMax, gov)
                 }
             }
@@ -246,18 +363,15 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         val gpu = gpuSnap.gpu
         if (includeGpuBoost && gpu != null && gpu.canWriteMin && gpu.canWriteMax && gpu.frequenciesHz.size >= 2) {
             val freqs = gpu.frequenciesHz
-            val (gMin, gMax, gGov) = when (profile) {
-                BuiltInProfile.ECO -> Triple(freqs.first(), freqs[(freqs.size * 2) / 3], null)
-                BuiltInProfile.BALANCED -> Triple(freqs.first(), freqs.last(), baselineGpu?.governor)
-                BuiltInProfile.PERFORMANCE -> Triple(freqs[freqs.size / 3], freqs.last(), null)
-                BuiltInProfile.GAMING -> {
-                    val highFloor = freqs[(freqs.size / 2).coerceAtMost(freqs.lastIndex)]
-                    val gov = gpu.governors.firstOrNull { it == "performance" }
-                    Triple(highFloor, freqs.last(), gov)
-                }
+            val (gMin, gMax) = when (profile) {
+                BuiltInProfile.ECO -> freqs.first() to freqs[(freqs.size * 2) / 3]
+                BuiltInProfile.BALANCED -> freqs.first() to freqs.last()
+                BuiltInProfile.PERFORMANCE -> freqs[freqs.size / 3] to freqs.last()
+                BuiltInProfile.GAMING -> freqs[(freqs.size / 2).coerceAtMost(freqs.lastIndex)] to freqs.last()
             }
+            // Keep existing devfreq governor (MT6899 uses 'dummy' controlled by GED/gpufreqv2)
             val gRes = withContext(Dispatchers.IO) {
-                repository.applyGpu(gMin, gMax, gGov?.takeIf { gpu.canWriteGovernor }, gpu.path)
+                repository.applyGpu(gMin, gMax, null, gpu.path)
             }
             if (!gRes.startsWith("OK")) errors.add("GPU: $gRes")
         }
@@ -295,7 +409,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         }
         baselineGpu?.let { g ->
             val res = withContext(Dispatchers.IO) {
-                repository.applyGpu(g.minHz, g.maxHz, g.governor.ifBlank { null }, g.path)
+                repository.applyGpu(g.minHz, g.maxHz, null, g.path)
             }
             if (!res.startsWith("OK")) errors.add("GPU: $res")
         }
@@ -378,10 +492,26 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         _tuning.value = withContext(Dispatchers.IO) { repository.readTuning() }
     }
 
-    fun applyIoDevice(device: String, scheduler: String?, readAheadKb: Int?) = runTask {
-        val res = withContext(Dispatchers.IO) { repository.applyIoScheduler(device, scheduler, readAheadKb) }
+    fun applyMglru(enabled: Boolean) = runTask {
+        val res = withContext(Dispatchers.IO) { repository.applyMglru(enabled) }
         val isErr = !res.startsWith("OK")
-        recordLog("I/O $device ($scheduler / ${readAheadKb}KB)", res, isErr)
+        recordLog("MGLRU ${if (enabled) "ATIVAR" else "DESATIVAR"}", res, isErr)
+        _feedback.value = UiFeedback(text = res, isError = isErr)
+        _tuning.value = withContext(Dispatchers.IO) { repository.readTuning() }
+    }
+
+    fun applyUfsBool(key: String, enabled: Boolean) = runTask {
+        val res = withContext(Dispatchers.IO) { repository.applyUfsBool(key, enabled) }
+        val isErr = !res.startsWith("OK")
+        recordLog("UFS $key=${if (enabled) 1 else 0}", res, isErr)
+        _feedback.value = UiFeedback(text = res, isError = isErr)
+        _tuning.value = withContext(Dispatchers.IO) { repository.readTuning() }
+    }
+
+    fun applyIoDevice(device: String, scheduler: String?, readAheadKb: Int?, ioStats: Boolean? = null) = runTask {
+        val res = withContext(Dispatchers.IO) { repository.applyIoScheduler(device, scheduler, readAheadKb, ioStats) }
+        val isErr = !res.startsWith("OK")
+        recordLog("I/O $device ($scheduler / ${readAheadKb}KB / stats=$ioStats)", res, isErr)
         _feedback.value = UiFeedback(text = res, isError = isErr)
         _tuning.value = withContext(Dispatchers.IO) { repository.readTuning() }
     }
@@ -390,6 +520,14 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         val res = withContext(Dispatchers.IO) { repository.applyTcpCongestion(algorithm) }
         val isErr = !res.startsWith("OK")
         recordLog("TCP Congestion -> $algorithm", res, isErr)
+        _feedback.value = UiFeedback(text = res, isError = isErr)
+        _tuning.value = withContext(Dispatchers.IO) { repository.readTuning() }
+    }
+
+    fun applyTcpFastOpen(value: Int) = runTask {
+        val res = withContext(Dispatchers.IO) { repository.applyTcpFastOpen(value) }
+        val isErr = !res.startsWith("OK")
+        recordLog("TCP Fast Open -> $value", res, isErr)
         _feedback.value = UiFeedback(text = res, isError = isErr)
         _tuning.value = withContext(Dispatchers.IO) { repository.readTuning() }
     }
@@ -459,7 +597,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
             try {
                 block()
             } catch (_: Throwable) {
-                // Silent dashboard background read failure
+                // Silent dashboard read failure
             }
         }
     }

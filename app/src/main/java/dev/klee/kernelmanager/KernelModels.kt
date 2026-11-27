@@ -6,6 +6,16 @@ data class CpuCoreStatus(
     val currentKHz: Long
 )
 
+data class UclampInfo(
+    val group: String = "top-app",
+    val minPercent: Float = 0f,
+    val maxPercent: Float = 100f,
+    val latencySensitive: Boolean = false,
+    val canWriteMin: Boolean = false,
+    val canWriteMax: Boolean = false,
+    val canWriteLatency: Boolean = false
+)
+
 data class CpuPolicy(
     val id: String,
     val cpus: String,
@@ -21,6 +31,28 @@ data class CpuPolicy(
     val canWriteMax: Boolean,
     val canWriteGovernor: Boolean,
     val driver: String = ""
+)
+
+data class GedControlInfo(
+    val available: Boolean = false,
+    val gpuUtilization: Int? = null,
+    val gpuBoostLevel: Int? = null,
+    val dvfsMarginValue: Int? = null,
+    val dcsMode: Boolean? = null,
+    val gedSmartBoost: Boolean? = null,
+    val boostGpuEnable: Boolean? = null,
+    val gedKpiEnabled: Boolean? = null
+)
+
+data class DramDevfreqInfo(
+    val path: String = "/sys/class/devfreq/mtk-dvfsrc-devfreq",
+    val currentHz: Long = 0L,
+    val minHz: Long = 0L,
+    val maxHz: Long = 0L,
+    val governor: String = "",
+    val frequenciesHz: List<Long> = emptyList(),
+    val canWriteMin: Boolean = false,
+    val canWriteMax: Boolean = false
 )
 
 data class GpuControl(
@@ -44,7 +76,30 @@ data class ControlSnapshot(
     val root: Boolean,
     val cpuPolicies: List<CpuPolicy> = emptyList(),
     val cpuCores: List<CpuCoreStatus> = emptyList(),
+    val uclamp: UclampInfo? = null,
     val gpu: GpuControl? = null,
+    val ged: GedControlInfo = GedControlInfo(),
+    val dram: DramDevfreqInfo? = null,
+    val message: String = ""
+)
+
+data class MtkPerfSnapshot(
+    val root: Boolean,
+    val fpsgoAvailable: Boolean = false,
+    val fpsgoEnable: Boolean? = null,
+    val boostTa: Boolean? = null,
+    val boostVip: Boolean? = null,
+    val rescueEnable: Boolean? = null,
+    val ultraRescue: Boolean? = null,
+    val powerRlEnable: Boolean? = null,
+    val fpsgoStatus: String = "",
+    val metisAvailable: Boolean = false,
+    val miFboostEnable: Boolean? = null,
+    val speedTouchEnable: Boolean? = null,
+    val vipLinkEnable: Boolean? = null,
+    val metisIoEnabled: Boolean? = null,
+    val inPerfMod: Boolean? = null,
+    val thermalBreakEnable: Boolean? = null,
     val message: String = ""
 )
 
@@ -93,6 +148,8 @@ data class PowerSnapshot(
     val chargeFullMah: Int? = null,
     val chargeDesignMah: Int? = null,
     val chargeCounterMah: Int? = null,
+    val inputSuspend: Boolean? = null,
+    val canWriteInputSuspend: Boolean = false,
     val supplies: List<PowerSupplyInfo> = emptyList(),
     val message: String = ""
 )
@@ -115,7 +172,10 @@ data class MonitorSample(
     val cpuUsagePercent: Float = 0f,
     val peakCpuMHz: Long = 0L,
     val gpuMHz: Long = 0L,
+    val gpuUtilization: Int? = null,
     val gpuGovernor: String = "",
+    val dramMHz: Long = 0L,
+    val ufsMHz: Long = 0L,
     val socTempC: Double? = null,
     val batteryTempC: Double? = null,
     val ramUsedMb: Long = 0L,
@@ -129,6 +189,16 @@ data class MonitorSample(
     val message: String = ""
 )
 
+data class UfsInfo(
+    val available: Boolean = false,
+    val currentMHz: Long = 0L,
+    val maxMHz: Long = 0L,
+    val wbOn: Boolean? = null,
+    val clkscaleEnable: Boolean? = null,
+    val clkgateEnable: Boolean? = null,
+    val autoHibern8Us: Long? = null
+)
+
 data class MemoryInfo(
     val totalMb: Long = 0L,
     val availableMb: Long = 0L,
@@ -137,13 +207,22 @@ data class MemoryInfo(
     val swapUsedMb: Long = 0L,
     val zramDiskSizeMb: Long = 0L,
     val zramAlgo: String = "",
-    val swappiness: Int = 60,
+    val zramOrigMb: Long = 0L,
+    val zramComprMb: Long = 0L,
+    val zramCompressionRatio: Double = 0.0,
+    val swappiness: Int = 100,
     val vfsCachePressure: Int = 100,
     val dirtyRatio: Int = 20,
     val dirtyBackgroundRatio: Int = 10,
+    val watermarkScaleFactor: Int = 80,
+    val mglruEnabledHex: String = "",
+    val mglruActive: Boolean = false,
+    val mglruAvailable: Boolean = false,
+    val mglruMinTtlMs: Int = 0,
     val canWriteSwappiness: Boolean = false,
     val canWriteVfs: Boolean = false,
-    val canWriteDirty: Boolean = false
+    val canWriteDirty: Boolean = false,
+    val canWriteWatermark: Boolean = false
 )
 
 data class IoDevice(
@@ -151,19 +230,25 @@ data class IoDevice(
     val currentScheduler: String,
     val availableSchedulers: List<String>,
     val readAheadKb: Int,
+    val ioStatsEnabled: Boolean,
     val canWriteScheduler: Boolean,
-    val canWriteReadAhead: Boolean
+    val canWriteReadAhead: Boolean,
+    val canWriteIoStats: Boolean
 )
 
 data class TcpCongestionInfo(
     val current: String = "",
     val available: List<String> = emptyList(),
-    val canWrite: Boolean = false
+    val tcpFastOpen: Int = 1,
+    val defaultQdisc: String = "",
+    val canWrite: Boolean = false,
+    val canWriteFastOpen: Boolean = false
 )
 
 data class TuningSnapshot(
     val root: Boolean,
     val memory: MemoryInfo? = null,
+    val ufs: UfsInfo = UfsInfo(),
     val ioDevices: List<IoDevice> = emptyList(),
     val tcp: TcpCongestionInfo? = null,
     val message: String = ""
@@ -176,6 +261,7 @@ data class DeviceInfoSnapshot(
     val brand: String = "",
     val soc: String = "",
     val hardware: String = "",
+    val hyperOsVersion: String = "",
     val kernelVersion: String = "",
     val androidVersion: String = "",
     val sdkInt: String = "",
@@ -199,8 +285,11 @@ data class DashboardSummary(
     val cpuPeakMHz: Long = 0L,
     val cpuClusterCount: Int = 0,
     val gpuMHz: Long = 0L,
+    val gpuUtilization: Int? = null,
+    val dramMHz: Long = 0L,
     val batteryPercent: Int = 0,
     val batteryStatus: String = "",
+    val bypassActive: Boolean = false,
     val socTempC: Double? = null,
     val ramUsedMb: Long = 0L,
     val ramTotalMb: Long = 0L,
@@ -247,24 +336,24 @@ enum class BuiltInProfile(
         id = "ECO",
         title = "Economia",
         subtitle = "Menor consumo e menos calor",
-        description = "Reduz o teto de frequência dos clusters para ~65% da faixa de hardware (ajustado à tabela real) e usa governor conservador/powersave ou schedutil."
+        description = "Limita o teto dos clusters a ~65% da faixa de hardware (tabela real) e usa governor conservador/powersave ou sugov_ext."
     ),
     BALANCED(
         id = "BALANCED",
         title = "Balanceado",
-        subtitle = "Uso diário fluido (padrão)",
-        description = "Restaura os limites completos de hardware e os governors originais (ou schedutil/walt) para equilíbrio entre autonomia e fluidez."
+        subtitle = "Padrão MT6899 (sugov_ext)",
+        description = "Restaura limites completos de hardware e o governor nativo sugov_ext para equilíbrio ideal entre fluidez e autonomia."
     ),
     PERFORMANCE(
         id = "PERFORMANCE",
         title = "Desempenho",
         subtitle = "Resposta rápida sem travar no máximo",
-        description = "Mantém o teto máximo liberado e eleva o piso mínimo para ~35% da tabela de frequências com governor dinâmico responsivo."
+        description = "Mantém o teto máximo liberado (até 3.4 GHz) e eleva o piso mínimo para ~35% com sugov_ext + UCLAMP otimizado."
     ),
     GAMING(
         id = "GAMING",
         title = "Gaming",
         subtitle = "Clock alto constante para jogos",
-        description = "Aplica governor performance nas policies compatíveis com limites máximos liberados e opção de boost seguro na GPU Mali."
+        description = "Aplica governor performance nas policies compatíveis com limites máximos liberados e opção de boost GPU/GED."
     )
 }
