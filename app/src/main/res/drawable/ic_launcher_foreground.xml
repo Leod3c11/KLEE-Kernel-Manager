@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer microchip frame -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M34,30h40c2.2,0 4,1.8 4,4v40c0,2.2 -1.8,4 -4,4H34c-2.2,0 -4,-1.8 -4,-4V34c0,-2.2 1.8,-4 4,-4z"
+        android:strokeWidth="3.5"
+        android:strokeColor="#38BDF8" />
+    <!-- Chip pins top/bottom/left/right -->
+    <path
+        android:pathData="M42,22v8M54,22v8M66,22v8M42,78v8M54,78v8M66,78v8M22,42h8M22,54h8M22,66h8M78,42h8M78,54h8M78,66h8"
+        android:strokeWidth="3"
+        android:strokeColor="#38BDF8"
+        android:strokeLineCap="round" />
+    <!-- Stylized K mark inside chip -->
+    <path
+        android:pathData="M44,41v26"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M64,41L47,54L64,67"
+        android:strokeWidth="4.5"
+        android:strokeColor="#A855F7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
