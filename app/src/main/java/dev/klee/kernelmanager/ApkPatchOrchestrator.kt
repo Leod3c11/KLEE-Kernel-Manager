@@ -78,15 +78,16 @@ object ApkPatchOrchestrator {
             "appdir='/data/user/0/$packageName'; " +
             "[ -d \"\$appdir\" ] || { echo 'APP_DATA_DIR_MISSING'; exit 2; }; " +
             "uidgid=\$(stat -c '%u:%g' \"\$appdir\" 2>/dev/null); " +
+            "sectx=\$(ls -Zd \"\$appdir\" 2>/dev/null | awk '{print \$1}'); " +
             "mkdir -p '$appBase/driver' '$appBase/temp' '$appBase/vk_file_redirect' '$tmpBase' && " +
             copySoCmd +
             "printf '%s\\n' '$safeJson' > '$appBase/config.json' && " +
             "printf '%s\\n' '$safeJson' > '$tmpBase/config.json' && " +
-            "rm -f \"\$appdir/files/klee_vk_crash_flag\" 2>/dev/null || true; " +
+            "rm -f \"\$appdir/files/klee_vk_crash_flag\" '$appBase/boot_trace.txt' 2>/dev/null || true; " +
             "[ -n \"\$uidgid\" ] && chown -R \"\$uidgid\" \"\$appdir/files\" 2>/dev/null || true; " +
             "chmod 755 '$appBase' '$appBase/driver' '$appBase/temp' '$appBase/vk_file_redirect' '$tmpBase' && " +
             "chmod 644 '$appBase/config.json' '$tmpBase/config.json' && " +
-            "restorecon -RF '$appBase' 2>/dev/null || true; " +
+            "if [ -n \"\$sectx\" ]; then chcon -R \"\$sectx\" \"\$appdir/files\" 2>/dev/null || true; fi; " +
             "echo \"OK AdrenoTools configurado para $packageName (${driver?.name ?: "Mali Padrão"})\" " +
             ")"
 

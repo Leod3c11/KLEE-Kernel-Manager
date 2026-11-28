@@ -25,6 +25,7 @@ add_library(klee_vk_bridge SHARED
 
 target_include_directories(klee_vk_bridge PRIVATE
     "${ADRENOTOOLS_DIR}/include"
+    "${ADRENOTOOLS_DIR}/lib/linkernsbypass"
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 

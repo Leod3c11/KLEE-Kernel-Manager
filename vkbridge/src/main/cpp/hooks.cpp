@@ -1,18 +1,19 @@
 #include "hooks.h"
 #include "plt_hook.h"
+#include "trace.h"
 
 #include <android/dlext.h>
 #include <android/log.h>
 #include <bytehook.h>
-#include <shadowhook.h>
 #include <cstring>
 #include <dlfcn.h>
 #include <string>
+#include <vector>
 
 #define TAG "KLEE-Hooks"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+#define LOGI(...) kleetrace::logf(TAG, ANDROID_LOG_INFO, __VA_ARGS__)
+#define LOGW(...) kleetrace::logf(TAG, ANDROID_LOG_WARN, __VA_ARGS__)
+#define LOGE(...) kleetrace::logf(TAG, ANDROID_LOG_ERROR, __VA_ARGS__)
 
 void *g_vk = nullptr;
 VkInstance g_instance = VK_NULL_HANDLE;
@@ -26,24 +27,7 @@ static std::string s_pkgDataDir;
 static std::string s_pkgCodeDir;
 static std::string s_customDriverName;
 static bool s_bytehook_active = false;
-
-typedef void* (*loader_dlopen_fn)(const char *filename, int flags, const void *caller_addr);
-typedef void* (*loader_dlsym_fn)(void *handle, const char *symbol, const void *caller_addr);
-typedef void* (*loader_android_dlopen_ext_fn)(const char *filename, int flag, const void *extinfo, const void *caller_addr);
-
-static loader_dlopen_fn s_loader_dlopen = nullptr;
-static loader_dlsym_fn s_loader_dlsym = nullptr;
-static loader_android_dlopen_ext_fn s_loader_android_dlopen_ext = nullptr;
-
-static bytehook_stub_t s_stub_dlopen = nullptr;
-static bytehook_stub_t s_stub_dlsym = nullptr;
-static bytehook_stub_t s_stub_android_dlopen_ext = nullptr;
-static bytehook_stub_t s_stub_dlclose = nullptr;
-static bytehook_stub_t s_stub_vkGetInstanceProcAddr = nullptr;
-static bytehook_stub_t s_stub_vkCreateInstance = nullptr;
-static bytehook_stub_t s_stub_vkEnumerateInstanceVersion = nullptr;
-static bytehook_stub_t s_stub_vkEnumerateInstanceExtensionProperties = nullptr;
-static bytehook_stub_t s_stub_vkEnumerateInstanceLayerProperties = nullptr;
+static std::vector<bytehook_stub_t> s_stubs;
 
 static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL klee_vkGetInstanceProcAddr(VkInstance instance, const char *pName);
 static VKAPI_ATTR VkResult VKAPI_CALL klee_vkCreateInstance(
@@ -67,22 +51,65 @@ static bool is_vulkan_loader_name(const char *filename) {
     return strstr(filename, "libvulkan.so") != nullptr;
 }
 
-static void init_bionic_loader_ptrs() {
-    void *libdl = dlopen("libdl.so", RTLD_NOW);
-    void *libc = dlopen("libc.so", RTLD_NOW);
-    if (libdl) {
-        s_loader_dlopen = reinterpret_cast<loader_dlopen_fn>(dlsym(libdl, "__loader_dlopen"));
-        s_loader_dlsym = reinterpret_cast<loader_dlsym_fn>(dlsym(libdl, "__loader_dlsym"));
-        s_loader_android_dlopen_ext = reinterpret_cast<loader_android_dlopen_ext_fn>(
-            dlsym(libdl, "__loader_android_dlopen_ext")
-        );
+static bool is_ignored_lib(const char *path) {
+    if (!path || !path[0]) return true;
+    // Never touch Android system/vendor/APEX/HWUI/EGL libraries
+    if (strncmp(path, "/system/", 8) == 0 ||
+        strncmp(path, "/vendor/", 8) == 0 ||
+        strncmp(path, "/apex/", 6) == 0 ||
+        strncmp(path, "/odm/", 5) == 0 ||
+        strncmp(path, "/product/", 9) == 0 ||
+        strncmp(path, "/system_ext/", 12) == 0) {
+        return true;
     }
-    if (!s_loader_dlopen && libc) {
-        s_loader_dlopen = reinterpret_cast<loader_dlopen_fn>(dlsym(libc, "__loader_dlopen"));
-        s_loader_dlsym = reinterpret_cast<loader_dlsym_fn>(dlsym(libc, "__loader_dlsym"));
-        s_loader_android_dlopen_ext = reinterpret_cast<loader_android_dlopen_ext_fn>(
-            dlsym(libc, "__loader_android_dlopen_ext")
-        );
+    // Never touch KLEE hook infrastructure or the custom Vulkan driver itself
+    if (strstr(path, "libklee_vk_bridge.so") ||
+        strstr(path, "libbytehook.so") ||
+        strstr(path, "libshadowhook.so") ||
+        strstr(path, "libhook_impl.so") ||
+        strstr(path, "libmain_hook.so") ||
+        strstr(path, "libfile_redirect_hook.so") ||
+        strstr(path, "libgsl_alloc_hook.so") ||
+        strstr(path, "klee_adrenotools/driver") ||
+        strstr(path, "libvulkan_panfrost.so") ||
+        strstr(path, "libvulkan_freedreno.so")) {
+        return true;
+    }
+    if (!s_customDriverName.empty() && strstr(path, s_customDriverName.c_str()) != nullptr) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Only hook libraries belonging to the target application (/data/app, /data/user, /data/data, .apk).
+ * Keeps Android framework (HWUI, RenderThread, libEGL, libMEOW, ART) 100% untouched.
+ */
+static bool klee_caller_allow_filter(const char *caller_path_name, void * /* arg */) {
+    if (is_ignored_lib(caller_path_name)) return false;
+    return strstr(caller_path_name, "/data/app/") != nullptr ||
+           strstr(caller_path_name, "/data/user/") != nullptr ||
+           strstr(caller_path_name, "/data/data/") != nullptr ||
+           strstr(caller_path_name, ".apk") != nullptr;
+}
+
+static void on_bytehook_hooked(
+    bytehook_stub_t /* task_stub */,
+    int status_code,
+    const char *caller_path_name,
+    const char *sym_name,
+    void * /* new_func */,
+    void * /* prev_func */,
+    void * /* arg */
+) {
+    if (status_code == 0 && caller_path_name && sym_name) {
+        // Log key entrypoints to keep boot_trace compact
+        if (strcmp(sym_name, "dlopen") == 0 ||
+            strcmp(sym_name, "vkCreateInstance") == 0 ||
+            strcmp(sym_name, "vkGetInstanceProcAddr") == 0) {
+            const char *base = strrchr(caller_path_name, '/');
+            LOGI("HOOKED %s :: %s", base ? base + 1 : caller_path_name, sym_name);
+        }
     }
 }
 
@@ -156,7 +183,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL klee_vkCreateInstance(
     const VkAllocationCallbacks *pAllocator,
     VkInstance *pInstance
 ) {
-    LOGI("klee_vkCreateInstance called");
+    LOGI("klee_vkCreateInstance called!");
     if (!g_pfn_vkCreateInstance) {
         LOGE("g_pfn_vkCreateInstance is null!");
         return VK_ERROR_INITIALIZATION_FAILED;
@@ -164,9 +191,9 @@ static VKAPI_ATTR VkResult VKAPI_CALL klee_vkCreateInstance(
     VkResult res = g_pfn_vkCreateInstance(pCreateInfo, pAllocator, pInstance);
     if (res == VK_SUCCESS && pInstance && *pInstance != VK_NULL_HANDLE) {
         g_instance = *pInstance;
-        LOGI("klee_vkCreateInstance succeeded! g_instance=%p", g_instance);
+        LOGI("klee_vkCreateInstance SUCCEEDED! g_instance=%p", g_instance);
     } else {
-        LOGE("klee_vkCreateInstance failed: %d", res);
+        LOGE("klee_vkCreateInstance failed: VkResult=%d", static_cast<int>(res));
     }
     return res;
 }
@@ -199,12 +226,12 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL klee_vkGetInstanceProcAddr(VkIns
     return nullptr;
 }
 
-// ---------- ByteHook PLT Proxies (safe BYTEHOOK_CALL_PREV) ----------
+// ---------- ByteHook PLT Proxies (safe BYTEHOOK_CALL_PREV, zero BTI risk) ----------
 
 static void* bh_dlopen(const char *filename, int flags) {
     BYTEHOOK_STACK_SCOPE();
     if (is_vulkan_loader_name(filename)) {
-        LOGI("bh_dlopen: intercepted %s -> custom handle %p", filename, g_vk);
+        LOGI("bh_dlopen: INTERCEPTED %s -> custom g_vk=%p", filename, g_vk);
         return g_vk;
     }
     return BYTEHOOK_CALL_PREV(bh_dlopen, filename, flags);
@@ -217,9 +244,8 @@ static void* bh_dlsym(void *handle, const char *symbol) {
         void *sym = resolve_vulkan_symbol(symbol);
         if (sym) return sym;
         if (handle == g_vk) {
-            return s_loader_dlsym
-                ? s_loader_dlsym(g_vk, symbol, __builtin_return_address(0))
-                : BYTEHOOK_CALL_PREV(bh_dlsym, g_vk, symbol);
+            // Safe: libklee_vk_bridge.so is ignored by ByteHook so dlsym calls bionic directly
+            return dlsym(g_vk, symbol);
         }
     }
     return BYTEHOOK_CALL_PREV(bh_dlsym, handle, symbol);
@@ -228,7 +254,7 @@ static void* bh_dlsym(void *handle, const char *symbol) {
 static void* bh_android_dlopen_ext(const char *filename, int flag, const void *extinfo) {
     BYTEHOOK_STACK_SCOPE();
     if (is_vulkan_loader_name(filename)) {
-        LOGI("bh_android_dlopen_ext: intercepted %s -> custom handle %p", filename, g_vk);
+        LOGI("bh_android_dlopen_ext: INTERCEPTED %s -> custom g_vk=%p", filename, g_vk);
         return g_vk;
     }
     return BYTEHOOK_CALL_PREV(bh_android_dlopen_ext, filename, flag, extinfo);
@@ -280,16 +306,14 @@ static VKAPI_ATTR VkResult VKAPI_CALL bh_vkEnumerateInstanceLayerProperties(
     return klee_vkEnumerateInstanceLayerProperties(pPropertyCount, pProperties);
 }
 
-// ---------- Fallback Direct PLT/GOT Proxies (used only if ByteHook unavailable) ----------
+// ---------- Fallback Direct PLT/GOT Proxies (only if ByteHook unavailable) ----------
 
 static void* plt_dlopen(const char *filename, int flags) {
     if (is_vulkan_loader_name(filename)) {
-        LOGI("plt_dlopen: intercepted %s -> custom handle %p", filename, g_vk);
+        LOGI("plt_dlopen: INTERCEPTED %s -> custom g_vk=%p", filename, g_vk);
         return g_vk;
     }
-    void *res = s_loader_dlopen
-        ? s_loader_dlopen(filename, flags, __builtin_return_address(0))
-        : dlopen(filename, flags);
+    void *res = dlopen(filename, flags);
     if (res != nullptr && filename != nullptr) {
         static thread_local bool s_in_refresh = false;
         if (!s_in_refresh) {
@@ -307,19 +331,15 @@ static void* plt_dlsym(void *handle, const char *symbol) {
         void *sym = resolve_vulkan_symbol(symbol);
         if (sym) return sym;
     }
-    return s_loader_dlsym
-        ? s_loader_dlsym(handle, symbol, __builtin_return_address(0))
-        : dlsym(handle, symbol);
+    return dlsym(handle, symbol);
 }
 
 static void* plt_android_dlopen_ext(const char *filename, int flag, const void *extinfo) {
     if (is_vulkan_loader_name(filename)) {
-        LOGI("plt_android_dlopen_ext: intercepted %s -> custom handle %p", filename, g_vk);
+        LOGI("plt_android_dlopen_ext: INTERCEPTED %s -> custom g_vk=%p", filename, g_vk);
         return g_vk;
     }
-    void *res = s_loader_android_dlopen_ext
-        ? s_loader_android_dlopen_ext(filename, flag, extinfo, __builtin_return_address(0))
-        : android_dlopen_ext(filename, flag, static_cast<const android_dlextinfo*>(extinfo));
+    void *res = android_dlopen_ext(filename, flag, static_cast<const android_dlextinfo*>(extinfo));
     if (res != nullptr && filename != nullptr) {
         static thread_local bool s_in_refresh_ext = false;
         if (!s_in_refresh_ext) {
@@ -331,39 +351,18 @@ static void* plt_android_dlopen_ext(const char *filename, int flag, const void *
     return res;
 }
 
-// ---------- ShadowHook Inline Proxies for system libvulkan.so ----------
-
-static VKAPI_ATTR VkResult VKAPI_CALL sh_vkCreateInstance(
-    const VkInstanceCreateInfo *pCreateInfo,
-    const VkAllocationCallbacks *pAllocator,
-    VkInstance *pInstance
-) {
-    SHADOWHOOK_STACK_SCOPE();
-    if (g_pfn_vkCreateInstance) {
-        return klee_vkCreateInstance(pCreateInfo, pAllocator, pInstance);
-    }
-    return SHADOWHOOK_CALL_PREV(sh_vkCreateInstance, pCreateInfo, pAllocator, pInstance);
-}
-
-static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL sh_vkGetInstanceProcAddr(VkInstance instance, const char *pName) {
-    SHADOWHOOK_STACK_SCOPE();
-    PFN_vkVoidFunction pfn = klee_vkGetInstanceProcAddr(instance, pName);
-    if (pfn) return pfn;
-    return SHADOWHOOK_CALL_PREV(sh_vkGetInstanceProcAddr, instance, pName);
-}
-
-static VKAPI_ATTR VkResult VKAPI_CALL sh_vkEnumerateInstanceVersion(uint32_t *pApiVersion) {
-    SHADOWHOOK_STACK_SCOPE();
-    return klee_vkEnumerateInstanceVersion(pApiVersion);
-}
-
-static VKAPI_ATTR VkResult VKAPI_CALL sh_vkEnumerateInstanceExtensionProperties(
-    const char *pLayerName,
-    uint32_t *pPropertyCount,
-    VkExtensionProperties *pProperties
-) {
-    SHADOWHOOK_STACK_SCOPE();
-    return klee_vkEnumerateInstanceExtensionProperties(pLayerName, pPropertyCount, pProperties);
+static void add_partial_hook(const char *callee, const char *sym, void *new_fn) {
+    if (!new_fn) return;
+    bytehook_stub_t st = bytehook_hook_partial(
+        klee_caller_allow_filter,
+        nullptr,
+        callee,
+        sym,
+        new_fn,
+        on_bytehook_hooked,
+        nullptr
+    );
+    if (st) s_stubs.push_back(st);
 }
 
 // ---------- Public Lifecycle ----------
@@ -378,8 +377,6 @@ bool init_hooks(
     s_pkgDataDir = pkgDataDir ? pkgDataDir : "";
     s_pkgCodeDir = pkgCodeDir ? pkgCodeDir : "";
     s_customDriverName = customDriverName ? customDriverName : "";
-
-    init_bionic_loader_ptrs();
 
     g_pfn_vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(
         dlsym(g_vk, "vkGetInstanceProcAddr")
@@ -423,7 +420,6 @@ bool init_hooks(
         );
     }
 
-    // 1. ByteHook PLT hooks across all current & future loaded libraries
     bytehook_add_ignore("libklee_vk_bridge.so");
     bytehook_add_ignore("libhook_impl.so");
     bytehook_add_ignore("libmain_hook.so");
@@ -440,51 +436,50 @@ bool init_hooks(
     int bh_res = bytehook_init(BYTEHOOK_MODE_AUTOMATIC, false);
     if (bh_res == 0) {
         s_bytehook_active = true;
-        s_stub_dlopen = bytehook_hook_all(nullptr, "dlopen", reinterpret_cast<void*>(bh_dlopen), nullptr, nullptr);
-        s_stub_dlsym = bytehook_hook_all(nullptr, "dlsym", reinterpret_cast<void*>(bh_dlsym), nullptr, nullptr);
-        s_stub_android_dlopen_ext = bytehook_hook_all(nullptr, "android_dlopen_ext", reinterpret_cast<void*>(bh_android_dlopen_ext), nullptr, nullptr);
-        s_stub_dlclose = bytehook_hook_all(nullptr, "dlclose", reinterpret_cast<void*>(bh_dlclose), nullptr, nullptr);
-        s_stub_vkGetInstanceProcAddr = bytehook_hook_all(nullptr, "vkGetInstanceProcAddr", reinterpret_cast<void*>(bh_vkGetInstanceProcAddr), nullptr, nullptr);
-        s_stub_vkCreateInstance = bytehook_hook_all(nullptr, "vkCreateInstance", reinterpret_cast<void*>(bh_vkCreateInstance), nullptr, nullptr);
-        s_stub_vkEnumerateInstanceVersion = bytehook_hook_all(nullptr, "vkEnumerateInstanceVersion", reinterpret_cast<void*>(bh_vkEnumerateInstanceVersion), nullptr, nullptr);
-        s_stub_vkEnumerateInstanceExtensionProperties = bytehook_hook_all(nullptr, "vkEnumerateInstanceExtensionProperties", reinterpret_cast<void*>(bh_vkEnumerateInstanceExtensionProperties), nullptr, nullptr);
-        s_stub_vkEnumerateInstanceLayerProperties = bytehook_hook_all(nullptr, "vkEnumerateInstanceLayerProperties", reinterpret_cast<void*>(bh_vkEnumerateInstanceLayerProperties), nullptr, nullptr);
-        LOGI("ByteHook PLT hooks installed (mode=AUTOMATIC)");
+        // Hook dynamic loader calls ONLY in app libraries (never system/HWUI/EGL)
+        add_partial_hook(nullptr, "dlopen", reinterpret_cast<void*>(bh_dlopen));
+        add_partial_hook(nullptr, "dlsym", reinterpret_cast<void*>(bh_dlsym));
+        add_partial_hook(nullptr, "android_dlopen_ext", reinterpret_cast<void*>(bh_android_dlopen_ext));
+        add_partial_hook(nullptr, "dlclose", reinterpret_cast<void*>(bh_dlclose));
+
+        // Hook Vulkan core entrypoints ONLY in app libraries
+        add_partial_hook(nullptr, "vkGetInstanceProcAddr", reinterpret_cast<void*>(bh_vkGetInstanceProcAddr));
+        add_partial_hook(nullptr, "vkCreateInstance", reinterpret_cast<void*>(bh_vkCreateInstance));
+        add_partial_hook(nullptr, "vkEnumerateInstanceVersion", reinterpret_cast<void*>(bh_vkEnumerateInstanceVersion));
+        add_partial_hook(nullptr, "vkEnumerateInstanceExtensionProperties", reinterpret_cast<void*>(bh_vkEnumerateInstanceExtensionProperties));
+        add_partial_hook(nullptr, "vkEnumerateInstanceLayerProperties", reinterpret_cast<void*>(bh_vkEnumerateInstanceLayerProperties));
+
+        // Direct PLT redirects for apps that link core Vulkan symbols directly from libvulkan.so
+        static const char *kDirectVkSyms[] = {
+            "vkDestroyInstance",
+            "vkEnumeratePhysicalDevices",
+            "vkGetPhysicalDeviceProperties",
+            "vkGetPhysicalDeviceProperties2",
+            "vkGetPhysicalDeviceFeatures",
+            "vkGetPhysicalDeviceFeatures2",
+            "vkGetPhysicalDeviceQueueFamilyProperties",
+            "vkGetPhysicalDeviceQueueFamilyProperties2",
+            "vkGetPhysicalDeviceMemoryProperties",
+            "vkGetPhysicalDeviceMemoryProperties2",
+            "vkEnumerateDeviceExtensionProperties",
+            "vkEnumerateDeviceLayerProperties",
+            "vkCreateDevice",
+            "vkDestroyDevice",
+            "vkGetDeviceProcAddr",
+            "vkCreateAndroidSurfaceKHR",
+            "vkDestroySurfaceKHR"
+        };
+        for (const char *sym : kDirectVkSyms) {
+            void *target = dlsym(g_vk, sym);
+            if (target) {
+                add_partial_hook("libvulkan.so", sym, target);
+            }
+        }
+        LOGI("ByteHook partial app-only hooks installed (%zu stubs, HWUI/EGL untouched)", s_stubs.size());
     } else {
         LOGW("bytehook_init returned %d — falling back to direct ELF64 PLT/GOT hooks", bh_res);
         s_bytehook_active = false;
         refresh_hooks();
-    }
-
-    // 2. ShadowHook inline hooks on system /system/lib64/libvulkan.so (ONLY if distinct from g_vk!)
-    void *sysVk = dlopen("/system/lib64/libvulkan.so", RTLD_NOLOAD);
-    if (!sysVk) {
-        sysVk = s_loader_dlopen
-            ? s_loader_dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL, __builtin_return_address(0))
-            : nullptr;
-    }
-    void *sysGipa = sysVk ? dlsym(sysVk, "vkGetInstanceProcAddr") : nullptr;
-    if (sysVk && sysGipa && sysGipa != reinterpret_cast<void*>(g_pfn_vkGetInstanceProcAddr)) {
-        int sh_res = shadowhook_init(SHADOWHOOK_MODE_SHARED, false);
-        LOGI("shadowhook_init=%d (sysVk=%p != g_vk=%p)", sh_res, sysVk, g_vk);
-        if (sh_res == 0) {
-            void *sysCreate = dlsym(sysVk, "vkCreateInstance");
-            void *sysVer = dlsym(sysVk, "vkEnumerateInstanceVersion");
-            void *sysExt = dlsym(sysVk, "vkEnumerateInstanceExtensionProperties");
-            if (sysCreate && sysCreate != reinterpret_cast<void*>(g_pfn_vkCreateInstance)) {
-                shadowhook_hook_func_addr(sysCreate, reinterpret_cast<void*>(sh_vkCreateInstance), nullptr);
-            }
-            shadowhook_hook_func_addr(sysGipa, reinterpret_cast<void*>(sh_vkGetInstanceProcAddr), nullptr);
-            if (sysVer && sysVer != reinterpret_cast<void*>(g_pfn_vkEnumerateInstanceVersion)) {
-                shadowhook_hook_func_addr(sysVer, reinterpret_cast<void*>(sh_vkEnumerateInstanceVersion), nullptr);
-            }
-            if (sysExt && sysExt != reinterpret_cast<void*>(g_pfn_vkEnumerateInstanceExtensionProperties)) {
-                shadowhook_hook_func_addr(sysExt, reinterpret_cast<void*>(sh_vkEnumerateInstanceExtensionProperties), nullptr);
-            }
-            LOGI("ShadowHook inline hooks installed on system libvulkan.so");
-        }
-    } else {
-        LOGI("Skipping ShadowHook inline hook on libvulkan.so (shared mapping or unavailable)");
     }
 
     return true;
@@ -507,13 +502,8 @@ void refresh_hooks() {
 }
 
 void shutdown_hooks() {
-    if (s_stub_dlopen) { bytehook_unhook(s_stub_dlopen); s_stub_dlopen = nullptr; }
-    if (s_stub_dlsym) { bytehook_unhook(s_stub_dlsym); s_stub_dlsym = nullptr; }
-    if (s_stub_android_dlopen_ext) { bytehook_unhook(s_stub_android_dlopen_ext); s_stub_android_dlopen_ext = nullptr; }
-    if (s_stub_dlclose) { bytehook_unhook(s_stub_dlclose); s_stub_dlclose = nullptr; }
-    if (s_stub_vkGetInstanceProcAddr) { bytehook_unhook(s_stub_vkGetInstanceProcAddr); s_stub_vkGetInstanceProcAddr = nullptr; }
-    if (s_stub_vkCreateInstance) { bytehook_unhook(s_stub_vkCreateInstance); s_stub_vkCreateInstance = nullptr; }
-    if (s_stub_vkEnumerateInstanceVersion) { bytehook_unhook(s_stub_vkEnumerateInstanceVersion); s_stub_vkEnumerateInstanceVersion = nullptr; }
-    if (s_stub_vkEnumerateInstanceExtensionProperties) { bytehook_unhook(s_stub_vkEnumerateInstanceExtensionProperties); s_stub_vkEnumerateInstanceExtensionProperties = nullptr; }
-    if (s_stub_vkEnumerateInstanceLayerProperties) { bytehook_unhook(s_stub_vkEnumerateInstanceLayerProperties); s_stub_vkEnumerateInstanceLayerProperties = nullptr; }
+    for (bytehook_stub_t st : s_stubs) {
+        if (st) bytehook_unhook(st);
+    }
+    s_stubs.clear();
 }

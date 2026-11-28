@@ -1161,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.7.0 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.7.1 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1404,7 +1404,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.7.0 ===")
+            appendLine("=== FIM DO LOG KLEE v0.7.1 ===")
         }
     }
 
@@ -1834,23 +1834,26 @@ class KernelControlRepository(private val shell: RootShell) {
             "fi; " +
             "main_pid=\$(printf '%s' \"\$pids\" | awk '{print \$1}'); " +
             "printf 'PID|%s\\n' \"\$main_pid\"; " +
+            "if [ -r '/data/user/0/$packageName/files/klee_adrenotools/boot_trace.txt' ]; then " +
+            "  tail -n 40 '/data/user/0/$packageName/files/klee_adrenotools/boot_trace.txt' 2>/dev/null | sed 's/^/TRACE|/'; " +
+            "fi; " +
             "if [ -n \"\$pids\" ]; then " +
             "  cnt=0; " +
             "  for p in \$pids; do " +
             "    [ -r \"/proc/\$p/maps\" ] || continue; " +
-            "    grep -iE 'vulkan|panvk|panfrost|mali|angle|klee_drivers|klee_adrenotools|klee_vk_bridge|libhook_impl|libmain_hook' \"/proc/\$p/maps\" 2>/dev/null | " +
+            "    grep -iE 'vulkan|panvk|panfrost|mali|angle|klee_drivers|klee_adrenotools|klee_vk_bridge|libhook_impl|libmain_hook|memfd' \"/proc/\$p/maps\" 2>/dev/null | " +
             "      awk 'NF>=6 { key=\$5\"|\"\$6; if (!seen[key]++) printf \"MAP|%s|%s\\n\", \$5, \$6 }'; " +
             "    cnt=\$((cnt + 1)); [ \"\$cnt\" -ge 3 ] && break; " +
             "  done; " +
             "  if [ -n \"\$main_pid\" ]; then " +
-            "    logcat -d -t 1500 --pid=\"\$main_pid\" 2>/dev/null | " +
+            "    logcat -d -t 4000 --pid=\"\$main_pid\" 2>/dev/null | " +
             "      grep -viE 'ViewRootImpl|BLASTBufferQueue|ImeTracker|MIUIInput|ProfileInstaller|SurfaceView|BufferQueueConsumer|VRI\\[' | " +
-            "      grep -iE 'KLEE-Bootstrap|KLEE-Bridge|KLEE-Hooks|adrenotools|Unload builtin|GraphicsEnvironment|updatable|vulkan|panvk|panfrost|mesa|kbase|dlopen|linker|angle|avc|denied|fatal|sigsegv|sigabrt|vkcreate|libvulkan|libEGL|Could not load|couldn.t find|VK_ERROR' | " +
+            "      grep -iE 'KLEE-Bootstrap|KLEE-Bridge|KLEE-Hooks|hook_impl|adrenotools|Unload builtin|GraphicsEnvironment|updatable|vulkan|panvk|panfrost|mesa|kbase|dlopen|linker|angle|avc|denied|fatal|sigsegv|sigabrt|sigill|vkcreate|libvulkan|libEGL|Could not load|couldn.t find|VK_ERROR' | " +
             "      tail -n 35 | sed 's/^/LOG|/'; " +
             "  fi; " +
             "fi; " +
-            "logcat -d -t 500 2>/dev/null | " +
-            "  grep -iE 'KLEE-Bootstrap|KLEE-Bridge|KLEE-Hooks|GraphicsEnvironment.*(updatable|driver|not installed|failed|choosing)|Unload builtin Vulkan|avc:.*(vulkan|klee_drivers|klee_adrenotools|panvk|panfrost|apk_data_file|system_file)|libvulkan.*(failed|error|unable|dlopen|Could not load|couldn.t find)|linker.*(vulkan|panvk|panfrost)|FATAL.*$pkgRegex|Fatal signal.*$pkgRegex' | " +
+            "logcat -d -t 1500 2>/dev/null | " +
+            "  grep -iE 'KLEE-Bootstrap|KLEE-Bridge|KLEE-Hooks|hook_impl|GraphicsEnvironment.*(updatable|driver|not installed|failed|choosing)|Unload builtin Vulkan|avc:.*(vulkan|klee_drivers|klee_adrenotools|panvk|panfrost|apk_data_file|system_file)|libvulkan.*(failed|error|unable|dlopen|Could not load|couldn.t find)|linker.*(vulkan|panvk|panfrost)|FATAL.*$pkgRegex|Fatal signal.*$pkgRegex' | " +
             "  tail -n 20 | sed 's/^/GLOG|/' " +
             ")"
 
@@ -1860,6 +1863,7 @@ class KernelControlRepository(private val shell: RootShell) {
         var pid: Int? = null
         val mappedEntries = mutableListOf<Pair<String, String>>() // inode -> path
         val seenMaps = linkedSetOf<String>()
+        val traceLogs = mutableListOf<String>()
         val pidLogs = mutableListOf<String>()
         val globalLogs = mutableListOf<String>()
 
@@ -1886,6 +1890,10 @@ class KernelControlRepository(private val shell: RootShell) {
                         }
                     }
                 }
+                line.startsWith("TRACE|") -> {
+                    val msg = line.removePrefix("TRACE|").trim()
+                    if (msg.isNotEmpty()) traceLogs.add(msg.take(240))
+                }
                 line.startsWith("LOG|") -> {
                     val msg = line.removePrefix("LOG|").trim()
                     if (msg.isNotEmpty()) pidLogs.add(msg.take(240))
@@ -1897,7 +1905,7 @@ class KernelControlRepository(private val shell: RootShell) {
             }
         }
 
-        val combinedLogs = (pidLogs + globalLogs).distinct().takeLast(30)
+        val combinedLogs = (traceLogs + pidLogs + globalLogs).distinct().takeLast(45)
         val angleLoaded = mappedEntries.any { (_, path) ->
             val low = path.lowercase(Locale.US)
             low.contains("libegl_angle") || low.contains("libglesv2_angle") || low.contains("libglesv1_cm_angle")
@@ -1910,7 +1918,11 @@ class KernelControlRepository(private val shell: RootShell) {
         val adrenoToolsActive = mappedEntries.any { (_, path) ->
             val low = path.lowercase(Locale.US)
             low.contains("klee_adrenotools/driver/") ||
-                (low.contains("klee_vk_bridge") && combinedLogs.any { it.contains("KLEE AdrenoTools ACTIVE", ignoreCase = true) || it.contains("adrenotools_open_libvulkan SUCCEEDED", ignoreCase = true) })
+                low.contains("libvulkan_panfrost") ||
+                (low.contains("libhook_impl") && combinedLogs.any {
+                    it.contains("KLEE AdrenoTools ACTIVE", ignoreCase = true) ||
+                        it.contains("adrenotools_open_libvulkan SUCCEEDED", ignoreCase = true)
+                })
         }
 
         val carrierPathMatched = carrierDir.isNotBlank() && mappedEntries.any { (_, path) ->

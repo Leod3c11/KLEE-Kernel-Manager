@@ -1,7 +1,10 @@
 #include "hooks.h"
+#include "trace.h"
 
 #include <adrenotools/driver.h>
 #include <android/log.h>
+#include <android_linker_ns.h>
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -15,9 +18,9 @@
 #include <vulkan/vulkan.h>
 
 #define TAG "KLEE-Bridge"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+#define LOGI(...) kleetrace::logf(TAG, ANDROID_LOG_INFO, __VA_ARGS__)
+#define LOGW(...) kleetrace::logf(TAG, ANDROID_LOG_WARN, __VA_ARGS__)
+#define LOGE(...) kleetrace::logf(TAG, ANDROID_LOG_ERROR, __VA_ARGS__)
 
 static std::string jstrToStd(JNIEnv *env, jstring s) {
     if (!s) return "";
@@ -41,22 +44,37 @@ static std::string sanitizeField(const char *s) {
     return out;
 }
 
+static bool file_exists_log(const std::string &path, const char *label) {
+    struct stat st{};
+    if (stat(path.c_str(), &st) == 0) {
+        return true;
+    }
+    LOGE("Missing/inaccessible %s (%s): errno=%d (%s)", label, path.c_str(), errno, strerror(errno));
+    return false;
+}
+
 static bool check_and_set_crash_guard(const std::string &pkgDataDir) {
     std::string filesDir = pkgDataDir + "/files";
     mkdir(filesDir.c_str(), 0755);
     std::string flagPath = filesDir + "/klee_vk_crash_flag";
     struct stat st{};
     if (stat(flagPath.c_str(), &st) == 0) {
-        LOGW("Crash guard triggered (%s) — falling back to stock Mali driver for this launch.", flagPath.c_str());
+        LOGW("Crash guard triggered (%s) — falling back to stock Mali for this launch.", flagPath.c_str());
         unlink(flagPath.c_str());
         return false;
     }
     FILE *fp = fopen(flagPath.c_str(), "w");
     if (fp) {
-        fputs("active", fp);
+        fputs("init", fp);
         fclose(fp);
     }
     return true;
+}
+
+static void clear_crash_guard_file(const std::string &pkgDataDir) {
+    if (!pkgDataDir.empty()) {
+        unlink((pkgDataDir + "/files/klee_vk_crash_flag").c_str());
+    }
 }
 
 static void *open_with_adrenotools(
@@ -64,20 +82,32 @@ static void *open_with_adrenotools(
     const std::string &hookLibDir,
     const std::string &driverDir,
     const std::string &driverName,
-    const std::string &fileRedirectDir
+    const std::string &fileRedirectDir,
+    bool verboseLog
 ) {
     std::string tDir = ensureTrailingSlash(tempDir);
     std::string dDir = ensureTrailingSlash(driverDir);
     std::string rDir = ensureTrailingSlash(fileRedirectDir);
 
+    if (verboseLog) {
+        bool nsOk = linkernsbypass_load_status();
+        LOGI("precheck: linkernsbypass=%d driver=%s%s hookLibDir=%s redirectDir=%s",
+             nsOk ? 1 : 0, dDir.c_str(), driverName.c_str(), hookLibDir.c_str(), rDir.c_str());
+        file_exists_log(dDir + driverName, "customDriver");
+        file_exists_log(hookLibDir + "/libhook_impl.so", "libhook_impl.so");
+        file_exists_log(hookLibDir + "/libmain_hook.so", "libmain_hook.so");
+        file_exists_log(hookLibDir + "/libfile_redirect_hook.so", "libfile_redirect_hook.so");
+        if (!rDir.empty()) file_exists_log(rDir, "fileRedirectDir");
+    }
+
     void *handle = nullptr;
 
     // 1. Exact PPSSPP call: ADRENOTOOLS_DRIVER_CUSTOM | ADRENOTOOLS_DRIVER_FILE_REDIRECT
-    if (!tDir.empty() && !rDir.empty()) {
+    if (!rDir.empty()) {
         handle = adrenotools_open_libvulkan(
             RTLD_NOW | RTLD_LOCAL,
             ADRENOTOOLS_DRIVER_CUSTOM | ADRENOTOOLS_DRIVER_FILE_REDIRECT,
-            tDir.c_str(),
+            tDir.empty() ? nullptr : tDir.c_str(),
             hookLibDir.c_str(),
             dDir.c_str(),
             driverName.c_str(),
@@ -88,8 +118,11 @@ static void *open_with_adrenotools(
 
     // 2. Fallback: ADRENOTOOLS_DRIVER_CUSTOM without file redirect
     if (!handle) {
-        LOGW("adrenotools_open_libvulkan with FILE_REDIRECT returned null (%s), trying CUSTOM-only...",
-             dlerror() ? dlerror() : "no dlerror");
+        const char *e1 = dlerror();
+        if (verboseLog) {
+            LOGW("adrenotools_open_libvulkan(CUSTOM|FILE_REDIRECT) returned null (%s), trying CUSTOM-only...",
+                 e1 ? e1 : "no dlerror");
+        }
         handle = adrenotools_open_libvulkan(
             RTLD_NOW | RTLD_LOCAL,
             ADRENOTOOLS_DRIVER_CUSTOM,
@@ -125,8 +158,8 @@ Java_dev_klee_kernelmanager_bootstrap_KleeVulkanAppComponentFactory_nativeInit(
     std::string driverNameStr = jstrToStd(env, customDriverName);
     std::string redirectDirStr = jstrToStd(env, fileRedirectDir);
 
-    LOGI("KleeVulkanAppComponentFactory nativeInit starting");
-    LOGI("  driver=%s/%s hookLibDir=%s", driverDirStr.c_str(), driverNameStr.c_str(), hookLibDirStr.c_str());
+    kleetrace::init(pkgDataDirStr);
+    LOGI("nativeInit starting (pid=%d, uid=%d)", static_cast<int>(getpid()), static_cast<int>(getuid()));
 
     if (!check_and_set_crash_guard(pkgDataDirStr)) {
         return JNI_FALSE;
@@ -137,19 +170,21 @@ Java_dev_klee_kernelmanager_bootstrap_KleeVulkanAppComponentFactory_nativeInit(
         hookLibDirStr,
         driverDirStr,
         driverNameStr,
-        redirectDirStr
+        redirectDirStr,
+        true
     );
 
     if (!vkHandle) {
+        const char *err = dlerror();
         LOGE("adrenotools_open_libvulkan FAILED for %s/%s: %s",
-             driverDirStr.c_str(), driverNameStr.c_str(), dlerror() ? dlerror() : "unknown");
-        unlink((pkgDataDirStr + "/files/klee_vk_crash_flag").c_str());
+             driverDirStr.c_str(), driverNameStr.c_str(), err ? err : "unknown");
+        clear_crash_guard_file(pkgDataDirStr);
         return JNI_FALSE;
     }
 
     LOGI("adrenotools_open_libvulkan SUCCEEDED! handle=%p", vkHandle);
 
-    // Pre-warm Vulkan ICD
+    // Pre-warm Vulkan ICD so libvulkan_panfrost.so is loaded immediately into process maps
     auto pfn_gipa = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(vkHandle, "vkGetInstanceProcAddr"));
     if (pfn_gipa) {
         auto pfn_enum = reinterpret_cast<PFN_vkEnumerateInstanceExtensionProperties>(
@@ -158,17 +193,32 @@ Java_dev_klee_kernelmanager_bootstrap_KleeVulkanAppComponentFactory_nativeInit(
         if (pfn_enum) {
             uint32_t count = 0;
             pfn_enum(nullptr, &count, nullptr);
-            LOGI("Pre-warmed custom Vulkan driver: %u instance extensions", count);
+            LOGI("Pre-warmed custom Vulkan ICD: %u instance extensions", count);
         }
+        auto pfn_ver = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+            pfn_gipa(VK_NULL_HANDLE, "vkEnumerateInstanceVersion")
+        );
+        if (pfn_ver) {
+            uint32_t ver = 0;
+            if (pfn_ver(&ver) == VK_SUCCESS) {
+                LOGI("Custom Vulkan instance version: %u.%u.%u",
+                     VK_API_VERSION_MAJOR(ver), VK_API_VERSION_MINOR(ver), VK_API_VERSION_PATCH(ver));
+            }
+        }
+    } else {
+        LOGE("vkGetInstanceProcAddr NOT found in vkHandle!");
     }
 
     if (!init_hooks(vkHandle, pkgDataDirStr.c_str(), pkgCodeDirStr.c_str(), driverNameStr.c_str())) {
         LOGE("init_hooks FAILED!");
-        unlink((pkgDataDirStr + "/files/klee_vk_crash_flag").c_str());
+        clear_crash_guard_file(pkgDataDirStr);
         return JNI_FALSE;
     }
 
-    LOGI("KLEE AdrenoTools pipeline active for %s", driverNameStr.c_str());
+    // Clear crash guard once init + hook installation succeed so non-Activity background
+    // processes never falsely lock out the main Activity launch.
+    clear_crash_guard_file(pkgDataDirStr);
+    LOGI("KLEE AdrenoTools pipeline ACTIVE for %s", driverNameStr.c_str());
     return JNI_TRUE;
 }
 
@@ -187,17 +237,11 @@ Java_dev_klee_kernelmanager_bootstrap_KleeVulkanAppComponentFactory_nativeClearC
     jstring pkgDataDir
 ) {
     std::string dir = jstrToStd(env, pkgDataDir);
-    if (!dir.empty()) {
-        unlink((dir + "/files/klee_vk_crash_flag").c_str());
-        LOGI("Crash guard cleared");
-    }
+    clear_crash_guard_file(dir);
 }
 
 /**
  * In-app native PPSSPP libadrenotools driver tester.
- * Loads the chosen custom Vulkan driver inside KLEE and queries real VkPhysicalDeviceProperties
- * + VkPhysicalDeviceDriverProperties + device extension count.
- *
  * Output format:
  *   OK|deviceName|apiVersion|driverVersion|driverName|driverInfo|driverId|extCount|elapsedMs
  *   ERR|reason
@@ -219,15 +263,16 @@ Java_dev_klee_kernelmanager_AdrenoToolsProbe_nativeProbeDriver(
     std::string driverNameStr = jstrToStd(env, customDriverName);
     std::string redirectDirStr = jstrToStd(env, fileRedirectDir);
 
-    LOGI("AdrenoToolsProbe: testing %s/%s (hookLibDir=%s)",
-         driverDirStr.c_str(), driverNameStr.c_str(), hookLibDirStr.c_str());
+    __android_log_print(ANDROID_LOG_INFO, TAG, "AdrenoToolsProbe: testing %s/%s (hookLibDir=%s)",
+                        driverDirStr.c_str(), driverNameStr.c_str(), hookLibDirStr.c_str());
 
     void *vkHandle = open_with_adrenotools(
         tempDirStr,
         hookLibDirStr,
         driverDirStr,
         driverNameStr,
-        redirectDirStr
+        redirectDirStr,
+        false
     );
     if (!vkHandle) {
         const char *err = dlerror();
@@ -269,7 +314,6 @@ Java_dev_klee_kernelmanager_AdrenoToolsProbe_nativeProbeDriver(
     VkInstance instance = VK_NULL_HANDLE;
     VkResult res = pfn_create(&ci, nullptr, &instance);
     if (res != VK_SUCCESS || instance == VK_NULL_HANDLE) {
-        // Retry with Vulkan 1.0 in case driver rejects newer instance apiVersion
         appInfo.apiVersion = VK_API_VERSION_1_0;
         res = pfn_create(&ci, nullptr, &instance);
     }
@@ -350,6 +394,6 @@ Java_dev_klee_kernelmanager_AdrenoToolsProbe_nativeProbeDriver(
         << elapsedMs;
 
     std::string result = oss.str();
-    LOGI("AdrenoToolsProbe result: %s", result.c_str());
+    __android_log_print(ANDROID_LOG_INFO, TAG, "AdrenoToolsProbe result: %s", result.c_str());
     return env->NewStringUTF(result.c_str());
 }

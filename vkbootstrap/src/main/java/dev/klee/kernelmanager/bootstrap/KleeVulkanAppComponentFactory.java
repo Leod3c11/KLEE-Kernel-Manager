@@ -28,8 +28,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Injected AppComponentFactory that boots PPSSPP's libadrenotools Vulkan driver loader
  * before the target application creates its Application object or loads native Vulkan libraries.
  *
- * OpenGL ES / libEGL / libMEOW remains 100% stock; only Vulkan calls are routed to the
- * custom driver via libadrenotools + ByteHook + ShadowHook.
+ * OpenGL ES / libEGL / libMEOW / HWUI remain 100% stock; only app Vulkan calls are routed to the
+ * custom driver via libadrenotools + ByteHook app-only PLT hooks.
  */
 public class KleeVulkanAppComponentFactory extends AppComponentFactory {
 
@@ -60,6 +60,15 @@ public class KleeVulkanAppComponentFactory extends AppComponentFactory {
     private static native void nativeRefreshHooks();
 
     private static native void nativeClearCrashGuard(String pkgDataDir);
+
+    private static void trace(File traceFile, String msg) {
+        Log.i(TAG, msg);
+        if (traceFile == null) return;
+        try (FileOutputStream fos = new FileOutputStream(traceFile, true)) {
+            fos.write(("[KLEE-Bootstrap] " + msg + "\n").getBytes(StandardCharsets.UTF_8));
+        } catch (Throwable ignored) {
+        }
+    }
 
     private AppComponentFactory resolveOriginalFactory(ClassLoader cl, ApplicationInfo aInfo) {
         if (mOriginalFactory != null) {
@@ -94,16 +103,25 @@ public class KleeVulkanAppComponentFactory extends AppComponentFactory {
             return;
         }
 
+        File traceFile = null;
         try {
             sPkgDataDir = aInfo.dataDir != null ? aInfo.dataDir : "";
             String pkgName = aInfo.packageName != null ? aInfo.packageName : "";
             String hookLibDir = aInfo.nativeLibraryDir != null ? aInfo.nativeLibraryDir : "";
             String codeDir = aInfo.sourceDir != null ? aInfo.sourceDir : "";
 
-            Log.i(TAG, "Bootstrap init for " + pkgName + " (nativeLibDir=" + hookLibDir + ")");
+            File privateBase = new File(sPkgDataDir, "files/klee_adrenotools");
+            privateBase.mkdirs();
+            traceFile = new File(privateBase, "boot_trace.txt");
+            // Reset boot trace on fresh process start
+            try (FileOutputStream reset = new FileOutputStream(traceFile, false)) {
+                reset.write(("[KLEE-Bootstrap] === Process Start pkg=" + pkgName + " pid=" + android.os.Process.myPid() + " uid=" + android.os.Process.myUid() + " ===\n").getBytes(StandardCharsets.UTF_8));
+            } catch (Throwable ignored) {
+            }
+
+            trace(traceFile, "nativeLibDir=" + hookLibDir + " dataDir=" + sPkgDataDir);
 
             // Locate config.json written by KLEE Kernel Manager
-            File privateBase = new File(sPkgDataDir, "files/klee_adrenotools");
             File configFile = new File(privateBase, "config.json");
             if (!configFile.exists() && !pkgName.isEmpty()) {
                 File tmpConfig = new File("/data/local/tmp/klee_adrenotools/" + pkgName + "/config.json");
@@ -113,20 +131,20 @@ public class KleeVulkanAppComponentFactory extends AppComponentFactory {
             }
 
             if (!configFile.exists() || !configFile.canRead()) {
-                Log.i(TAG, "No active KLEE AdrenoTools config found -> using stock Mali Vulkan");
+                trace(traceFile, "No readable config.json -> stock Mali Vulkan");
                 return;
             }
 
             String jsonText = readFileText(configFile);
             if (jsonText == null || jsonText.trim().isEmpty()) {
-                Log.w(TAG, "Empty KLEE config.json -> using stock Mali Vulkan");
+                trace(traceFile, "Empty config.json -> stock Mali Vulkan");
                 return;
             }
 
             JSONObject cfg = new JSONObject(jsonText);
             String mode = cfg.optString("mode", "SYSTEM");
             if (!"CUSTOM".equalsIgnoreCase(mode)) {
-                Log.i(TAG, "Config mode=" + mode + " -> using stock Mali Vulkan");
+                trace(traceFile, "Config mode=" + mode + " -> stock Mali Vulkan");
                 return;
             }
 
@@ -135,13 +153,15 @@ public class KleeVulkanAppComponentFactory extends AppComponentFactory {
             String driverSourceDir = cfg.optString("driverSourceDir", "").trim();
 
             if (driverLib.isEmpty()) {
-                Log.w(TAG, "Config missing driverLib -> using stock Mali Vulkan");
+                trace(traceFile, "Config missing driverLib -> stock Mali Vulkan");
                 return;
             }
 
+            // Create temp & redirect dirs inside app's own cache so UID/SELinux MCS context is 100% native
             File driverDir = new File(privateBase, "driver");
-            File tempDir = new File(privateBase, "temp");
-            File redirectDir = new File(privateBase, "vk_file_redirect");
+            File appCache = new File(sPkgDataDir, "cache");
+            File tempDir = new File(appCache, "klee_vk_temp");
+            File redirectDir = new File(appCache, "klee_vk_redirect");
             driverDir.mkdirs();
             tempDir.mkdirs();
             redirectDir.mkdirs();
@@ -152,9 +172,11 @@ public class KleeVulkanAppComponentFactory extends AppComponentFactory {
             }
 
             if (!targetDriverFile.exists() || !targetDriverFile.canRead()) {
-                Log.e(TAG, "Driver .so missing or unreadable: " + targetDriverFile.getAbsolutePath());
+                trace(traceFile, "ERROR: driver missing/unreadable: " + targetDriverFile.getAbsolutePath());
                 return;
             }
+
+            trace(traceFile, "Driver ready: " + targetDriverFile.getAbsolutePath() + " (" + targetDriverFile.length() + " bytes)");
 
             // Load native libklee_vk_bridge.so from app's nativeLibraryDir
             File bridgeSo = new File(hookLibDir, "libklee_vk_bridge.so");
@@ -164,6 +186,7 @@ public class KleeVulkanAppComponentFactory extends AppComponentFactory {
                 System.loadLibrary("klee_vk_bridge");
             }
             sNativeLoaded = true;
+            trace(traceFile, "libklee_vk_bridge.so loaded; invoking nativeInit...");
 
             boolean ok = nativeInit(
                 sPkgDataDir,
@@ -178,11 +201,12 @@ public class KleeVulkanAppComponentFactory extends AppComponentFactory {
             if (ok) {
                 sHookActive = true;
                 sActiveDriverTitle = driverTitle;
-                Log.i(TAG, "KLEE AdrenoTools ACTIVE: " + driverTitle + " (" + driverLib + ")");
+                trace(traceFile, "KLEE AdrenoTools ACTIVE: " + driverTitle + " (" + driverLib + ")");
             } else {
-                Log.w(TAG, "nativeInit returned false -> stock Mali fallback active");
+                trace(traceFile, "WARN: nativeInit returned false -> stock Mali fallback active");
             }
         } catch (Throwable t) {
+            trace(traceFile, "EXCEPTION: " + t.getClass().getSimpleName() + ": " + t.getMessage());
             Log.e(TAG, "KLEE Bootstrap error (falling back to stock driver): " + t.getMessage(), t);
         }
     }
@@ -258,17 +282,17 @@ public class KleeVulkanAppComponentFactory extends AppComponentFactory {
                         ensureInitialized(activity.getApplicationInfo());
                     }
                     safeRefreshHooks();
-                }
-
-                @Override
-                public void onActivityStarted(Activity activity) {
-                    safeRefreshHooks();
                     if (sNativeLoaded && sHookActive && sCrashGuardCleared.compareAndSet(false, true)) {
                         try {
                             nativeClearCrashGuard(sPkgDataDir);
                         } catch (Throwable ignored) {
                         }
                     }
+                }
+
+                @Override
+                public void onActivityStarted(Activity activity) {
+                    safeRefreshHooks();
                     if (sHookActive && sToastShown.compareAndSet(false, true)) {
                         final String label = sActiveDriverTitle;
                         final Application targetApp = app;

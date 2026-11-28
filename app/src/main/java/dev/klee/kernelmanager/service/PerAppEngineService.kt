@@ -152,7 +152,20 @@ class PerAppEngineService : Service() {
             repository.applyForceVulkanAngle(rule.packageName, true)
             appliedParts.add("ANGLE/VK")
         }
-        if (rule.vulkanDriverId != "SYSTEM") {
+        val isPatched = dev.klee.kernelmanager.ApkPatchOrchestrator.isPackagePatched(rule.packageName, shell)
+        if (isPatched) {
+            val driver = if (rule.vulkanDriverId == "SYSTEM") null
+            else vulkanDriverStore.loadDrivers().firstOrNull { it.id == rule.vulkanDriverId }
+            selectedDriver = driver
+            val res = dev.klee.kernelmanager.ApkPatchOrchestrator.stageDriverConfigForPatchedApp(
+                rule.packageName,
+                driver,
+                shell
+            )
+            if (res.startsWith("OK")) {
+                appliedParts.add("AT:${driver?.name?.take(14) ?: "Mali"}")
+            }
+        } else if (rule.vulkanDriverId != "SYSTEM") {
             val driver = vulkanDriverStore.loadDrivers().firstOrNull { it.id == rule.vulkanDriverId }
             if (driver != null) {
                 selectedDriver = driver

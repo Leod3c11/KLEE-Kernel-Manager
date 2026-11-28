@@ -348,7 +348,7 @@ fun PerAppScreen(
                         }
                     }
 
-                    // AdrenoTools (PPSSPP) Inject / Restore Action Row
+                    // AdrenoTools (PPSSPP) Inject / Update / Restore Action Row
                     if (!isPatched) {
                         FilledTonalButton(
                             onClick = { confirmPatchRule = rule },
@@ -366,16 +366,36 @@ fun PerAppScreen(
                             Text("Injetar AdrenoTools (PPSSPP · Sem Zygisk)", fontWeight = FontWeight.SemiBold)
                         }
                     } else {
-                        OutlinedButton(
-                            onClick = { confirmRestoreRule = rule },
-                            enabled = !busy,
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(vertical = 8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Rounded.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Restaurar APK Original (Backup Intacto)")
+                            FilledTonalButton(
+                                onClick = { confirmPatchRule = rule },
+                                enabled = !busy,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = KleeColors.Gpu.copy(alpha = 0.16f),
+                                    contentColor = KleeColors.Gpu
+                                ),
+                                contentPadding = PaddingValues(vertical = 8.dp)
+                            ) {
+                                Icon(Icons.Rounded.AutoFixHigh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Atualizar Injeção", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            OutlinedButton(
+                                onClick = { confirmRestoreRule = rule },
+                                enabled = !busy,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(vertical = 8.dp)
+                            ) {
+                                Icon(Icons.Rounded.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Restaurar Original", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
                 }

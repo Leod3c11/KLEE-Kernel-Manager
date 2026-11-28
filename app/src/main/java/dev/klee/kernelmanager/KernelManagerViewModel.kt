@@ -400,8 +400,9 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
 
             // Ensure GraphicsEnvironment is NOT interfering with this AdrenoTools-patched app
             val curSys = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(ensureCarrier()) }
-            if (curSys.optInApps.split(",").contains(rule.packageName)) {
-                withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
+            if (curSys.overlayMounted || curSys.optInApps.isNotBlank()) {
+                val cleanRes = withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
+                recordLog("Limpar GraphicsEnvironment", cleanRes, !cleanRes.startsWith("OK"))
             }
 
             val stageRes = withContext(Dispatchers.IO) {
