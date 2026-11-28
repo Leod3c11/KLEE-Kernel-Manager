@@ -7,6 +7,21 @@ data class CommandResult(val code: Int, val stdout: List<String>, val stderr: Li
 }
 
 class RootShell {
+    companion object {
+        init {
+            try {
+                Shell.enableVerboseLogging = false
+                Shell.setDefaultBuilder(
+                    Shell.Builder.create()
+                        .setFlags(Shell.FLAG_MOUNT_MASTER)
+                        .setTimeout(15)
+                )
+            } catch (_: Throwable) {
+                // Already initialized
+            }
+        }
+    }
+
     fun runReadOnly(command: String): CommandResult {
         require(command.length <= 12_000)
         val result = Shell.cmd(command).exec()

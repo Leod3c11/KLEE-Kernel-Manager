@@ -1159,7 +1159,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.3.0 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.5.1 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1359,7 +1359,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.5.0 ===")
+            appendLine("=== FIM DO LOG KLEE v0.5.1 ===")
         }
     }
 
@@ -1376,11 +1376,12 @@ class KernelControlRepository(private val shell: RootShell) {
             "    hwdir=\"\$dir\"; vkfile=\$(basename \"\$f\"); vkpath=\"\$f\"; break 2; " +
             "  done; " +
             "done; " +
-            "issym=0; symtgt=''; " +
-            "if [ -L \"\$vkpath\" ]; then issym=1; symtgt=\$(readlink -f \"\$vkpath\" 2>/dev/null); fi; " +
+            "issym=0; symtgt=''; realvk=\"\$vkpath\"; " +
+            "if [ -L \"\$vkpath\" ]; then issym=1; symtgt=\$(readlink -f \"\$vkpath\" 2>/dev/null); [ -n \"\$symtgt\" ] && realvk=\"\$symtgt\"; fi; " +
             "hasangle=0; " +
             "if pm list packages 2>/dev/null | grep -qi angle || [ -e /system/lib64/libEGL_angle.so ] || [ -e /vendor/lib64/egl/libEGL_angle.so ] || [ -e /apex/com.android.angle/lib64/libEGL_angle.so ]; then hasangle=1; fi; " +
-            "mounted=0; if grep -q 'klee_hw_overlay' /proc/mounts 2>/dev/null || [ -f /data/adb/klee_drivers/active_state.txt ]; then mounted=1; fi; " +
+            "mounted=0; " +
+            "if [ -n \"\$realvk\" ] && grep -F \" \$realvk \" /proc/1/mountinfo 2>/dev/null | grep -q . || grep -q 'klee_hw_overlay' /proc/1/mountinfo 2>/dev/null || [ -f /data/adb/klee_drivers/active_state.txt ]; then mounted=1; fi; " +
             "state=\$(cat /data/adb/klee_drivers/active_state.txt 2>/dev/null); " +
             "printf 'VK|%s|%s|%s|%s|%s|%s|%s|%s\\n' \"\$hwdir\" \"\$vkfile\" \"\$vkpath\" \"\$issym\" \"\$symtgt\" \"\$hasangle\" \"\$mounted\" \"\$state\""
 
@@ -1410,47 +1411,50 @@ class KernelControlRepository(private val shell: RootShell) {
 
         val srcLib = "${driver.installDir}/${driver.primaryLibName}"
         val script =
-            "set -e; " +
-            "[ -f '$srcLib' ] || { echo 'DRIVER_SO_MISSING'; exit 2; }; " +
-            "hwdir=''; vkfile=''; " +
+            "exec 2>&1; " +
+            "NS=''; if command -v nsenter >/dev/null 2>&1 && nsenter --mount=/proc/1/ns/mnt true 2>/dev/null; then NS='nsenter --mount=/proc/1/ns/mnt --'; fi; " +
+            "[ -f '$srcLib' ] || { echo 'DRIVER_SO_MISSING: $srcLib'; exit 2; }; " +
+            "hwdir=''; vkfile=''; vkpath=''; " +
             "for dir in /vendor/lib64/hw /odm/lib64/hw /system/vendor/lib64/hw; do " +
             "  [ -d \"\$dir\" ] || continue; " +
-            "  if grep -q \" \$dir \" /proc/mounts 2>/dev/null; then umount -l \"\$dir\" 2>/dev/null || true; fi; " +
             "  for f in \"\$dir\"/vulkan.*.so; do " +
             "    [ -e \"\$f\" ] || continue; " +
-            "    hwdir=\"\$dir\"; vkfile=\$(basename \"\$f\"); break 2; " +
+            "    hwdir=\"\$dir\"; vkfile=\$(basename \"\$f\"); vkpath=\"\$f\"; break 2; " +
             "  done; " +
             "done; " +
-            "[ -n \"\$hwdir\" ] && [ -n \"\$vkfile\" ] || { echo 'SYSTEM_VULKAN_HAL_NOT_FOUND'; exit 3; }; " +
-            "umount -l /dev/klee_orig_hw 2>/dev/null || true; " +
-            "rm -rf /dev/klee_hw_overlay /dev/klee_orig_hw; " +
-            "mkdir -p /dev/klee_orig_hw /dev/klee_hw_overlay; " +
-            "mount --bind \"\$hwdir\" /dev/klee_orig_hw; " +
-            "for f in /dev/klee_orig_hw/*; do " +
-            "  [ -e \"\$f\" ] || [ -L \"\$f\" ] || continue; " +
-            "  b=\$(basename \"\$f\"); " +
-            "  [ \"\$b\" = \"\$vkfile\" ] && continue; " +
-            "  if [ -L \"\$f\" ]; then tgt=\$(readlink -f \"\$f\" 2>/dev/null); ln -sf \"\$tgt\" \"/dev/klee_hw_overlay/\$b\"; " +
-            "  else ln -sf \"/dev/klee_orig_hw/\$b\" \"/dev/klee_hw_overlay/\$b\"; fi; " +
-            "done; " +
-            "cp -f '${driver.installDir}'/*.so /dev/klee_hw_overlay/ 2>/dev/null || true; " +
-            "cp -f '$srcLib' \"/dev/klee_hw_overlay/\$vkfile\"; " +
-            "chmod 755 /dev/klee_hw_overlay /dev/klee_orig_hw; " +
-            "chmod 644 /dev/klee_hw_overlay/*.so 2>/dev/null || true; " +
-            "(chcon -R u:object_r:same_process_hal_file:s0 /dev/klee_hw_overlay 2>/dev/null || chcon -R u:object_r:vendor_file:s0 /dev/klee_hw_overlay 2>/dev/null || true); " +
-            "mount --bind /dev/klee_hw_overlay \"\$hwdir\"; " +
+            "[ -n \"\$vkpath\" ] || { echo 'SYSTEM_VULKAN_HAL_NOT_FOUND'; exit 3; }; " +
+            "realvk=\$(readlink -f \"\$vkpath\" 2>/dev/null); [ -n \"\$realvk\" ] || realvk=\"\$vkpath\"; " +
+            "case \"\$realvk\" in *libGLES_mali*) echo 'ABORT_GLES_SYMLINK: alvo aponta para libGLES_mali.so'; exit 4;; esac; " +
+            "\$NS umount -l \"\$realvk\" 2>/dev/null || true; " +
+            "chmod 755 /data/adb /data/adb/klee_drivers '${driver.installDir}' 2>/dev/null || true; " +
+            "chmod 644 '$srcLib' || { echo 'CHMOD_FAILED'; exit 5; }; " +
+            "chcon --reference=\"\$realvk\" '$srcLib' 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 '$srcLib' 2>/dev/null || chcon u:object_r:vendor_file:s0 '$srcLib' 2>/dev/null || true; " +
+            "if ! \$NS mount --bind '$srcLib' \"\$realvk\"; then " +
+            "  if ! mount --bind '$srcLib' \"\$realvk\"; then " +
+            "    echo \"MOUNT_BIND_FAILED target=\$realvk src=$srcLib\"; exit 6; " +
+            "  fi; " +
+            "fi; " +
             "mkdir -p /data/adb/klee_drivers; " +
-            "printf '%s:%s:%s' '${driver.id}' '$targetPkg' \"\$hwdir\" > /data/adb/klee_drivers/active_state.txt; " +
-            "echo \"OK Vulkan overlay montado: \$hwdir/\$vkfile -> ${driver.primaryLibName} (${driver.name})\""
+            "printf '%s:%s:%s' '${driver.id}' '$targetPkg' \"\$realvk\" > /data/adb/klee_drivers/active_state.txt; " +
+            "ctx=\$(ls -Z \"\$realvk\" 2>/dev/null | head -n 1); " +
+            "echo \"OK Vulkan montado (global=\$([ -n \"\$NS\" ] && echo sim || echo master)): \$realvk -> ${driver.primaryLibName} [\$ctx]\""
         return result(shell.runRoot(script), "Falha ao montar driver Vulkan customizado.")
     }
 
     fun unmountCustomVulkanDriver(): String {
         val script =
+            "exec 2>&1; " +
+            "NS=''; if command -v nsenter >/dev/null 2>&1 && nsenter --mount=/proc/1/ns/mnt true 2>/dev/null; then NS='nsenter --mount=/proc/1/ns/mnt --'; fi; " +
+            "saved=\$(cat /data/adb/klee_drivers/active_state.txt 2>/dev/null | cut -d: -f3); " +
+            "if [ -n \"\$saved\" ]; then \$NS umount -l \"\$saved\" 2>/dev/null || umount -l \"\$saved\" 2>/dev/null || true; fi; " +
             "for dir in /vendor/lib64/hw /odm/lib64/hw /system/vendor/lib64/hw; do " +
-            "  if grep -q \" \$dir \" /proc/mounts 2>/dev/null; then umount -l \"\$dir\" 2>/dev/null || true; fi; " +
+            "  for f in \"\$dir\"/vulkan.*.so; do " +
+            "    [ -e \"\$f\" ] || continue; " +
+            "    rv=\$(readlink -f \"\$f\" 2>/dev/null); " +
+            "    [ -n \"\$rv\" ] && { \$NS umount -l \"\$rv\" 2>/dev/null || umount -l \"\$rv\" 2>/dev/null || true; }; " +
+            "  done; " +
+            "  if grep -q 'klee_hw_overlay' /proc/1/mountinfo 2>/dev/null; then \$NS umount -l \"\$dir\" 2>/dev/null || true; fi; " +
             "done; " +
-            "if grep -q ' /dev/klee_orig_hw ' /proc/mounts 2>/dev/null; then umount -l /dev/klee_orig_hw 2>/dev/null || true; fi; " +
             "rm -rf /dev/klee_hw_overlay /dev/klee_orig_hw /data/adb/klee_drivers/active_state.txt; " +
             "echo 'OK Driver Vulkan padrão do sistema restaurado'"
         return result(shell.runRoot(script), "Falha ao desmontar driver Vulkan.")
@@ -1482,7 +1486,7 @@ class KernelControlRepository(private val shell: RootShell) {
         } else {
             val newPkgs = map.keys.joinToString(",")
             val newVals = map.values.joinToString(",")
-            val gameModeCmd = if (enable) "cmd game mode performance '$packageName' 2>/dev/null || true; " else ""
+            val gameModeCmd = if (enable) "cmd game mode performance '$packageName' >/dev/null 2>&1 || true; " else ""
             "settings put global angle_gl_driver_selection_pkgs '$newPkgs' && " +
             "settings put global angle_gl_driver_selection_values '$newVals' && " +
             gameModeCmd +
