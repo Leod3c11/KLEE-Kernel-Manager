@@ -108,10 +108,21 @@ fun VulkanDriverScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Icon(Icons.Rounded.Layers, contentDescription = null, tint = KleeColors.Gpu, modifier = Modifier.size(20.dp))
-                    Text("GraphicsEnvironment (Zero-Patch)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "GraphicsEnvironment",
+                        color = KleeColors.TextPrimary,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
+                Spacer(Modifier.width(8.dp))
                 StatusPill(
                     text = if (systemInfo.overlayMounted) "Custom Ativo" else "Padrão Mali",
                     color = if (systemInfo.overlayMounted) KleeColors.Success else KleeColors.Primary

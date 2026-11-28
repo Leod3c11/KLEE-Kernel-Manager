@@ -149,7 +149,7 @@ fun KleeApp(vm: KernelManagerViewModel, resumeTick: Int = 0) {
     }
 
     LaunchedEffect(resumeTick) {
-        if (resumeTick > 1 && !dashboard.root) {
+        if (resumeTick > 1 && (!dashboard.root || (currentRoute == "VULKAN_DRIVERS" && !systemVulkan.root))) {
             vm.loadDashboard()
             if (currentRoute == "VULKAN_DRIVERS" || currentRoute == "PER_APP") {
                 vm.loadSystemVulkan()

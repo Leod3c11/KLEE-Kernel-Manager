@@ -1161,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.6.4 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.6.5 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1390,7 +1390,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.6.4 ===")
+            appendLine("=== FIM DO LOG KLEE v0.6.5 ===")
         }
     }
 

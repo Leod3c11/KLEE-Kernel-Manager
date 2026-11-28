@@ -104,7 +104,7 @@ object VulkanCarrierResolver {
         val pairs = top.mapNotNull { c ->
             if (!c.pkg.matches(Regex("^[A-Za-z0-9._-]+$"))) return@mapNotNull null
             if (!c.nativeLibDir.matches(Regex("^[A-Za-z0-9._/~=+@-]+$"))) return@mapNotNull null
-            "${c.pkg}|${c.nativeLibDir}"
+            "${c.pkg}:${c.nativeLibDir}"
         }
         if (pairs.isEmpty()) {
             lastProbeReport = "pm_total=${pkgs.size}, candidates=${candidates.size}, pairs=0"
@@ -112,10 +112,12 @@ object VulkanCarrierResolver {
         }
 
         // Inspect FULL dumpsys package (filtering directly with grep -E so Packages: is never truncated!)
+        // Use ':' delimiter (NOT '|') because Android mksh treats unquoted '|' inside ${var%%|*} as pattern alternation!
         val script =
             "( " +
             "for entry in ${pairs.joinToString(" ") { "'$it'" }}; do " +
-            "  pkg=\${entry%%|*}; nat=\${entry#*|}; " +
+            "  pkg=\${entry%%:*}; nat=\${entry#*:}; " +
+            "  [ -n \"\$pkg\" ] && [ -n \"\$nat\" ] || continue; " +
             "  d=\$(dumpsys package \"\$pkg\" 2>/dev/null | grep -E 'primaryCpuAbi=|forceQueryable=|nativeLibraryDir='); " +
             "  abi=0; fq=0; mode='NONE'; " +
             "  printf '%s' \"\$d\" | grep -q 'primaryCpuAbi=arm64-v8a' && abi=1; " +

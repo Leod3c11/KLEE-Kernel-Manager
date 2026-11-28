@@ -230,9 +230,23 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun loadSystemVulkan() = runQuietTask {
-        val carrier = ensureCarrier(forceRefresh = true)
-        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(carrier) }
         _vulkanDrivers.value = vulkanDriverStore.loadDrivers()
+        val initial = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(resolvedCarrier) }
+        _systemVulkan.value = initial
+        if (initial.root) {
+            val carrier = try {
+                ensureCarrier(forceRefresh = true)
+            } catch (_: Throwable) {
+                resolvedCarrier
+            }
+            if (carrier != null) {
+                _systemVulkan.value = _systemVulkan.value.copy(
+                    carrierPackage = _systemVulkan.value.carrierPackage.ifBlank { carrier.packageName },
+                    carrierLibDir = _systemVulkan.value.carrierLibDir.ifBlank { carrier.nativeLibraryDir },
+                    carrierMode = _systemVulkan.value.carrierMode.ifBlank { carrier.mode }
+                )
+            }
+        }
     }
 
     fun setVulkanAutoUnmountSec(sec: Int) {

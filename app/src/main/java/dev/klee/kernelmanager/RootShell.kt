@@ -43,7 +43,7 @@ class RootShell {
         private fun isUid0(lines: List<String>): Boolean =
             lines.any { it.contains("uid=0") }
 
-        private fun execDirect(suBin: String, command: String, timeoutSec: Long = 20L): CommandResult {
+        private fun execDirect(suBin: String, command: String, timeoutSec: Long = 30L): CommandResult {
             return try {
                 val proc = ProcessBuilder(suBin, "-c", command).start()
                 val outLines = mutableListOf<String>()
@@ -88,11 +88,13 @@ class RootShell {
                     try { sh.close() } catch (_: Throwable) {}
                     return null to "not_alive"
                 }
-                val idRes = sh.newJob().add("id").exec()
-                if (idRes.code == 0 && isUid0(idRes.out)) {
+                val out = ArrayList<String>()
+                val err = ArrayList<String>()
+                val idRes = sh.newJob().add("id").to(out, err).exec()
+                if (idRes.code == 0 && isUid0(out)) {
                     sh to "ok(uid=0)"
                 } else {
-                    val info = idRes.out.plus(idRes.err).joinToString(" ").take(60)
+                    val info = (out + err).joinToString(" ").take(60)
                     try { sh.close() } catch (_: Throwable) {}
                     null to "code=${idRes.code}($info)"
                 }
@@ -164,8 +166,10 @@ class RootShell {
             val sh = persistentShell
             if (sh != null && sh.isAlive) {
                 return try {
-                    val r = sh.newJob().add(command).exec()
-                    CommandResult(r.code, r.out, r.err)
+                    val out = ArrayList<String>()
+                    val err = ArrayList<String>()
+                    val r = sh.newJob().add(command).to(out, err).exec()
+                    CommandResult(r.code, out, err)
                 } catch (t: Throwable) {
                     synchronized(lock) {
                         try { sh.close() } catch (_: Throwable) {}
