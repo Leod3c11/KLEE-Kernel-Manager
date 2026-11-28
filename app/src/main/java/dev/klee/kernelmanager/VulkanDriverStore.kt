@@ -26,8 +26,9 @@ data class VulkanDriverPackage(
 data class VulkanCarrierInfo(
     val packageName: String,
     val nativeLibraryDir: String,
-    val mode: String, // "DATA_APP" or "TMPFS"
-    val forceQueryable: Boolean = true
+    val mode: String, // "DATA_APP" or "OVERLAY"
+    val forceQueryable: Boolean = true,
+    val codePath: String = ""
 )
 
 data class SystemVulkanInfo(
@@ -48,6 +49,7 @@ data class SystemVulkanInfo(
     val carrierPackage: String = "",
     val carrierLibDir: String = "",
     val carrierMode: String = "",
+    val carrierForceQueryable: Boolean = true,
     val optInApps: String = "",
     val message: String = ""
 )

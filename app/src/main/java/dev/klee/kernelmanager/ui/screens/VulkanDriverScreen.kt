@@ -124,8 +124,8 @@ fun VulkanDriverScreen(
                 }
                 Spacer(Modifier.width(8.dp))
                 StatusPill(
-                    text = if (systemInfo.overlayMounted) "Custom Ativo" else "Padrão Mali",
-                    color = if (systemInfo.overlayMounted) KleeColors.Success else KleeColors.Primary
+                    text = if (systemInfo.overlayMounted) "Preparado" else "Padrão Mali",
+                    color = if (systemInfo.overlayMounted) KleeColors.Warning else KleeColors.Primary
                 )
             }
 
@@ -133,8 +133,10 @@ fun VulkanDriverScreen(
             VkInfoRow("ro.hardware.vulkan", systemInfo.roHardwareVulkan.ifBlank { "mali (padrão)" })
             VkInfoRow(
                 "Carrier (ro.gfx.driver.0)",
-                if (systemInfo.carrierPackage.isNotBlank()) "${systemInfo.carrierPackage} [${systemInfo.carrierMode}]"
-                else "Não detectado"
+                if (systemInfo.carrierPackage.isNotBlank()) {
+                    val fqTag = if (systemInfo.carrierForceQueryable) "fq=✓" else "fq=✗"
+                    "${systemInfo.carrierPackage} [${systemInfo.carrierMode} · $fqTag]"
+                } else "Não detectado"
             )
             VkInfoRow(
                 "resetprop",

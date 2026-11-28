@@ -243,7 +243,8 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
                 _systemVulkan.value = _systemVulkan.value.copy(
                     carrierPackage = _systemVulkan.value.carrierPackage.ifBlank { carrier.packageName },
                     carrierLibDir = _systemVulkan.value.carrierLibDir.ifBlank { carrier.nativeLibraryDir },
-                    carrierMode = _systemVulkan.value.carrierMode.ifBlank { carrier.mode }
+                    carrierMode = _systemVulkan.value.carrierMode.ifBlank { carrier.mode },
+                    carrierForceQueryable = carrier.forceQueryable
                 )
             }
         }

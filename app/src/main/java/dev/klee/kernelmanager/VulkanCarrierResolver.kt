@@ -3,6 +3,7 @@ package dev.klee.kernelmanager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import java.io.File
 
 object VulkanCarrierResolver {
 
@@ -18,8 +19,8 @@ object VulkanCarrierResolver {
         "com.google.android.printservice.recommendation",
         "com.google.android.marvin.talkback",
         "com.google.android.apps.turbo",
-        "com.google.android.as",
-        "com.google.android.projection.gearhead"
+        "com.google.android.projection.gearhead",
+        "com.google.android.as"
     )
 
     private val blockedPrefixes = listOf(
@@ -43,12 +44,16 @@ object VulkanCarrierResolver {
         "com.qualcomm."
     )
 
-    private data class Candidate(
+    private data class DumpsysPkg(
         val pkg: String,
-        val nativeLibDir: String,
-        val isDataApp: Boolean,
-        val rank: Int
+        val primaryCpuAbi: String,
+        val manifestForceQueryable: Boolean,
+        val codePath: String
     )
+
+    private val pkgRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+")
+    private val safePkgRegex = Regex("^[A-Za-z0-9._-]+$")
+    private val safePathRegex = Regex("^[A-Za-z0-9._/~=+@-]+$")
 
     fun resolveCarrier(context: Context, shell: RootShell): VulkanCarrierInfo? {
         if (!shell.rootCheck()) {
@@ -56,9 +61,72 @@ object VulkanCarrierResolver {
             return null
         }
 
-        val origProp = shell.runReadOnly(
-            "( if [ -f /data/adb/klee_drivers/orig_gfx_driver.txt ]; then cat /data/adb/klee_drivers/orig_gfx_driver.txt; else getprop ro.gfx.driver.0; fi ) 2>/dev/null"
-        ).stdout.firstOrNull()?.trim().orEmpty()
+        // Single fast root pass (<0.4s):
+        // 1) Read original ro.gfx.driver.0
+        // 2) Read forceQueryable set from `dumpsys package queries` (captures BOTH manifest forceQueryable=true AND sysconfig <force-queryable>!)
+        // 3) Scan ALL packages in `dumpsys package packages` for primaryCpuAbi=arm64-v8a, forceQueryable=true, and codePath
+        val script =
+            "( " +
+            "if [ -f /data/adb/klee_drivers/orig_gfx_driver.txt ]; then " +
+            "  printf 'ORIG|%s\\n' \"\$(cat /data/adb/klee_drivers/orig_gfx_driver.txt 2>/dev/null | tr -d '\\r\\n')\"; " +
+            "else " +
+            "  printf 'ORIG|%s\\n' \"\$(getprop ro.gfx.driver.0 2>/dev/null | tr -d '\\r\\n')\"; " +
+            "fi; " +
+            "dumpsys package queries 2>/dev/null | awk '" +
+            "  /^[[:space:]]*forceQueryable:/ { in_fq=1; print \"FQ|\" \$0; next } " +
+            "  in_fq && /^[[:space:]]*[A-Za-z][A-Za-z0-9_]*:/ { in_fq=0 } " +
+            "  in_fq { print \"FQ|\" \$0 }" +
+            "'; " +
+            "dumpsys package packages 2>/dev/null | awk '" +
+            "  /^[[:space:]]*Package \\[/ { " +
+            "    if (pkg != \"\" && abi == \"arm64-v8a\") printf \"PKG|%s|%s|%s|%s\\n\", pkg, abi, fq, cp; " +
+            "    s = \$0; sub(/^.*\\[/, \"\", s); sub(/\\].*\$/, \"\", s); " +
+            "    pkg = s; abi = \"\"; fq = 0; cp = \"\"; next " +
+            "  } " +
+            "  pkg != \"\" && /primaryCpuAbi=/ { " +
+            "    v = \$0; sub(/^.*primaryCpuAbi=/, \"\", v); sub(/[[:space:]].*\$/, \"\", v); abi = v " +
+            "  } " +
+            "  pkg != \"\" && /forceQueryable=true/ { fq = 1 } " +
+            "  pkg != \"\" && /codePath=/ { " +
+            "    v = \$0; sub(/^.*codePath=/, \"\", v); sub(/[[:space:]].*\$/, \"\", v); cp = v " +
+            "  } " +
+            "  END { " +
+            "    if (pkg != \"\" && abi == \"arm64-v8a\") printf \"PKG|%s|%s|%s|%s\\n\", pkg, abi, fq, cp " +
+            "  }" +
+            "' " +
+            ")"
+
+        val r = shell.runReadOnly(script)
+        var origProp = ""
+        val fqFromQueries = linkedSetOf<String>()
+        val arm64Pkgs = linkedMapOf<String, DumpsysPkg>()
+
+        r.stdout.forEach { line ->
+            when {
+                line.startsWith("ORIG|") -> {
+                    origProp = line.removePrefix("ORIG|").trim()
+                }
+                line.startsWith("FQ|") -> {
+                    val body = line.removePrefix("FQ|")
+                    pkgRegex.findAll(body).forEach { m ->
+                        val p = m.value
+                        if (safePkgRegex.matches(p)) fqFromQueries.add(p)
+                    }
+                }
+                line.startsWith("PKG|") -> {
+                    val parts = line.split("|")
+                    if (parts.size >= 5) {
+                        val pkg = parts[1].trim()
+                        val abi = parts[2].trim()
+                        val fq = parts[3].trim() == "1"
+                        val cp = parts[4].trim()
+                        if (pkg.isNotEmpty() && abi == "arm64-v8a") {
+                            arm64Pkgs[pkg] = DumpsysPkg(pkg, abi, fq, cp)
+                        }
+                    }
+                }
+            }
+        }
 
         val pm = context.packageManager
         val flags = PackageManager.MATCH_SYSTEM_ONLY or PackageManager.GET_META_DATA
@@ -70,102 +138,63 @@ object VulkanCarrierResolver {
             return null
         }
 
-        val candidates = mutableListOf<Candidate>()
+        val eligible = mutableListOf<Pair<Int, VulkanCarrierInfo>>()
+        val sampleLog = mutableListOf<String>()
+
         for (pi in pkgs) {
             val ai = pi.applicationInfo ?: continue
             val pkg = pi.packageName ?: continue
+            if (!safePkgRegex.matches(pkg)) continue
             if ((ai.flags and ApplicationInfo.FLAG_SYSTEM) == 0) continue
             if (ai.targetSdkVersion < 26) continue
             val isOrig = pkg == origProp && origProp.isNotBlank()
             if (!isOrig && (ai.metaData == null || ai.metaData.isEmpty)) continue
-            val natDir = ai.nativeLibraryDir?.trim().orEmpty()
-            if (natDir.isBlank()) continue
-            if (!isOrig && !natDir.endsWith("/arm64") && !natDir.endsWith("/arm64-v8a")) continue
             if (!isOrig && isBlocked(pkg)) continue
 
-            val isDataApp = natDir.startsWith("/data/app/")
+            val dp = arm64Pkgs[pkg] ?: continue // MUST have primaryCpuAbi=arm64-v8a!
+            val isFq = dp.manifestForceQueryable || fqFromQueries.contains(pkg)
+            if (!isFq) continue // MUST be forceQueryable so Android 11-16 untrusted apps can see it in GraphicsEnvironment!
+
+            val sourceDir = ai.sourceDir?.trim().orEmpty()
+            val codePath = (if (sourceDir.isNotBlank()) File(sourceDir).parentFile?.absolutePath.orEmpty() else "")
+                .ifBlank { dp.codePath }
+            if (codePath.isBlank() || !safePathRegex.matches(codePath)) continue
+            if (codePath.startsWith("/apex/")) continue // Never bind-mount inside /apex
+
+            val natDir = ai.nativeLibraryDir?.trim().orEmpty().ifBlank { "$codePath/lib/arm64" }
+            if (!safePathRegex.matches(natDir)) continue
+            if (!natDir.endsWith("/arm64") && !natDir.endsWith("/arm64-v8a")) continue
+
+            val isDataApp = codePath.startsWith("/data/app/") && natDir.startsWith("/data/app/")
+            val mode = if (isDataApp) "DATA_APP" else "OVERLAY"
             val prefIdx = preferredPackages.indexOf(pkg)
+
             val rank = when {
-                isOrig -> 0
+                isOrig && isDataApp -> 0
+                isOrig -> 5
                 prefIdx >= 0 && isDataApp -> 10 + prefIdx
                 isDataApp -> 100
                 prefIdx >= 0 -> 200 + prefIdx
                 else -> 300
             }
-            candidates.add(Candidate(pkg, natDir, isDataApp, rank))
-        }
 
-        if (candidates.isEmpty()) {
-            lastProbeReport = "pm_total=${pkgs.size}, candidates=0, origProp=$origProp"
-            return null
-        }
-
-        val top = candidates.sortedBy { it.rank }.take(16)
-        val pairs = top.mapNotNull { c ->
-            if (!c.pkg.matches(Regex("^[A-Za-z0-9._-]+$"))) return@mapNotNull null
-            if (!c.nativeLibDir.matches(Regex("^[A-Za-z0-9._/~=+@-]+$"))) return@mapNotNull null
-            "${c.pkg}:${c.nativeLibDir}"
-        }
-        if (pairs.isEmpty()) {
-            lastProbeReport = "pm_total=${pkgs.size}, candidates=${candidates.size}, pairs=0"
-            return null
-        }
-
-        // Inspect FULL dumpsys package (filtering directly with grep -E so Packages: is never truncated!)
-        // Use ':' delimiter (NOT '|') because Android mksh treats unquoted '|' inside ${var%%|*} as pattern alternation!
-        val script =
-            "( " +
-            "for entry in ${pairs.joinToString(" ") { "'$it'" }}; do " +
-            "  pkg=\${entry%%:*}; nat=\${entry#*:}; " +
-            "  [ -n \"\$pkg\" ] && [ -n \"\$nat\" ] || continue; " +
-            "  d=\$(dumpsys package \"\$pkg\" 2>/dev/null | grep -E 'primaryCpuAbi=|forceQueryable=|nativeLibraryDir='); " +
-            "  abi=0; fq=0; mode='NONE'; " +
-            "  printf '%s' \"\$d\" | grep -q 'primaryCpuAbi=arm64-v8a' && abi=1; " +
-            "  printf '%s' \"\$d\" | grep -q 'forceQueryable=true' && fq=1; " +
-            "  case \"\$nat\" in " +
-            "    /data/app/*) p=\$(dirname \"\$nat\"); pp=\$(dirname \"\$p\"); if [ -d \"\$nat\" ] || [ -d \"\$p\" ] || [ -d \"\$pp\" ]; then mode='DATA_APP'; fi ;; " +
-            "    *) if [ -d \"\$nat\" ]; then mode='TMPFS'; fi ;; " +
-            "  esac; " +
-            "  printf 'CAND|%s|%s|%s|%s|%s\\n' \"\$pkg\" \"\$abi\" \"\$fq\" \"\$mode\" \"\$nat\"; " +
-            "  if [ \"\$abi\" = '1' ] && [ \"\$fq\" = '1' ] && [ \"\$mode\" = 'DATA_APP' ]; then break; fi; " +
-            "done " +
-            ")"
-
-        val r = shell.runReadOnly(script)
-        val verifiedFq = mutableListOf<VulkanCarrierInfo>()
-        val verifiedFallback = mutableListOf<VulkanCarrierInfo>()
-        val probeLines = mutableListOf<String>()
-
-        r.stdout.forEach { line ->
-            if (!line.startsWith("CAND|")) return@forEach
-            val parts = line.split("|")
-            if (parts.size < 6) return@forEach
-            val pkg = parts[1]
-            val abiOk = parts[2] == "1"
-            val fqOk = parts[3] == "1"
-            val mode = parts[4]
-            val natDir = parts[5]
-            if (probeLines.size < 12) {
-                probeLines.add("$pkg(abi=${parts[2]},fq=${parts[3]},mode=$mode)")
-            }
-            if (!abiOk || mode == "NONE") return@forEach
             val info = VulkanCarrierInfo(
                 packageName = pkg,
                 nativeLibraryDir = natDir,
                 mode = mode,
-                forceQueryable = fqOk
+                forceQueryable = true,
+                codePath = codePath
             )
-            if (fqOk) verifiedFq.add(info) else verifiedFallback.add(info)
+            eligible.add(rank to info)
+            if (sampleLog.size < 12) {
+                sampleLog.add("$pkg($mode,fq=1)")
+            }
         }
 
-        val chosen = verifiedFq.firstOrNull { it.mode == "DATA_APP" }
-            ?: verifiedFq.firstOrNull()
-            ?: verifiedFallback.firstOrNull { it.packageName in preferredPackages && it.mode == "DATA_APP" }
-            ?: verifiedFallback.firstOrNull { it.packageName in preferredPackages }
-            ?: verifiedFallback.firstOrNull { it.mode == "DATA_APP" }
-            ?: verifiedFallback.firstOrNull()
+        val sorted = eligible.sortedBy { it.first }.map { it.second }
+        val chosen = sorted.firstOrNull()
 
-        lastProbeReport = "pm=${pkgs.size}, cand=${candidates.size}, checked=${r.stdout.count { it.startsWith("CAND|") }}, chosen=${chosen?.packageName ?: "NONE"}[${chosen?.mode ?: "-"}] | sample: ${probeLines.joinToString("; ")}"
+        lastProbeReport = "pm=${pkgs.size}, fqSet=${fqFromQueries.size}, arm64=${arm64Pkgs.size}, eligibleFq=${sorted.size}, chosen=${chosen?.packageName ?: "NONE"}[${chosen?.mode ?: "-"}] | matches: ${sampleLog.joinToString("; ")}"
         return chosen
     }
 

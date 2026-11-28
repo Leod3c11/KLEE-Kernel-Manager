@@ -1161,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.6.5 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.6.6 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1390,7 +1390,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.6.5 ===")
+            appendLine("=== FIM DO LOG KLEE v0.6.6 ===")
         }
     }
 
@@ -1460,6 +1460,7 @@ class KernelControlRepository(private val shell: RootShell) {
             carrierPackage = stateCarrierPkg.ifBlank { carrierHint?.packageName.orEmpty() },
             carrierLibDir = stateCarrierDir.ifBlank { carrierHint?.nativeLibraryDir.orEmpty() },
             carrierMode = stateCarrierMode.ifBlank { carrierHint?.mode.orEmpty() },
+            carrierForceQueryable = carrierHint?.forceQueryable ?: true,
             message = if (vk.getOrNull(2).isNullOrBlank()) "Nenhum vulkan.*.so encontrado em /vendor/lib64/hw." else ""
         )
     }
@@ -1475,7 +1476,10 @@ class KernelControlRepository(private val shell: RootShell) {
         require(targetPkg.matches(Regex("^[A-Za-z0-9._-]+$"))) { "Pacote alvo inválido." }
         require(carrier.packageName.matches(Regex("^[A-Za-z0-9._-]+$"))) { "Pacote carrier inválido." }
         require(carrier.nativeLibraryDir.matches(Regex("^[A-Za-z0-9._/~=+@-]+$"))) { "Diretório carrier inválido." }
-        require(carrier.mode == "DATA_APP" || carrier.mode == "TMPFS") { "Modo carrier inválido." }
+        require(carrier.mode == "DATA_APP" || carrier.mode == "OVERLAY" || carrier.mode == "TMPFS") { "Modo carrier inválido." }
+        if (carrier.mode == "OVERLAY") {
+            require(carrier.codePath.matches(Regex("^/[A-Za-z0-9._/~=+@-]+$"))) { "codePath carrier inválido." }
+        }
 
         val cleanOptIn = (optInPackages + targetPkg)
             .filter { it.matches(Regex("^[A-Za-z0-9._-]+$")) }
@@ -1483,6 +1487,7 @@ class KernelControlRepository(private val shell: RootShell) {
             .joinToString(",")
         val srcLib = "${driver.installDir}/${driver.primaryLibName}"
         val safeDrvName = driver.name.replace("|", "_").replace("'", "")
+        val codePath = carrier.codePath
 
         val script =
             "( " +
@@ -1495,13 +1500,15 @@ class KernelControlRepository(private val shell: RootShell) {
             "[ -n \"\$RP\" ] || { echo 'RESETPROP_NOT_FOUND: resetprop do KernelSU/Magisk não encontrado'; exit 2; }; " +
             "[ -f '$srcLib' ] || { echo 'DRIVER_SO_MISSING: $srcLib'; exit 3; }; " +
             "mkdir -p /data/adb/klee_drivers; " +
-            // 1. Clean any prior staging cleanly (without wiping orig_gfx_driver.txt)
+            // 1. Clean any prior staging cleanly (DATA_APP / TMPFS / OVERLAY) without wiping orig_gfx_driver.txt
             "if [ -f /data/adb/klee_drivers/active_state.txt ]; then " +
             "  prev=\$(cat /data/adb/klee_drivers/active_state.txt 2>/dev/null); " +
             "  pmode=\$(printf '%s' \"\$prev\" | cut -d'|' -f7); " +
             "  pdir=\$(printf '%s' \"\$prev\" | cut -d'|' -f5); " +
             "  pcreated=\$(printf '%s' \"\$prev\" | cut -d'|' -f8); " +
+            "  pcode=\$(printf '%s' \"\$prev\" | cut -d'|' -f9); " +
             "  if [ \"\$pmode\" = 'TMPFS' ] && [ -n \"\$pdir\" ]; then \$NS umount -l \"\$pdir\" 2>/dev/null || umount -l \"\$pdir\" 2>/dev/null || true; fi; " +
+            "  if [ \"\$pmode\" = 'OVERLAY' ] && [ -n \"\$pcode\" ]; then \$NS umount -l \"\$pcode\" 2>/dev/null || umount -l \"\$pcode\" 2>/dev/null || true; rm -rf /data/adb/klee_drivers/carrier_overlay; fi; " +
             "  if [ \"\$pmode\" = 'DATA_APP' ] && [ -f /data/adb/klee_drivers/staged_files.list ]; then " +
             "    while IFS= read -r oldf; do [ -n \"\$oldf\" ] && rm -f \"\$oldf\" 2>/dev/null; done < /data/adb/klee_drivers/staged_files.list; " +
             "    [ \"\$pcreated\" = '1' ] && [ -n \"\$pdir\" ] && rmdir \"\$pdir\" 2>/dev/null || true; " +
@@ -1531,8 +1538,8 @@ class KernelControlRepository(private val shell: RootShell) {
             "if [ -n \"\$hw_vk\" ]; then primary_vk=\"vulkan.\${hw_vk}.so\"; " +
             "elif [ -n \"\$sys_vk\" ]; then primary_vk=\"\$sys_vk\"; " +
             "else primary_vk='vulkan.mali.so'; fi; " +
-            // 4. Prepare carrier nativeLibraryDir
-            "TDIR='${carrier.nativeLibraryDir}'; MODE='${carrier.mode}'; dir_created=0; SECTX='u:object_r:same_process_hal_file:s0'; " +
+            // 4. Prepare carrier nativeLibraryDir (DATA_APP direct, OVERLAY bind-mount on codePath, or legacy TMPFS)
+            "TDIR='${carrier.nativeLibraryDir}'; CODEP='$codePath'; MODE='${carrier.mode}'; dir_created=0; SECTX='u:object_r:apk_data_file:s0'; " +
             "rm -f /data/adb/klee_drivers/staged_files.list /data/adb/klee_drivers/orig_dir.list /data/adb/klee_drivers/dep_queue.txt /data/adb/klee_drivers/dep_seen.txt; " +
             ": > /data/adb/klee_drivers/staged_files.list; : > /data/adb/klee_drivers/orig_dir.list; " +
             "if [ \"\$MODE\" = 'DATA_APP' ]; then " +
@@ -1540,13 +1547,27 @@ class KernelControlRepository(private val shell: RootShell) {
             "  if [ ! -d \"\$TDIR\" ]; then " +
             "    dir_created=1; " +
             "    mkdir -p \"\$TDIR\" || { echo \"MKDIR_CARRIER_FAILED: \$TDIR\"; exit 4; }; " +
-            "    pdir=\$(dirname \"\$TDIR\"); chmod 755 \"\$pdir\" \"\$TDIR\" 2>/dev/null || true; " +
-            "    chcon \"\$SECTX\" \"\$pdir\" \"\$TDIR\" 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 \"\$pdir\" \"\$TDIR\" 2>/dev/null || true; " +
+            "    pdir=\$(dirname \"\$TDIR\"); chown system:system \"\$pdir\" \"\$TDIR\" 2>/dev/null || true; chmod 755 \"\$pdir\" \"\$TDIR\" 2>/dev/null || true; " +
+            "    chcon \"\$SECTX\" \"\$pdir\" \"\$TDIR\" 2>/dev/null || true; " +
             "  else " +
             "    ls -1 \"\$TDIR\" 2>/dev/null > /data/adb/klee_drivers/orig_dir.list; " +
             "    chmod 755 \"\$TDIR\" 2>/dev/null || true; " +
             "  fi; " +
+            "elif [ \"\$MODE\" = 'OVERLAY' ]; then " +
+            "  SECTX='u:object_r:system_file:s0'; " +
+            "  OVDIR='/data/adb/klee_drivers/carrier_overlay/${carrier.packageName}'; " +
+            "  rm -rf \"\$OVDIR\"; mkdir -p \"\$OVDIR\" || { echo \"MKDIR_OVERLAY_FAILED: \$OVDIR\"; exit 4; }; " +
+            "  cp -af \"\$CODEP\"/. \"\$OVDIR\"/ 2>/dev/null || { echo \"COPY_CARRIER_CODEPATH_FAILED: \$CODEP\"; exit 4; }; " +
+            "  libtail=\$(basename \"\$TDIR\"); " +
+            "  mkdir -p \"\$OVDIR/lib/\$libtail\"; " +
+            "  ls -1 \"\$OVDIR/lib/\$libtail\" 2>/dev/null > /data/adb/klee_drivers/orig_dir.list; " +
+            "  chcon -R \"\$SECTX\" \"\$OVDIR\" 2>/dev/null || true; " +
+            "  merr=\$(\$NS mount --bind \"\$OVDIR\" \"\$CODEP\" 2>&1); rc=\$?; " +
+            "  if [ \"\$rc\" != 0 ]; then merr=\$(mount --bind \"\$OVDIR\" \"\$CODEP\" 2>&1); rc=\$?; fi; " +
+            "  if [ \"\$rc\" != 0 ]; then rm -rf \"\$OVDIR\"; echo \"OVERLAY_BIND_FAILED: \$merr\"; exit 5; fi; " +
+            "  mkdir -p \"\$TDIR\" 2>/dev/null || true; " +
             "else " +
+            "  SECTX='u:object_r:same_process_hal_file:s0'; " +
             "  [ -d \"\$TDIR\" ] || { echo \"CARRIER_DIR_MISSING: \$TDIR\"; exit 4; }; " +
             "  rm -rf /dev/klee_carrier_orig; mkdir -p /dev/klee_carrier_orig; " +
             "  cp -a \"\$TDIR\"/. /dev/klee_carrier_orig/ 2>/dev/null || true; " +
@@ -1555,19 +1576,18 @@ class KernelControlRepository(private val shell: RootShell) {
             "  if [ \"\$rc\" != 0 ]; then rm -rf /dev/klee_carrier_orig; echo \"TMPFS_MOUNT_FAILED: \$merr\"; exit 5; fi; " +
             "  cp -a /dev/klee_carrier_orig/. \"\$TDIR\"/ 2>/dev/null || true; " +
             "  rm -rf /dev/klee_carrier_orig; " +
-            "  chcon \"\$SECTX\" \"\$TDIR\" 2>/dev/null || true; " +
             "fi; " +
-            // 5. Stage custom Vulkan ICD primary .so + name aliases + extraLibs from zip
+            // 5. Stage custom Vulkan ICD primary .so + platform copy + extraLibs from zip
             "cp -f '$srcLib' \"\$TDIR/\$primary_vk\" || { echo 'COPY_PRIMARY_VK_FAILED'; exit 6; }; " +
-            "chmod 644 \"\$TDIR/\$primary_vk\"; " +
-            "chcon \"\$SECTX\" \"\$TDIR/\$primary_vk\" 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 \"\$TDIR/\$primary_vk\" 2>/dev/null || true; " +
+            "chown system:system \"\$TDIR/\$primary_vk\" 2>/dev/null || true; chmod 755 \"\$TDIR/\$primary_vk\"; " +
             "printf '%s\\n' \"\$TDIR/\$primary_vk\" >> /data/adb/klee_drivers/staged_files.list; " +
-            "for alias in \"\$sys_vk\" \"vulkan.\${hw_gen}.so\" \"vulkan.\${hw_plat}.so\" '${driver.primaryLibName}'; do " +
+            "for alias in \"\$sys_vk\" \"vulkan.\${hw_plat}.so\" \"vulkan.\${hw_gen}.so\" '${driver.primaryLibName}'; do " +
             "  [ -n \"\$alias\" ] || continue; " +
             "  case \"\$alias\" in 'vulkan..so') continue;; esac; " +
             "  [ \"\$alias\" = \"\$primary_vk\" ] && continue; " +
             "  if ! grep -Fxq \"\$alias\" /data/adb/klee_drivers/orig_dir.list 2>/dev/null; then " +
-            "    ln -sf \"\$primary_vk\" \"\$TDIR/\$alias\" 2>/dev/null && printf '%s\\n' \"\$TDIR/\$alias\" >> /data/adb/klee_drivers/staged_files.list; " +
+            "    cp -f '$srcLib' \"\$TDIR/\$alias\" 2>/dev/null && chown system:system \"\$TDIR/\$alias\" 2>/dev/null || true; chmod 755 \"\$TDIR/\$alias\" 2>/dev/null || true; " +
+            "    [ -f \"\$TDIR/\$alias\" ] && printf '%s\\n' \"\$TDIR/\$alias\" >> /data/adb/klee_drivers/staged_files.list; " +
             "  fi; " +
             "done; " +
             "for ex in '${driver.installDir}'/*.so; do " +
@@ -1575,20 +1595,20 @@ class KernelControlRepository(private val shell: RootShell) {
             "  bn=\$(basename \"\$ex\"); " +
             "  [ \"\$bn\" = '${driver.primaryLibName}' ] && continue; " +
             "  if ! grep -Fxq \"\$bn\" /data/adb/klee_drivers/orig_dir.list 2>/dev/null; then " +
-            "    cp -f \"\$ex\" \"\$TDIR/\$bn\" && chmod 644 \"\$TDIR/\$bn\" && (chcon \"\$SECTX\" \"\$TDIR/\$bn\" 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 \"\$TDIR/\$bn\" 2>/dev/null || true) && printf '%s\\n' \"\$TDIR/\$bn\" >> /data/adb/klee_drivers/staged_files.list; " +
+            "    cp -f \"\$ex\" \"\$TDIR/\$bn\" && chown system:system \"\$TDIR/\$bn\" 2>/dev/null || true; chmod 755 \"\$TDIR/\$bn\" && printf '%s\\n' \"\$TDIR/\$bn\" >> /data/adb/klee_drivers/staged_files.list; " +
             "  fi; " +
             "done; " +
-            // 6. Stage native Mali / MediaTek MEOW OpenGL ES / EGL libs (deduplicating symlinks) so hybrid GLES+Vulkan apps work when ANGLE is OFF
+            // 6. Stage native Mali / MediaTek MEOW OpenGL ES / EGL libs (including /vendor/lib64/egl/mt6899/libGLES_mali.so!) so hybrid GLES+Vulkan apps work when ANGLE is OFF
             "egl_cnt=0; " +
             "if [ -d /vendor/lib64/egl ]; then " +
-            "  for ef in /vendor/lib64/egl/*.so /vendor/lib64/libMEOW*.so /vendor/lib64/mt6899/libGLES_mali.so; do " +
+            "  for ef in /vendor/lib64/egl/*.so /vendor/lib64/egl/*/*.so /vendor/lib64/libMEOW*.so; do " +
             "    [ -e \"\$ef\" ] || continue; " +
             "    ebn=\$(basename \"\$ef\"); " +
             "    case \"\$ebn\" in vulkan*) continue;; esac; " +
             "    real=\$(readlink -f \"\$ef\" 2>/dev/null); [ -n \"\$real\" ] || real=\"\$ef\"; " +
             "    rbn=\$(basename \"\$real\"); " +
             "    if [ ! -e \"\$TDIR/\$rbn\" ] && ! grep -Fxq \"\$rbn\" /data/adb/klee_drivers/orig_dir.list 2>/dev/null; then " +
-            "      cp -f \"\$real\" \"\$TDIR/\$rbn\" 2>/dev/null && chmod 644 \"\$TDIR/\$rbn\" && (chcon \"\$SECTX\" \"\$TDIR/\$rbn\" 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 \"\$TDIR/\$rbn\" 2>/dev/null || true) && printf '%s\\n' \"\$TDIR/\$rbn\" >> /data/adb/klee_drivers/staged_files.list && egl_cnt=\$((egl_cnt+1)); " +
+            "      cp -f \"\$real\" \"\$TDIR/\$rbn\" 2>/dev/null && chown system:system \"\$TDIR/\$rbn\" 2>/dev/null || true; chmod 755 \"\$TDIR/\$rbn\" 2>/dev/null && printf '%s\\n' \"\$TDIR/\$rbn\" >> /data/adb/klee_drivers/staged_files.list && egl_cnt=\$((egl_cnt+1)); " +
             "    fi; " +
             "    if [ \"\$ebn\" != \"\$rbn\" ] && [ ! -e \"\$TDIR/\$ebn\" ] && ! grep -Fxq \"\$ebn\" /data/adb/klee_drivers/orig_dir.list 2>/dev/null; then " +
             "      ln -sf \"\$rbn\" \"\$TDIR/\$ebn\" 2>/dev/null && printf '%s\\n' \"\$TDIR/\$ebn\" >> /data/adb/klee_drivers/staged_files.list; " +
@@ -1625,16 +1645,18 @@ class KernelControlRepository(private val shell: RootShell) {
             "      [ -e \"\$TDIR/\$lib\" ] && continue; " +
             "      grep -Fxq \"\$lib\" /data/adb/klee_drivers/orig_dir.list 2>/dev/null && continue; " +
             "      found=''; " +
-            "      for vdir in /vendor/lib64 /vendor/lib64/mt6899 /vendor/lib64/hw /vendor/lib64/egl; do " +
+            "      for vdir in /vendor/lib64 /vendor/lib64/mt6899 /vendor/lib64/egl/mt6899 /vendor/lib64/hw /vendor/lib64/egl; do " +
             "        if [ -e \"\$vdir/\$lib\" ]; then found=\"\$vdir/\$lib\"; break; fi; " +
             "      done; " +
             "      if [ -n \"\$found\" ]; then " +
-            "        cp -fL \"\$found\" \"\$TDIR/\$lib\" 2>/dev/null && chmod 644 \"\$TDIR/\$lib\" && (chcon \"\$SECTX\" \"\$TDIR/\$lib\" 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 \"\$TDIR/\$lib\" 2>/dev/null || true) && printf '%s\\n' \"\$TDIR/\$lib\" >> /data/adb/klee_drivers/staged_files.list && printf '%s\\n' \"\$TDIR/\$lib\" >> /data/adb/klee_drivers/dep_queue.txt && dep_cnt=\$((dep_cnt+1)); " +
+            "        cp -fL \"\$found\" \"\$TDIR/\$lib\" 2>/dev/null && chown system:system \"\$TDIR/\$lib\" 2>/dev/null || true; chmod 755 \"\$TDIR/\$lib\" 2>/dev/null && printf '%s\\n' \"\$TDIR/\$lib\" >> /data/adb/klee_drivers/staged_files.list && printf '%s\\n' \"\$TDIR/\$lib\" >> /data/adb/klee_drivers/dep_queue.txt && dep_cnt=\$((dep_cnt+1)); " +
             "      fi; " +
             "    done; " +
             "  done < /data/adb/klee_drivers/dep_cur.txt; " +
             "done; " +
             "rm -f /data/adb/klee_drivers/dep_queue.txt /data/adb/klee_drivers/dep_cur.txt /data/adb/klee_drivers/dep_seen.txt /data/adb/klee_drivers/orig_dir.list; " +
+            // Apply consistent SELinux label recursively on carrier lib dir
+            "chcon -R \"\$SECTX\" \"\$TDIR\" 2>/dev/null || true; " +
             // 8. Activate Android GraphicsEnvironment updatable driver namespace via resetprop + Settings.Global
             "\$RP ro.gfx.driver.0 '${carrier.packageName}' 2>&1 || { echo 'RESETPROP_EXEC_FAILED'; exit 7; }; " +
             "got_prop=\$(getprop ro.gfx.driver.0 2>/dev/null); " +
@@ -1643,9 +1665,9 @@ class KernelControlRepository(private val shell: RootShell) {
             "settings put global updatable_driver_production_opt_in_apps '$cleanOptIn' || { echo 'OPT_IN_SETTING_FAILED'; exit 9; }; " +
             "optout=\$(settings get global updatable_driver_production_opt_out_apps 2>/dev/null); " +
             "case \",\$optout,\" in *',$targetPkg,'*) settings delete global updatable_driver_production_opt_out_apps 2>/dev/null || true ;; esac; " +
-            "printf '%s|%s|%s|%s|%s|%s|%s|%s' '${driver.id}' '$safeDrvName' '$targetPkg' '${carrier.packageName}' \"\$TDIR\" \"\$TDIR/\$primary_vk\" \"\$MODE\" \"\$dir_created\" > /data/adb/klee_drivers/active_state.txt; " +
+            "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s' '${driver.id}' '$safeDrvName' '$targetPkg' '${carrier.packageName}' \"\$TDIR\" \"\$TDIR/\$primary_vk\" \"\$MODE\" \"\$dir_created\" \"\$CODEP\" > /data/adb/klee_drivers/active_state.txt; " +
             "st_inode=\$(stat -c '%i' \"\$TDIR/\$primary_vk\" 2>/dev/null); " +
-            "echo \"OK GraphicsEnvironment ativo (${carrier.packageName} [\$MODE]) · \$primary_vk (inode=\$st_inode) + \${egl_cnt} EGL + \${dep_cnt} deps · opt_in=$cleanOptIn\" " +
+            "echo \"OK GraphicsEnvironment ativo (${carrier.packageName} [\$MODE · fq=1]) · \$primary_vk (inode=\$st_inode) + \${egl_cnt} EGL + \${dep_cnt} deps · opt_in=$cleanOptIn\" " +
             ")"
         return result(shell.runRoot(script), "Falha ao ativar driver Vulkan via GraphicsEnvironment.")
     }
@@ -1664,7 +1686,9 @@ class KernelControlRepository(private val shell: RootShell) {
             "  pmode=\$(printf '%s' \"\$prev\" | cut -d'|' -f7); " +
             "  pdir=\$(printf '%s' \"\$prev\" | cut -d'|' -f5); " +
             "  pcreated=\$(printf '%s' \"\$prev\" | cut -d'|' -f8); " +
+            "  pcode=\$(printf '%s' \"\$prev\" | cut -d'|' -f9); " +
             "  if [ \"\$pmode\" = 'TMPFS' ] && [ -n \"\$pdir\" ]; then \$NS umount -l \"\$pdir\" 2>/dev/null || umount -l \"\$pdir\" 2>/dev/null || true; fi; " +
+            "  if [ \"\$pmode\" = 'OVERLAY' ] && [ -n \"\$pcode\" ]; then \$NS umount -l \"\$pcode\" 2>/dev/null || umount -l \"\$pcode\" 2>/dev/null || true; fi; " +
             "  if [ \"\$pmode\" = 'DATA_APP' ] && [ -f /data/adb/klee_drivers/staged_files.list ]; then " +
             "    while IFS= read -r oldf; do [ -n \"\$oldf\" ] && rm -f \"\$oldf\" 2>/dev/null; done < /data/adb/klee_drivers/staged_files.list; " +
             "    [ \"\$pcreated\" = '1' ] && [ -n \"\$pdir\" ] && rmdir \"\$pdir\" 2>/dev/null || true; " +
@@ -1685,7 +1709,7 @@ class KernelControlRepository(private val shell: RootShell) {
             "  if [ -n \"\$orig\" ]; then \$RP ro.gfx.driver.0 \"\$orig\" 2>/dev/null || true; " +
             "  else \$RP --delete ro.gfx.driver.0 2>/dev/null || \$RP ro.gfx.driver.0 '' 2>/dev/null || true; fi; " +
             "fi; " +
-            "rm -rf /dev/klee_hw_overlay /dev/klee_orig_hw /dev/klee_carrier_orig /data/adb/klee_drivers/active_state.txt /data/adb/klee_drivers/staged_files.list /data/adb/klee_drivers/orig_gfx_driver.txt; " +
+            "rm -rf /dev/klee_hw_overlay /dev/klee_orig_hw /dev/klee_carrier_orig /data/adb/klee_drivers/carrier_overlay /data/adb/klee_drivers/active_state.txt /data/adb/klee_drivers/staged_files.list /data/adb/klee_drivers/orig_gfx_driver.txt; " +
             "echo 'OK Driver Vulkan padrão do sistema (Mali) restaurado' " +
             ")"
         return result(shell.runRoot(script), "Falha ao restaurar driver Vulkan padrão.")
@@ -1791,14 +1815,15 @@ class KernelControlRepository(private val shell: RootShell) {
             "    cnt=\$((cnt + 1)); [ \"\$cnt\" -ge 3 ] && break; " +
             "  done; " +
             "  if [ -n \"\$main_pid\" ]; then " +
-            "    logcat -d -t 800 --pid=\"\$main_pid\" 2>/dev/null | " +
-            "      grep -iE 'Unload builtin|GraphicsEnvironment|updatable driver|vulkan|panvk|panfrost|mesa|kbase|dlopen|linker|angle|avc|denied|fatal|sigsegv|sigabrt|vkcreate|libvulkan|VK_ERROR' | " +
-            "      tail -n 30 | sed 's/^/LOG|/'; " +
+            "    logcat -d -t 1500 --pid=\"\$main_pid\" 2>/dev/null | " +
+            "      grep -viE 'ViewRootImpl|BLASTBufferQueue|ImeTracker|MIUIInput|ProfileInstaller|SurfaceView|BufferQueueConsumer|VRI\\[' | " +
+            "      grep -iE 'Unload builtin|GraphicsEnvironment|updatable|vulkan|panvk|panfrost|mesa|kbase|dlopen|linker|angle|avc|denied|fatal|sigsegv|sigabrt|vkcreate|libvulkan|libEGL|Could not load|couldn.t find|VK_ERROR' | " +
+            "      tail -n 35 | sed 's/^/LOG|/'; " +
             "  fi; " +
             "fi; " +
-            "logcat -d -t 350 2>/dev/null | " +
-            "  grep -iE 'GraphicsEnvironment.*(updatable|driver|not installed|failed)|Unload builtin Vulkan|avc:.*(vulkan|klee_drivers|panvk|panfrost|apk_data_file)|libvulkan.*(failed|error|unable|dlopen)|linker.*(vulkan|panvk|panfrost)|FATAL.*$pkgRegex|Fatal signal.*$pkgRegex' | " +
-            "  tail -n 15 | sed 's/^/GLOG|/' " +
+            "logcat -d -t 500 2>/dev/null | " +
+            "  grep -iE 'GraphicsEnvironment.*(updatable|driver|not installed|failed|choosing)|Unload builtin Vulkan|avc:.*(vulkan|klee_drivers|panvk|panfrost|apk_data_file|system_file)|libvulkan.*(failed|error|unable|dlopen|Could not load|couldn.t find)|linker.*(vulkan|panvk|panfrost)|FATAL.*$pkgRegex|Fatal signal.*$pkgRegex' | " +
+            "  tail -n 20 | sed 's/^/GLOG|/' " +
             ")"
 
         val r = shell.runReadOnly(script)
