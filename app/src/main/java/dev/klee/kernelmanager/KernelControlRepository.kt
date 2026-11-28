@@ -1161,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.7.4 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.7.5 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1404,7 +1404,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.7.4 ===")
+            appendLine("=== FIM DO LOG KLEE v0.7.5 ===")
         }
     }
 
@@ -1854,7 +1854,10 @@ class KernelControlRepository(private val shell: RootShell) {
             "fi; " +
             "logcat -d -t 1500 2>/dev/null | " +
             "  grep -iE 'KLEE-Bootstrap|KLEE-Bridge|KLEE-Hooks|hook_impl|GraphicsEnvironment.*(updatable|driver|not installed|failed|choosing)|Unload builtin Vulkan|avc:.*(vulkan|klee_drivers|klee_adrenotools|panvk|panfrost|apk_data_file|system_file)|libvulkan.*(failed|error|unable|dlopen|Could not load|couldn.t find)|linker.*(vulkan|panvk|panfrost)|FATAL.*$pkgRegex|Fatal signal.*$pkgRegex' | " +
-            "  tail -n 20 | sed 's/^/GLOG|/' " +
+            "  tail -n 20 | sed 's/^/GLOG|/'; " +
+            "logcat -b crash -d -t 80 2>/dev/null | " +
+            "  grep -iE 'F DEBUG|Fatal signal|backtrace:|#[0-9][0-9] pc|Build fingerprint|Cmdline:|Abort message|cause |Exception|FATAL|$pkgRegex' | " +
+            "  tail -n 30 | sed 's/^/GLOG|/' " +
             ")"
 
         val r = shell.runReadOnly(script)
@@ -1905,7 +1908,7 @@ class KernelControlRepository(private val shell: RootShell) {
             }
         }
 
-        val combinedLogs = (traceLogs + pidLogs + globalLogs).distinct().takeLast(45)
+        val combinedLogs = (traceLogs + pidLogs + globalLogs).distinct().takeLast(75)
         val angleLoaded = mappedEntries.any { (_, path) ->
             val low = path.lowercase(Locale.US)
             low.contains("libegl_angle") || low.contains("libglesv2_angle") || low.contains("libglesv1_cm_angle")

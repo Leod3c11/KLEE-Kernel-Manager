@@ -18,6 +18,7 @@ void *g_vk = nullptr;
 VkInstance g_instance = VK_NULL_HANDLE;
 PFN_vkGetInstanceProcAddr g_pfn_vkGetInstanceProcAddr = nullptr;
 PFN_vkCreateInstance g_pfn_vkCreateInstance = nullptr;
+static PFN_vkDestroyInstance g_pfn_vkDestroyInstance = nullptr;
 static PFN_vkEnumerateInstanceVersion g_pfn_vkEnumerateInstanceVersion = nullptr;
 static PFN_vkEnumerateInstanceExtensionProperties g_pfn_vkEnumerateInstanceExtensionProperties = nullptr;
 static PFN_vkEnumerateInstanceLayerProperties g_pfn_vkEnumerateInstanceLayerProperties = nullptr;
@@ -36,6 +37,10 @@ static VKAPI_ATTR VkResult VKAPI_CALL klee_vkCreateInstance(
     const VkAllocationCallbacks *pAllocator,
     VkInstance *pInstance
 );
+static VKAPI_ATTR void VKAPI_CALL klee_vkDestroyInstance(
+    VkInstance instance,
+    const VkAllocationCallbacks *pAllocator
+);
 static VKAPI_ATTR VkResult VKAPI_CALL klee_vkEnumerateInstanceVersion(uint32_t *pApiVersion);
 static VKAPI_ATTR VkResult VKAPI_CALL klee_vkEnumerateInstanceExtensionProperties(
     const char *pLayerName,
@@ -52,13 +57,16 @@ static bool is_vulkan_loader_name(const char *filename) {
     return strstr(filename, "libvulkan.so") != nullptr;
 }
 
-static void* resolve_vulkan_symbol(const char *symbol) {
+static void* resolve_vulkan_dispatcher(const char *symbol) {
     if (!symbol) return nullptr;
     if (strcmp(symbol, "vkGetInstanceProcAddr") == 0) {
         return reinterpret_cast<void*>(klee_vkGetInstanceProcAddr);
     }
     if (strcmp(symbol, "vkCreateInstance") == 0) {
         return reinterpret_cast<void*>(klee_vkCreateInstance);
+    }
+    if (strcmp(symbol, "vkDestroyInstance") == 0) {
+        return reinterpret_cast<void*>(klee_vkDestroyInstance);
     }
     if (strcmp(symbol, "vkEnumerateInstanceVersion") == 0) {
         return reinterpret_cast<void*>(klee_vkEnumerateInstanceVersion);
@@ -68,16 +76,6 @@ static void* resolve_vulkan_symbol(const char *symbol) {
     }
     if (strcmp(symbol, "vkEnumerateInstanceLayerProperties") == 0) {
         return reinterpret_cast<void*>(klee_vkEnumerateInstanceLayerProperties);
-    }
-    if (strncmp(symbol, "vk", 2) == 0 && g_pfn_vkGetInstanceProcAddr) {
-        PFN_vkVoidFunction pfn = nullptr;
-        if (g_instance != VK_NULL_HANDLE) {
-            pfn = g_pfn_vkGetInstanceProcAddr(g_instance, symbol);
-        }
-        if (!pfn) {
-            pfn = g_pfn_vkGetInstanceProcAddr(VK_NULL_HANDLE, symbol);
-        }
-        if (pfn) return reinterpret_cast<void*>(pfn);
     }
     return nullptr;
 }
@@ -122,7 +120,12 @@ static VKAPI_ATTR VkResult VKAPI_CALL klee_vkCreateInstance(
     const VkAllocationCallbacks *pAllocator,
     VkInstance *pInstance
 ) {
-    LOGI("klee_vkCreateInstance called!");
+    uint32_t reqApi = (pCreateInfo && pCreateInfo->pApplicationInfo)
+        ? pCreateInfo->pApplicationInfo->apiVersion : 0;
+    uint32_t extCnt = pCreateInfo ? pCreateInfo->enabledExtensionCount : 0;
+    LOGI("klee_vkCreateInstance(api=%u.%u.%u, exts=%u)",
+         VK_API_VERSION_MAJOR(reqApi), VK_API_VERSION_MINOR(reqApi), VK_API_VERSION_PATCH(reqApi), extCnt);
+
     if (!g_pfn_vkCreateInstance) {
         LOGE("g_pfn_vkCreateInstance is null!");
         return VK_ERROR_INITIALIZATION_FAILED;
@@ -130,37 +133,38 @@ static VKAPI_ATTR VkResult VKAPI_CALL klee_vkCreateInstance(
     VkResult res = g_pfn_vkCreateInstance(pCreateInfo, pAllocator, pInstance);
     if (res == VK_SUCCESS && pInstance && *pInstance != VK_NULL_HANDLE) {
         g_instance = *pInstance;
-        LOGI("klee_vkCreateInstance SUCCEEDED! g_instance=%p", g_instance);
+        LOGI("klee_vkCreateInstance SUCCEEDED! instance=%p", g_instance);
     } else {
         LOGE("klee_vkCreateInstance failed: VkResult=%d", static_cast<int>(res));
     }
     return res;
 }
 
+static VKAPI_ATTR void VKAPI_CALL klee_vkDestroyInstance(
+    VkInstance instance,
+    const VkAllocationCallbacks *pAllocator
+) {
+    LOGI("klee_vkDestroyInstance(instance=%p)", instance);
+    if (instance == g_instance) {
+        g_instance = VK_NULL_HANDLE;
+    }
+    if (g_pfn_vkDestroyInstance) {
+        g_pfn_vkDestroyInstance(instance, pAllocator);
+    }
+}
+
 static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL klee_vkGetInstanceProcAddr(VkInstance instance, const char *pName) {
     if (!pName) return nullptr;
-    if (strcmp(pName, "vkGetInstanceProcAddr") == 0) {
-        return reinterpret_cast<PFN_vkVoidFunction>(klee_vkGetInstanceProcAddr);
-    }
-    if (strcmp(pName, "vkCreateInstance") == 0) {
-        return reinterpret_cast<PFN_vkVoidFunction>(klee_vkCreateInstance);
-    }
-    if (strcmp(pName, "vkEnumerateInstanceVersion") == 0) {
-        return reinterpret_cast<PFN_vkVoidFunction>(klee_vkEnumerateInstanceVersion);
-    }
-    if (strcmp(pName, "vkEnumerateInstanceExtensionProperties") == 0) {
-        return reinterpret_cast<PFN_vkVoidFunction>(klee_vkEnumerateInstanceExtensionProperties);
-    }
-    if (strcmp(pName, "vkEnumerateInstanceLayerProperties") == 0) {
-        return reinterpret_cast<PFN_vkVoidFunction>(klee_vkEnumerateInstanceLayerProperties);
+    if (void *disp = resolve_vulkan_dispatcher(pName)) {
+        return reinterpret_cast<PFN_vkVoidFunction>(disp);
     }
     if (g_pfn_vkGetInstanceProcAddr) {
-        VkInstance inst = (instance != VK_NULL_HANDLE) ? instance : g_instance;
-        PFN_vkVoidFunction pfn = g_pfn_vkGetInstanceProcAddr(inst, pName);
-        if (!pfn && inst != VK_NULL_HANDLE) {
+        // Always pass the caller's exact VkInstance — NEVER substitute a potentially destroyed g_instance!
+        PFN_vkVoidFunction pfn = g_pfn_vkGetInstanceProcAddr(instance, pName);
+        if (!pfn && instance != VK_NULL_HANDLE) {
             pfn = g_pfn_vkGetInstanceProcAddr(VK_NULL_HANDLE, pName);
         }
-        if (pfn) return pfn;
+        return pfn;
     }
     return nullptr;
 }
@@ -186,11 +190,18 @@ static void* plt_dlopen(const char *filename, int flags) {
 
 static void* plt_dlsym(void *handle, const char *symbol) {
     if (!symbol) return nullptr;
-    if (handle == g_vk || handle == RTLD_DEFAULT) {
-        void *sym = resolve_vulkan_symbol(symbol);
-        if (sym) return sym;
-        if (handle == g_vk) {
-            return dlsym(g_vk, symbol);
+    if (handle == g_vk) {
+        if (void *disp = resolve_vulkan_dispatcher(symbol)) {
+            return disp;
+        }
+        return dlsym(g_vk, symbol);
+    }
+    if (handle == RTLD_DEFAULT && strncmp(symbol, "vk", 2) == 0) {
+        if (void *disp = resolve_vulkan_dispatcher(symbol)) {
+            return disp;
+        }
+        if (void *sym = dlsym(g_vk, symbol)) {
+            return sym;
         }
     }
     return dlsym(handle, symbol);
@@ -224,7 +235,6 @@ static int plt_dlclose(void *handle) {
  * Intercepts libnativeloader.so & libEGL.so calls to android_dlopen_ext so that every
  * System.loadLibrary() app .so (Qt, Vulkan Caps Viewer, Unity, Unreal, etc.) and ANGLE .so
  * is GOT-hooked IMMEDIATELY BEFORE JNI_OnLoad() or native main() runs!
- * Works 100% deterministically on Android 16 (API 36) where ShadowHook's linker monitor fails.
  */
 static void* loader_android_dlopen_ext(const char *filename, int flag, const android_dlextinfo *extinfo) {
     auto orig = s_orig_loader_android_dlopen_ext
@@ -269,6 +279,8 @@ bool init_hooks(
     if (!g_pfn_vkCreateInstance) {
         g_pfn_vkCreateInstance = reinterpret_cast<PFN_vkCreateInstance>(dlsym(g_vk, "vkCreateInstance"));
     }
+
+    g_pfn_vkDestroyInstance = reinterpret_cast<PFN_vkDestroyInstance>(dlsym(g_vk, "vkDestroyInstance"));
 
     g_pfn_vkEnumerateInstanceVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
         g_pfn_vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion")
@@ -321,14 +333,14 @@ void refresh_hooks() {
     total += kleevk::hook_all_matching_libraries("android_dlopen_ext", reinterpret_cast<void*>(plt_android_dlopen_ext), nullptr, ign);
     total += kleevk::hook_all_matching_libraries("dlclose", reinterpret_cast<void*>(plt_dlclose), nullptr, ign);
     total += kleevk::hook_all_matching_libraries("vkCreateInstance", reinterpret_cast<void*>(klee_vkCreateInstance), nullptr, ign);
+    total += kleevk::hook_all_matching_libraries("vkDestroyInstance", reinterpret_cast<void*>(klee_vkDestroyInstance), nullptr, ign);
     total += kleevk::hook_all_matching_libraries("vkGetInstanceProcAddr", reinterpret_cast<void*>(klee_vkGetInstanceProcAddr), nullptr, ign);
     total += kleevk::hook_all_matching_libraries("vkEnumerateInstanceVersion", reinterpret_cast<void*>(klee_vkEnumerateInstanceVersion), nullptr, ign);
     total += kleevk::hook_all_matching_libraries("vkEnumerateInstanceExtensionProperties", reinterpret_cast<void*>(klee_vkEnumerateInstanceExtensionProperties), nullptr, ign);
     total += kleevk::hook_all_matching_libraries("vkEnumerateInstanceLayerProperties", reinterpret_cast<void*>(klee_vkEnumerateInstanceLayerProperties), nullptr, ign);
 
-    // Also redirect direct PLT calls to core Vulkan symbols for apps linking libvulkan.so directly
+    // Direct PLT redirects for apps that link core Vulkan symbols directly from libvulkan.so (SHN_UNDEF only)
     static const char *kDirectVkSyms[] = {
-        "vkDestroyInstance",
         "vkEnumeratePhysicalDevices",
         "vkGetPhysicalDeviceProperties",
         "vkGetPhysicalDeviceProperties2",
