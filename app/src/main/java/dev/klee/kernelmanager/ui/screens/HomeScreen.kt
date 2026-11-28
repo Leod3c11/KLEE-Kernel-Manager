@@ -1,5 +1,8 @@
 package dev.klee.kernelmanager.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -8,13 +11,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ShowChart
+import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.DeveloperBoard
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Memory
-import androidx.compose.material.icons.rounded.PermDeviceInformation
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RocketLaunch
 import androidx.compose.material.icons.rounded.SportsEsports
@@ -24,12 +28,15 @@ import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -37,6 +44,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.klee.kernelmanager.BuiltInProfile
 import dev.klee.kernelmanager.DashboardSummary
+import dev.klee.kernelmanager.DisplayRefreshInfo
+import dev.klee.kernelmanager.service.FloatingMonitorService
+import dev.klee.kernelmanager.service.PerAppEngineService
 import dev.klee.kernelmanager.ui.components.KleeCard
 import dev.klee.kernelmanager.ui.components.ProgressMeterBar
 import dev.klee.kernelmanager.ui.components.StatusPill
@@ -54,21 +64,30 @@ private data class HomeModuleItem(
 @Composable
 fun HomeScreen(
     summary: DashboardSummary,
+    refreshInfo: DisplayRefreshInfo,
+    defaultRefreshHz: Int,
     activeProfile: String,
+    perAppRuleCount: Int,
     busy: Boolean,
     onRefresh: () -> Unit,
     onNavigate: (String) -> Unit,
-    onQuickProfile: (BuiltInProfile) -> Unit
+    onQuickProfile: (BuiltInProfile) -> Unit,
+    onQuickRefreshRate: (Int) -> Unit,
+    onNotify: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    val hudRunning by FloatingMonitorService.running.collectAsState()
+    val perAppRunning by PerAppEngineService.running.collectAsState()
     val scroll = rememberScrollState()
+
     val modules = listOf(
         HomeModuleItem("CPU & UCLAMP", "3 clusters, sugov_ext e UCLAMP", "CPU", Icons.Rounded.Memory, KleeColors.Cpu),
         HomeModuleItem("GPU, GED & DRAM", "Mali 1508MHz, GED e LPDDR5X", "GPU", Icons.Rounded.GraphicEq, KleeColors.Gpu),
         HomeModuleItem("FPSGO & Metis", "Motor gaming MT6899 / HyperOS", "MTK_PERF", Icons.Rounded.RocketLaunch, KleeColors.Gaming),
+        HomeModuleItem("Perfis por App", "$perAppRuleCount regras · ${if (perAppRunning) "Ativo" else "Parado"}", "PER_APP", Icons.Rounded.Apps, KleeColors.Primary),
         HomeModuleItem("Thermal", "Sensores, zonas e throttling", "THERMAL", Icons.Rounded.Thermostat, KleeColors.Thermal),
         HomeModuleItem("Power & Bypass", "Bateria 6500mAh e Bypass", "POWER", Icons.Rounded.BatteryChargingFull, KleeColors.Power),
         HomeModuleItem("Perfis & Gaming", "Modos rápidos e perfis salvos", "PROFILES", Icons.Rounded.SportsEsports, Color(0xFFEC4899)),
-        HomeModuleItem("Monitor", "Gráficos CPU, GPU e SoC", "MONITOR", Icons.AutoMirrored.Rounded.ShowChart, KleeColors.Monitor),
         HomeModuleItem("Memória & UFS", "ZRAM, MGLRU, UFS 4.0 e BBR", "TUNING", Icons.Rounded.Storage, KleeColors.Tuning)
     )
 
@@ -77,7 +96,7 @@ fun HomeScreen(
             .fillMaxSize()
             .verticalScroll(scroll)
             .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(15.dp)
     ) {
         // Header
         Row(
@@ -110,16 +129,16 @@ fun HomeScreen(
                     icon = if (summary.root) Icons.Rounded.VerifiedUser else Icons.Rounded.WarningAmber
                 )
                 IconButton(
-                    onClick = { onNavigate("DEVICE") },
+                    onClick = { onNavigate("SETTINGS") },
                     modifier = Modifier
                         .size(34.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(KleeColors.CardElevated)
                 ) {
                     Icon(
-                        Icons.Rounded.PermDeviceInformation,
-                        contentDescription = "Dispositivo e Logs",
-                        tint = KleeColors.Device,
+                        Icons.Rounded.Palette,
+                        contentDescription = "Temas e Logs",
+                        tint = KleeColors.Primary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -141,17 +160,17 @@ fun HomeScreen(
             }
         }
 
-        // Live Telemetry Hero Card
+        // Live Telemetry Hero Card (Theme-reactive gradient)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(22.dp))
                 .background(
                     Brush.linearGradient(
-                        listOf(Color(0xFF141E33), Color(0xFF17182B), Color(0xFF111827))
+                        listOf(KleeColors.HeroStart, KleeColors.HeroMid, KleeColors.HeroEnd)
                     )
                 )
-                .border(1.dp, KleeColors.Primary.copy(alpha = 0.3f), RoundedCornerShape(22.dp))
+                .border(1.dp, KleeColors.Primary.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
                 .padding(16.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -177,10 +196,9 @@ fun HomeScreen(
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (summary.bypassActive) {
-                            StatusPill("Bypass", KleeColors.Warning)
-                        }
-                        StatusPill(text = activeProfile, color = KleeColors.Primary)
+                        if (summary.bypassActive) StatusPill("Bypass", KleeColors.Warning)
+                        StatusPill("${refreshInfo.currentHz}Hz", KleeColors.Monitor)
+                        StatusPill(activeProfile, KleeColors.Primary)
                     }
                 }
 
@@ -218,22 +236,6 @@ fun HomeScreen(
                     )
                 }
 
-                if (summary.dramMHz > 0) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("DRAM LPDDR5X (DVFSRC)", color = KleeColors.TextMuted, style = MaterialTheme.typography.labelMedium)
-                        Text(
-                            "${summary.dramMHz} MHz",
-                            color = KleeColors.Gpu,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-
                 if (summary.ramTotalMb > 0) {
                     val ramFrac = (summary.ramUsedMb.toFloat() / summary.ramTotalMb.toFloat()).coerceIn(0f, 1f)
                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -241,7 +243,11 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Memória RAM", color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                if (summary.dramMHz > 0) "RAM · DDR ${summary.dramMHz} MHz" else "Memória RAM",
+                                color = KleeColors.TextSecondary,
+                                style = MaterialTheme.typography.labelMedium
+                            )
                             Text(
                                 "${summary.ramUsedMb} / ${summary.ramTotalMb} MB (${(ramFrac * 100).toInt()}%)",
                                 color = KleeColors.TextPrimary,
@@ -249,7 +255,65 @@ fun HomeScreen(
                                 fontFamily = FontFamily.Monospace
                             )
                         }
-                        ProgressMeterBar(fraction = ramFrac, color = KleeColors.Monitor, heightDp = 6)
+                        ProgressMeterBar(fraction = ramFrac, color = KleeColors.Primary, heightDp = 6)
+                    }
+                }
+
+                // Quick HUD Overlay & Refresh Rate bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = {
+                            if (hudRunning) {
+                                FloatingMonitorService.stop(context)
+                            } else if (!Settings.canDrawOverlays(context)) {
+                                onNotify("Autorize 'Sobrepor a outros apps' para abrir o HUD Flutuante.")
+                                context.startActivity(
+                                    Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                )
+                            } else {
+                                FloatingMonitorService.start(context)
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (hudRunning) KleeColors.Danger else KleeColors.Primary,
+                            contentColor = if (hudRunning) Color.White else Color.Black
+                        )
+                    ) {
+                        Icon(Icons.Rounded.PictureInPictureAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (hudRunning) "Fechar HUD" else "HUD Flutuante", fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val quickHz = buildList {
+                            add(0)
+                            refreshInfo.supportedHz.filter { it in setOf(60, 90, 120, 144) }.take(2).forEach { add(it) }
+                        }.distinct()
+                        quickHz.forEach { hz ->
+                            val selected = defaultRefreshHz == hz
+                            FilledTonalButton(
+                                onClick = { onQuickRefreshRate(hz) },
+                                enabled = !busy,
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = if (selected) KleeColors.Primary.copy(alpha = 0.25f) else KleeColors.CardElevated,
+                                    contentColor = if (selected) KleeColors.Primary else KleeColors.TextSecondary
+                                )
+                            ) {
+                                Text(if (hz == 0) "Auto" else "${hz}Hz", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
                     }
                 }
             }
@@ -372,7 +436,7 @@ private fun HeroMetricItem(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(KleeColors.Surface.copy(alpha = 0.85f))
-            .border(1.dp, accent.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
+            .border(1.dp, accent.copy(alpha = 0.22f), RoundedCornerShape(14.dp))
             .padding(horizontal = 6.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)

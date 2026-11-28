@@ -1223,6 +1223,139 @@ class KernelControlRepository(private val shell: RootShell) {
         }
     }
 
+    fun readRefreshRateSettings(currentDisplayHz: Int, supportedHz: List<Int>): DisplayRefreshInfo {
+        if (!shell.rootCheck()) {
+            return DisplayRefreshInfo(currentHz = currentDisplayHz, supportedHz = supportedHz)
+        }
+        val script =
+            "printf 'MIN|%s\\n' \"\$(settings get system min_refresh_rate 2>/dev/null)\"; " +
+            "printf 'PEAK|%s\\n' \"\$(settings get system peak_refresh_rate 2>/dev/null)\"; " +
+            "printf 'USER|%s\\n' \"\$(settings get system user_refresh_rate 2>/dev/null)\"; " +
+            "printf 'MIUI|%s\\n' \"\$(settings get secure miui_refresh_rate 2>/dev/null)\""
+        val r = shell.runReadOnly(script)
+        val map = mutableMapOf<String, String>()
+        r.stdout.forEach { line ->
+            val p = line.split("|")
+            if (p.size >= 2) {
+                val v = p[1].trim()
+                if (v.isNotBlank() && v != "null") map[p[0]] = v
+            }
+        }
+        return DisplayRefreshInfo(
+            currentHz = currentDisplayHz,
+            supportedHz = supportedHz.distinct().sorted().ifEmpty { listOf(60, 90, 120) },
+            minSetting = map["MIN"].orEmpty(),
+            peakSetting = map["PEAK"].orEmpty(),
+            userSetting = map["USER"].orEmpty(),
+            miuiSetting = map["MIUI"].orEmpty()
+        )
+    }
+
+    fun applyRefreshRate(targetHz: Int, maxSupportedHz: Int = 120): String {
+        require(targetHz == 0 || targetHz in 30..165) { "Taxa de atualização inválida: $targetHz Hz" }
+        val script = if (targetHz == 0) {
+            "settings delete system min_refresh_rate 2>/dev/null; " +
+            "settings delete system peak_refresh_rate 2>/dev/null; " +
+            "settings put system user_refresh_rate $maxSupportedHz 2>/dev/null; " +
+            "settings put secure miui_refresh_rate $maxSupportedHz 2>/dev/null; " +
+            "echo 'OK Taxa de atualização: Automática (até ${maxSupportedHz} Hz)'"
+        } else {
+            val hzFloat = "$targetHz.0"
+            "settings put system min_refresh_rate $hzFloat && " +
+            "settings put system peak_refresh_rate $hzFloat && " +
+            "settings put system user_refresh_rate $targetHz; " +
+            "settings put secure miui_refresh_rate $targetHz 2>/dev/null; " +
+            "echo \"OK Taxa de atualização fixada em $targetHz Hz (min=\$(settings get system min_refresh_rate 2>/dev/null) peak=\$(settings get system peak_refresh_rate 2>/dev/null))\""
+        }
+        return result(shell.runRoot(script), "Falha ao alterar taxa de atualização.")
+    }
+
+    fun readForegroundPackage(): String? {
+        if (!shell.rootCheck()) return null
+        val script =
+            "out=\$(dumpsys activity activities 2>/dev/null | grep -m1 -E 'topResumedActivity|mResumedActivity'); " +
+            "if [ -z \"\$out\" ]; then out=\$(dumpsys window displays 2>/dev/null | grep -m1 'mCurrentFocus'); fi; " +
+            "printf '%s\\n' \"\$out\""
+        val r = shell.runReadOnly(script)
+        val line = r.stdout.firstOrNull { it.isNotBlank() } ?: return null
+        // Extract package name before '/' in component string like "com.pkg.name/.MainActivity"
+        val match = Regex("([a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)+)/").find(line)
+        return match?.groupValues?.getOrNull(1)
+    }
+
+    fun readPowerWattsQuick(): Pair<Double, Double> {
+        val script =
+            "d=/sys/class/power_supply/battery; " +
+            "printf '%s|%s\\n' \"\$(cat \"\$d/voltage_now\" 2>/dev/null)\" \"\$(cat \"\$d/current_now\" 2>/dev/null)\""
+        val r = shell.runReadOnly(script)
+        val p = r.stdout.firstOrNull()?.split("|") ?: return 0.0 to 0.0
+        val rawV = p.getOrNull(0)?.trim()?.toLongOrNull() ?: 0L
+        val rawI = p.getOrNull(1)?.trim()?.toLongOrNull() ?: 0L
+        val v = when {
+            rawV > 100_000 -> rawV / 1_000_000.0
+            rawV > 100 -> rawV / 1_000.0
+            else -> rawV.toDouble()
+        }
+        val ma = if (abs(rawI) > 25_000) rawI / 1_000.0 else rawI.toDouble()
+        return abs(v * (ma / 1_000.0)) to ma
+    }
+
+    fun buildFullLogBundle(
+        actionLogs: List<ActionLogEntry>,
+        perAppRules: List<PerAppRule>,
+        includeDmesg: Boolean
+    ): String {
+        val baseReport = buildDiagnosticReport()
+        val pid = android.os.Process.myPid()
+        val logcat = shell.runReadOnly("logcat -d -t 200 --pid=$pid 2>/dev/null").stdout
+        val dmesg = if (includeDmesg) {
+            shell.runReadOnly("dmesg 2>/dev/null | tail -n 120").stdout
+        } else emptyList()
+        val refreshSettings = shell.runReadOnly(
+            "printf 'min=%s peak=%s user=%s miui=%s\\n' " +
+            "\"\$(settings get system min_refresh_rate 2>/dev/null)\" " +
+            "\"\$(settings get system peak_refresh_rate 2>/dev/null)\" " +
+            "\"\$(settings get system user_refresh_rate 2>/dev/null)\" " +
+            "\"\$(settings get secure miui_refresh_rate 2>/dev/null)\""
+        ).stdout.joinToString(" ")
+
+        return buildString {
+            appendLine(baseReport)
+            appendLine()
+            appendLine("--- Display / Refresh Rate Settings ---")
+            appendLine(refreshSettings.ifBlank { "Indisponível" })
+            appendLine()
+            appendLine("--- Regras Per-App configuradas (${perAppRules.size}) ---")
+            if (perAppRules.isEmpty()) {
+                appendLine("Nenhuma regra configurada.")
+            } else {
+                perAppRules.forEach { rule ->
+                    appendLine("  ${rule.appLabel} (${rule.packageName}): perfil=${rule.profileId}, mtk=${rule.mtkPerfPreset}, hz=${rule.refreshRateHz}, bypass=${rule.enableBypassCharging}")
+                }
+            }
+            appendLine()
+            appendLine("--- Histórico de Ações Root KLEE (${actionLogs.size}) ---")
+            if (actionLogs.isEmpty()) {
+                appendLine("Nenhuma ação registrada nesta sessão.")
+            } else {
+                actionLogs.forEach { log ->
+                    val tag = if (log.isError) "ERR" else "OK "
+                    appendLine("[$tag ${log.timestamp}] ${log.action} => ${log.detail}")
+                }
+            }
+            appendLine()
+            appendLine("--- App Logcat (PID $pid, últimas ${logcat.size} linhas) ---")
+            if (logcat.isEmpty()) appendLine("(vazio)") else logcat.forEach { appendLine(it) }
+            if (includeDmesg) {
+                appendLine()
+                appendLine("--- Kernel dmesg (últimas ${dmesg.size} linhas) ---")
+                if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
+            }
+            appendLine()
+            appendLine("=== FIM DO LOG KLEE v0.4.0 ===")
+        }
+    }
+
     private fun normalizeTemp(raw: Long): Double = when {
         abs(raw) > 1000L -> raw / 1000.0
         abs(raw) > 150L -> raw / 10.0

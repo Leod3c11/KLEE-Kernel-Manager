@@ -1,23 +1,34 @@
 package dev.klee.kernelmanager.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.klee.kernelmanager.FloatingHudConfig
 import dev.klee.kernelmanager.MonitorSample
+import dev.klee.kernelmanager.service.FloatingMonitorService
 import dev.klee.kernelmanager.ui.components.KleeCard
 import dev.klee.kernelmanager.ui.components.LiveLineChart
 import dev.klee.kernelmanager.ui.components.ProgressMeterBar
@@ -27,6 +38,7 @@ import dev.klee.kernelmanager.ui.components.StatusPill
 import dev.klee.kernelmanager.ui.components.formatUptime
 import dev.klee.kernelmanager.ui.components.tempSeverityColor
 import dev.klee.kernelmanager.ui.theme.KleeColors
+import kotlin.math.roundToInt
 
 @Composable
 fun MonitorScreen(
@@ -34,10 +46,17 @@ fun MonitorScreen(
     history: List<MonitorSample>,
     paused: Boolean,
     intervalMs: Long,
+    hudConfig: FloatingHudConfig,
     onTogglePause: () -> Unit,
     onSelectInterval: (Long) -> Unit,
-    onManualRefresh: () -> Unit
+    onManualRefresh: () -> Unit,
+    onUpdateHudConfig: (FloatingHudConfig) -> Unit,
+    onNotify: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    val hudRunning by FloatingMonitorService.running.collectAsState()
+    var showHudSettings by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -46,7 +65,7 @@ fun MonitorScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         SectionHeader(
-            title = "Monitor ao Vivo",
+            title = "Monitor & HUD Flutuante",
             subtitle = if (paused) "Coleta pausada" else "Atualizando a cada ${intervalMs / 1000.0} s",
             trailing = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -75,12 +94,164 @@ fun MonitorScreen(
             }
         )
 
+        // Floating HUD Overlay Control Card
+        KleeCard(
+            modifier = Modifier.fillMaxWidth(),
+            accentBorder = (if (hudRunning) KleeColors.Primary else KleeColors.Border).copy(alpha = 0.55f)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(KleeColors.Primary.copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.PictureInPictureAlt, contentDescription = null, tint = KleeColors.Primary)
+                    }
+                    Column {
+                        Text("Monitor Flutuante (Sobre Outros Apps)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (hudRunning) "HUD ativo · toque nele para alternar compacto/completo"
+                            else "Exibe CPU, GPU, Temp, Watts, DRAM e Hz sobre jogos",
+                            color = if (hudRunning) KleeColors.Success else KleeColors.TextSecondary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        if (hudRunning) {
+                            FloatingMonitorService.stop(context)
+                        } else if (!Settings.canDrawOverlays(context)) {
+                            onNotify("Conceda a permissão 'Sobrepor a outros apps' ao KLEE e toque novamente.")
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                            context.startActivity(intent)
+                        } else {
+                            FloatingMonitorService.start(context)
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (hudRunning) KleeColors.Danger else KleeColors.Primary,
+                        contentColor = if (hudRunning) Color.White else Color.Black
+                    )
+                ) {
+                    Text(
+                        if (hudRunning) "Fechar HUD Flutuante" else "Ativar HUD Flutuante",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = { showHudSettings = !showHudSettings },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        if (showHudSettings) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                        contentDescription = "Configurar HUD",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            if (showHudSettings) {
+                HorizontalDivider(color = KleeColors.Border)
+                Text("Métricas visíveis no HUD", color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelLarge)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilterChip(
+                        selected = hudConfig.showCpu,
+                        onClick = { onUpdateHudConfig(hudConfig.copy(showCpu = !hudConfig.showCpu)) },
+                        label = { Text("CPU") }
+                    )
+                    FilterChip(
+                        selected = hudConfig.showGpu,
+                        onClick = { onUpdateHudConfig(hudConfig.copy(showGpu = !hudConfig.showGpu)) },
+                        label = { Text("GPU") }
+                    )
+                    FilterChip(
+                        selected = hudConfig.showTemp,
+                        onClick = { onUpdateHudConfig(hudConfig.copy(showTemp = !hudConfig.showTemp)) },
+                        label = { Text("Temp") }
+                    )
+                    FilterChip(
+                        selected = hudConfig.showPower,
+                        onClick = { onUpdateHudConfig(hudConfig.copy(showPower = !hudConfig.showPower)) },
+                        label = { Text("Watts") }
+                    )
+                    FilterChip(
+                        selected = hudConfig.showDram,
+                        onClick = { onUpdateHudConfig(hudConfig.copy(showDram = !hudConfig.showDram)) },
+                        label = { Text("DRAM") }
+                    )
+                    FilterChip(
+                        selected = hudConfig.showRam,
+                        onClick = { onUpdateHudConfig(hudConfig.copy(showRam = !hudConfig.showRam)) },
+                        label = { Text("RAM") }
+                    )
+                    FilterChip(
+                        selected = hudConfig.showRefreshRate,
+                        onClick = { onUpdateHudConfig(hudConfig.copy(showRefreshRate = !hudConfig.showRefreshRate)) },
+                        label = { Text("Hz") }
+                    )
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Opacidade do fundo", color = KleeColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+                        Text("${(hudConfig.opacity * 100).roundToInt()}%", color = KleeColors.Primary, fontFamily = FontFamily.Monospace)
+                    }
+                    Slider(
+                        value = hudConfig.opacity,
+                        onValueChange = { onUpdateHudConfig(hudConfig.copy(opacity = it)) },
+                        valueRange = 0.45f..1.0f
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Taxa HUD:", color = KleeColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+                    listOf(1000L to "1s", 1500L to "1.5s", 3000L to "3s").forEach { (ms, label) ->
+                        FilterChip(
+                            selected = hudConfig.intervalMs == ms,
+                            onClick = { onUpdateHudConfig(hudConfig.copy(intervalMs = ms)) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+            }
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Intervalo:", color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelLarge)
+            Text("Gráficos:", color = KleeColors.TextSecondary, style = MaterialTheme.typography.labelLarge)
             listOf(1000L to "1s", 2000L to "2s", 5000L to "5s").forEach { (ms, label) ->
                 FilterChip(
                     selected = intervalMs == ms,

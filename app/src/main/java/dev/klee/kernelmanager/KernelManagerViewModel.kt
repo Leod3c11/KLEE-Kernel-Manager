@@ -1,8 +1,14 @@
 package dev.klee.kernelmanager
 
 import android.app.Application
+import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.hardware.display.DisplayManager
+import android.view.Display
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.klee.kernelmanager.service.FloatingMonitorService
+import dev.klee.kernelmanager.ui.theme.KleeThemePreset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,6 +18,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.roundToInt
 
 data class UiFeedback(
     val id: Long = System.currentTimeMillis(),
@@ -21,8 +28,28 @@ data class UiFeedback(
 
 class KernelManagerViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = KernelControlRepository(RootShell())
+    private val shell = RootShell()
+    private val repository = KernelControlRepository(shell)
     private val profileStore = ProfileStore(application.applicationContext)
+    private val settingsStore = AppSettingsStore(application.applicationContext)
+
+    private val _themePreset = MutableStateFlow(settingsStore.loadTheme())
+    val themePreset = _themePreset.asStateFlow()
+
+    private val _hudConfig = MutableStateFlow(settingsStore.loadHudConfig())
+    val hudConfig = _hudConfig.asStateFlow()
+
+    private val _defaultRefreshHz = MutableStateFlow(settingsStore.loadDefaultRefreshRate())
+    val defaultRefreshHz = _defaultRefreshHz.asStateFlow()
+
+    private val _refreshInfo = MutableStateFlow(DisplayRefreshInfo())
+    val refreshInfo = _refreshInfo.asStateFlow()
+
+    private val _perAppRules = MutableStateFlow<List<PerAppRule>>(settingsStore.loadPerAppRules())
+    val perAppRules = _perAppRules.asStateFlow()
+
+    private val _installedApps = MutableStateFlow<List<InstalledAppEntry>>(emptyList())
+    val installedApps = _installedApps.asStateFlow()
 
     private val _dashboard = MutableStateFlow(DashboardSummary(root = false, loaded = false))
     val dashboard = _dashboard.asStateFlow()
@@ -89,6 +116,106 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         _feedback.value = UiFeedback(text = text, isError = false)
     }
 
+    fun selectTheme(preset: KleeThemePreset) {
+        settingsStore.saveTheme(preset)
+        _themePreset.value = preset
+        FloatingMonitorService.reloadConfig(getApplication())
+        showInfo("Tema alterado para ${preset.title}.")
+    }
+
+    fun updateHudConfig(cfg: FloatingHudConfig) {
+        settingsStore.saveHudConfig(cfg)
+        _hudConfig.value = cfg
+        FloatingMonitorService.reloadConfig(getApplication())
+    }
+
+    fun loadRefreshRate() = runQuietTask {
+        val (curHz, supported) = queryDisplayModes()
+        _refreshInfo.value = withContext(Dispatchers.IO) {
+            repository.readRefreshRateSettings(curHz, supported)
+        }
+    }
+
+    fun applyRefreshRate(targetHz: Int, saveAsDefault: Boolean = true) = runTask {
+        val (_, supported) = queryDisplayModes()
+        val maxHz = supported.maxOrNull() ?: 120
+        val res = withContext(Dispatchers.IO) { repository.applyRefreshRate(targetHz, maxHz) }
+        val isErr = !res.startsWith("OK")
+        if (!isErr && saveAsDefault) {
+            settingsStore.saveDefaultRefreshRate(targetHz)
+            _defaultRefreshHz.value = targetHz
+        }
+        val label = if (targetHz == 0) "Automática" else "${targetHz} Hz"
+        recordLog("Taxa de Atualização -> $label", res, isErr)
+        _feedback.value = UiFeedback(text = res, isError = isErr)
+        loadRefreshRate()
+    }
+
+    fun loadInstalledApps() = runTask {
+        val pm = getApplication<Application>().packageManager
+        val list = withContext(Dispatchers.IO) {
+            pm.getInstalledApplications(0)
+                .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
+                .map { appInfo ->
+                    val isSys = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    val label = try {
+                        pm.getApplicationLabel(appInfo).toString().ifBlank { appInfo.packageName }
+                    } catch (_: Throwable) {
+                        appInfo.packageName
+                    }
+                    InstalledAppEntry(
+                        packageName = appInfo.packageName,
+                        label = label,
+                        isSystem = isSys
+                    )
+                }
+                .sortedWith(compareBy<InstalledAppEntry> { it.isSystem }.thenBy { it.label.lowercase() })
+        }
+        _installedApps.value = list
+    }
+
+    fun savePerAppRule(rule: PerAppRule) {
+        val updated = (_perAppRules.value.filterNot { it.packageName == rule.packageName } + rule)
+            .sortedBy { it.appLabel.lowercase() }
+        settingsStore.savePerAppRules(updated)
+        _perAppRules.value = updated
+        recordLog("Regra Per-App (${rule.appLabel})", "perfil=${rule.profileId}, hz=${rule.refreshRateHz}, mtk=${rule.mtkPerfPreset}, bypass=${rule.enableBypassCharging}", false)
+        showInfo("Regra salva para ${rule.appLabel}!")
+    }
+
+    fun deletePerAppRule(packageName: String) {
+        val removed = _perAppRules.value.firstOrNull { it.packageName == packageName }
+        val updated = _perAppRules.value.filterNot { it.packageName == packageName }
+        settingsStore.savePerAppRules(updated)
+        _perAppRules.value = updated
+        showInfo("Regra removida${removed?.let { ": ${it.appLabel}" } ?: ""}.")
+    }
+
+    fun exportFullLogs(includeDmesg: Boolean, onReady: (ExportedLogFile, String) -> Unit) = runTask {
+        val bundle = withContext(Dispatchers.IO) {
+            repository.buildFullLogBundle(
+                actionLogs = _actionLogs.value,
+                perAppRules = _perAppRules.value,
+                includeDmesg = includeDmesg
+            )
+        }
+        val exported = withContext(Dispatchers.IO) {
+            LogExporter.exportToFiles(
+                context = getApplication(),
+                shell = shell,
+                content = bundle,
+                saveToDownloads = true
+            )
+        }
+        val locMsg = exported.downloadsPath ?: exported.cacheFile.absolutePath
+        recordLog("Exportar Logs", "Salvo em $locMsg (${exported.contentLength} bytes)", false)
+        showInfo(
+            if (exported.downloadsPath != null) "Log salvo em Download/${exported.fileName}"
+            else "Log pronto (${exported.fileName})"
+        )
+        onReady(exported, bundle)
+    }
+
     fun setMonitorPaused(paused: Boolean) {
         _monitorPaused.value = paused
     }
@@ -99,6 +226,10 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
 
     fun loadDashboard() = runQuietTask {
         _dashboard.value = withContext(Dispatchers.IO) { repository.readDashboardSummary() }
+        val (curHz, supported) = queryDisplayModes()
+        _refreshInfo.value = withContext(Dispatchers.IO) {
+            repository.readRefreshRateSettings(curHz, supported)
+        }
     }
 
     fun loadCpu() = runTask {
@@ -131,6 +262,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
 
     fun loadDeviceInfo() = runTask {
         _deviceInfo.value = withContext(Dispatchers.IO) { repository.readDeviceInfo() }
+        loadRefreshRate()
     }
 
     fun sampleMonitor() {
@@ -369,7 +501,6 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
                 BuiltInProfile.PERFORMANCE -> freqs[freqs.size / 3] to freqs.last()
                 BuiltInProfile.GAMING -> freqs[(freqs.size / 2).coerceAtMost(freqs.lastIndex)] to freqs.last()
             }
-            // Keep existing devfreq governor (MT6899 uses 'dummy' controlled by GED/gpufreqv2)
             val gRes = withContext(Dispatchers.IO) {
                 repository.applyGpu(gMin, gMax, null, gpu.path)
             }
@@ -540,14 +671,21 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         _tuning.value = withContext(Dispatchers.IO) { repository.readTuning() }
     }
 
-    fun generateDiagnosticReport(onReady: (String) -> Unit) = runTask {
-        val report = withContext(Dispatchers.IO) { repository.buildDiagnosticReport() }
-        recordLog("Relatório de Diagnóstico", "Gerado (${report.length} caracteres)", false)
-        onReady(report)
-    }
-
     fun clearLogs() {
         _actionLogs.value = emptyList()
+    }
+
+    private fun queryDisplayModes(): Pair<Int, List<Int>> {
+        return try {
+            val dm = getApplication<Application>().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            val d = dm.getDisplay(Display.DEFAULT_DISPLAY)
+            val cur = d?.refreshRate?.roundToInt() ?: 120
+            val modes = d?.supportedModes?.map { it.refreshRate.roundToInt() }?.distinct()?.sorted()
+                ?: listOf(60, 90, 120)
+            cur to modes
+        } catch (_: Throwable) {
+            120 to listOf(60, 90, 120)
+        }
     }
 
     private fun captureCpuBaseline(policies: List<CpuPolicy>) {
@@ -574,7 +712,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
             detail = detail,
             isError = isError
         )
-        _actionLogs.value = (listOf(entry) + _actionLogs.value).take(50)
+        _actionLogs.value = (listOf(entry) + _actionLogs.value).take(80)
     }
 
     private fun runTask(block: suspend () -> Unit) {
@@ -597,7 +735,6 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
             try {
                 block()
             } catch (_: Throwable) {
-                // Silent dashboard read failure
             }
         }
     }

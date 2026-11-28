@@ -1,6 +1,9 @@
 package dev.klee.kernelmanager
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Color as AndroidColor
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -14,26 +17,30 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ShowChart
+import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Memory
-import androidx.compose.material.icons.rounded.SportsEsports
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.klee.kernelmanager.ui.components.ActionFeedbackBanner
 import dev.klee.kernelmanager.ui.screens.CpuGpuTabScreen
 import dev.klee.kernelmanager.ui.screens.CpuScreen
-import dev.klee.kernelmanager.ui.screens.DeviceScreen
 import dev.klee.kernelmanager.ui.screens.GpuScreen
 import dev.klee.kernelmanager.ui.screens.HomeScreen
 import dev.klee.kernelmanager.ui.screens.MonitorScreen
 import dev.klee.kernelmanager.ui.screens.MtkPerfScreen
+import dev.klee.kernelmanager.ui.screens.PerAppScreen
 import dev.klee.kernelmanager.ui.screens.PowerScreen
 import dev.klee.kernelmanager.ui.screens.ProfilesScreen
+import dev.klee.kernelmanager.ui.screens.SettingsLogsScreen
 import dev.klee.kernelmanager.ui.screens.ThermalScreen
 import dev.klee.kernelmanager.ui.screens.TuningScreen
 import dev.klee.kernelmanager.ui.theme.KleeColors
@@ -47,9 +54,22 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT)
         )
+        requestNotificationPermissionIfNeeded()
         setContent {
-            KleeTheme {
-                KleeApp()
+            val vm: KernelManagerViewModel = viewModel()
+            val activeTheme by vm.themePreset.collectAsState()
+            KleeTheme(preset = activeTheme) {
+                KleeApp(vm)
+            }
+        }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
             }
         }
     }
@@ -63,7 +83,13 @@ private data class BottomNavDestination(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
+fun KleeApp(vm: KernelManagerViewModel) {
+    val activeTheme by vm.themePreset.collectAsState()
+    val hudConfig by vm.hudConfig.collectAsState()
+    val refreshInfo by vm.refreshInfo.collectAsState()
+    val defaultRefreshHz by vm.defaultRefreshHz.collectAsState()
+    val perAppRules by vm.perAppRules.collectAsState()
+    val installedApps by vm.installedApps.collectAsState()
     val dashboard by vm.dashboard.collectAsState()
     val cpu by vm.cpu.collectAsState()
     val gpu by vm.gpu.collectAsState()
@@ -87,13 +113,14 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
     val bottomDestinations = remember {
         listOf(
             BottomNavDestination("HOME", "Início", Icons.Rounded.Home),
-            BottomNavDestination("CONTROL", "CPU / GPU", Icons.Rounded.Memory),
+            BottomNavDestination("CONTROL", "Hardware", Icons.Rounded.Memory),
+            BottomNavDestination("PER_APP", "Apps", Icons.Rounded.Apps),
             BottomNavDestination("MONITOR", "Monitor", Icons.AutoMirrored.Rounded.ShowChart),
-            BottomNavDestination("PROFILES", "Perfis", Icons.Rounded.SportsEsports)
+            BottomNavDestination("SETTINGS", "Ajustes", Icons.Rounded.Tune)
         )
     }
 
-    val isSubModule = currentRoute in setOf("CPU", "GPU", "MTK_PERF", "THERMAL", "POWER", "TUNING", "DEVICE")
+    val isSubModule = currentRoute in setOf("CPU", "GPU", "MTK_PERF", "THERMAL", "POWER", "PROFILES", "TUNING")
 
     BackHandler(enabled = currentRoute != "HOME") {
         currentRoute = "HOME"
@@ -119,10 +146,14 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
                 if (cpu.cpuPolicies.isEmpty()) vm.loadCpu()
                 if (gpu.gpu == null) vm.loadGpu()
             }
+            "PER_APP" -> {
+                vm.loadRefreshRate()
+                if (installedApps.isEmpty()) vm.loadInstalledApps()
+            }
             "THERMAL" -> vm.loadThermal()
             "POWER" -> vm.loadPower()
             "TUNING" -> vm.loadTuning()
-            "DEVICE" -> vm.loadDeviceInfo()
+            "SETTINGS" -> vm.loadDeviceInfo()
         }
     }
 
@@ -220,11 +251,16 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
                 when (currentRoute) {
                     "HOME" -> HomeScreen(
                         summary = dashboard,
+                        refreshInfo = refreshInfo,
+                        defaultRefreshHz = defaultRefreshHz,
                         activeProfile = activeProfile,
+                        perAppRuleCount = perAppRules.size,
                         busy = busy,
                         onRefresh = vm::loadDashboard,
                         onNavigate = { currentRoute = it },
-                        onQuickProfile = { vm.applyBuiltInProfile(it, includeGpuBoost = false) }
+                        onQuickProfile = { vm.applyBuiltInProfile(it, includeGpuBoost = false) },
+                        onQuickRefreshRate = { vm.applyRefreshRate(it, saveAsDefault = true) },
+                        onNotify = vm::showInfo
                     )
                     "CONTROL" -> CpuGpuTabScreen(
                         cpuState = cpu,
@@ -269,6 +305,16 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
                         onToggle = vm::applyMtkPerfBool,
                         onApplyPreset = vm::applyMtkPerfPreset
                     )
+                    "PER_APP" -> PerAppScreen(
+                        rules = perAppRules,
+                        installedApps = installedApps,
+                        savedProfiles = savedProfiles,
+                        supportedHz = refreshInfo.supportedHz,
+                        busy = busy,
+                        onLoadApps = vm::loadInstalledApps,
+                        onSaveRule = vm::savePerAppRule,
+                        onDeleteRule = vm::deletePerAppRule
+                    )
                     "THERMAL" -> ThermalScreen(
                         state = thermal,
                         busy = busy,
@@ -285,9 +331,12 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
                         history = monitorHistory,
                         paused = monitorPaused,
                         intervalMs = monitorIntervalMs,
+                        hudConfig = hudConfig,
                         onTogglePause = { vm.setMonitorPaused(!monitorPaused) },
                         onSelectInterval = vm::setMonitorInterval,
-                        onManualRefresh = vm::sampleMonitor
+                        onManualRefresh = vm::sampleMonitor,
+                        onUpdateHudConfig = vm::updateHudConfig,
+                        onNotify = vm::showInfo
                     )
                     "PROFILES" -> ProfilesScreen(
                         activeProfile = activeProfile,
@@ -311,12 +360,17 @@ fun KleeApp(vm: KernelManagerViewModel = viewModel()) {
                         onApplyTcpFastOpen = vm::applyTcpFastOpen,
                         onDropCaches = vm::dropCaches
                     )
-                    "DEVICE" -> DeviceScreen(
-                        info = deviceInfo,
+                    "SETTINGS" -> SettingsLogsScreen(
+                        activeTheme = activeTheme,
+                        refreshInfo = refreshInfo,
+                        defaultRefreshHz = defaultRefreshHz,
+                        deviceInfo = deviceInfo,
                         logs = actionLogs,
                         busy = busy,
-                        onRefresh = vm::loadDeviceInfo,
-                        onExportReport = vm::generateDiagnosticReport,
+                        onSelectTheme = vm::selectTheme,
+                        onApplyRefreshRate = { vm.applyRefreshRate(it, saveAsDefault = true) },
+                        onRefreshDevice = vm::loadDeviceInfo,
+                        onExportLogs = vm::exportFullLogs,
                         onClearLogs = vm::clearLogs,
                         onNotify = vm::showInfo
                     )
@@ -332,7 +386,7 @@ private fun routeTitle(route: String): String = when (route) {
     "MTK_PERF" -> "FPSGO & Metis"
     "THERMAL" -> "Monitor Térmico"
     "POWER" -> "Bateria & Bypass"
+    "PROFILES" -> "Perfis & Gaming"
     "TUNING" -> "Memória, UFS 4.0 & Rede"
-    "DEVICE" -> "Dispositivo & Logs"
     else -> "KLEE Kernel Manager"
 }
