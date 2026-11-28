@@ -297,8 +297,8 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         if (rule.vulkanDriverId != "SYSTEM") {
             val driver = _vulkanDrivers.value.firstOrNull { it.id == rule.vulkanDriverId }
                 ?: error("Driver Vulkan selecionado não encontrado.")
-            val carrier = ensureCarrier()
-                ?: error("Nenhum pacote carrier de sistema (arm64 + forceQueryable + meta-data) encontrado para ro.gfx.driver.0.")
+            val carrier = ensureCarrier(forceRefresh = true)
+                ?: error("Nenhum pacote carrier de sistema encontrado para ro.gfx.driver.0 (${VulkanCarrierResolver.lastProbeReport}).")
             val sameDriverPkgs = _perAppRules.value
                 .filter { it.vulkanDriverId == driver.id }
                 .map { it.packageName }

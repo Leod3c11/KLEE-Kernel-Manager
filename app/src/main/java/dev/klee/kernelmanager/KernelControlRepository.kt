@@ -1161,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.6.1 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.6.2 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1344,6 +1344,9 @@ class KernelControlRepository(private val shell: RootShell) {
             appendLine("Props: ro.hardware.vulkan=${vkInfo.roHardwareVulkan.ifBlank { "(vazio)" }} · ro.hardware.egl=${vkInfo.roHardwareEgl.ifBlank { "(vazio)" }} · ro.gfx.driver.0=${vkInfo.roGfxDriver0.ifBlank { "(vazio)" }}")
             appendLine("resetprop: ${vkInfo.resetpropPath.ifBlank { "NAO_ENCONTRADO" }} · ANGLE disponível: ${vkInfo.angleAvailable}")
             appendLine("Carrier ativo/detectado: ${vkInfo.carrierPackage.ifBlank { "nenhum" }} [${vkInfo.carrierMode}] · dir=${vkInfo.carrierLibDir}")
+            if (VulkanCarrierResolver.lastProbeReport.isNotBlank()) {
+                appendLine("Carrier probe: ${VulkanCarrierResolver.lastProbeReport}")
+            }
             appendLine("Driver customizado ativo: ${vkInfo.overlayMounted} (driver=${vkInfo.activeDriverId}, app=${vkInfo.activePackage})")
             appendLine("updatable_driver_production_opt_in_apps: ${vkInfo.optInApps.ifBlank { "(vazio)" }}")
             val anglePkgs = shell.runReadOnly("printf 'pkgs=%s | vals=%s\\n' \"\$(settings get global angle_gl_driver_selection_pkgs 2>/dev/null)\" \"\$(settings get global angle_gl_driver_selection_values 2>/dev/null)\"").stdout.joinToString(" ")
@@ -1387,7 +1390,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.6.1 ===")
+            appendLine("=== FIM DO LOG KLEE v0.6.2 ===")
         }
     }
 

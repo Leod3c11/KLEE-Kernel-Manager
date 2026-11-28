@@ -6,6 +6,10 @@ import android.content.pm.PackageManager
 
 object VulkanCarrierResolver {
 
+    @Volatile
+    var lastProbeReport: String = ""
+        private set
+
     private val preferredPackages = listOf(
         "com.google.android.apps.wellbeing",
         "com.google.android.tts",
@@ -47,7 +51,10 @@ object VulkanCarrierResolver {
     )
 
     fun resolveCarrier(context: Context, shell: RootShell): VulkanCarrierInfo? {
-        if (!shell.rootCheck()) return null
+        if (!shell.rootCheck()) {
+            lastProbeReport = "root=false"
+            return null
+        }
 
         val origProp = shell.runReadOnly(
             "( if [ -f /data/adb/klee_drivers/orig_gfx_driver.txt ]; then cat /data/adb/klee_drivers/orig_gfx_driver.txt; else getprop ro.gfx.driver.0; fi ) 2>/dev/null"
@@ -58,7 +65,8 @@ object VulkanCarrierResolver {
         @Suppress("DEPRECATION")
         val pkgs = try {
             pm.getInstalledPackages(flags)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            lastProbeReport = "getInstalledPackages error: ${t.message}"
             return null
         }
 
@@ -87,33 +95,44 @@ object VulkanCarrierResolver {
             candidates.add(Candidate(pkg, natDir, isDataApp, rank))
         }
 
-        if (candidates.isEmpty()) return null
-        val top = candidates.sortedBy { it.rank }.take(24)
+        if (candidates.isEmpty()) {
+            lastProbeReport = "pm_total=${pkgs.size}, candidates=0, origProp=$origProp"
+            return null
+        }
 
-        // Compact shell loop verifying primaryCpuAbi=arm64-v8a, forceQueryable=true, and filesystem mountability
+        val top = candidates.sortedBy { it.rank }.take(45)
         val pairs = top.mapNotNull { c ->
             if (!c.pkg.matches(Regex("^[A-Za-z0-9._-]+$"))) return@mapNotNull null
             if (!c.nativeLibDir.matches(Regex("^[A-Za-z0-9._/~=+@-]+$"))) return@mapNotNull null
             "${c.pkg}|${c.nativeLibDir}"
         }
-        if (pairs.isEmpty()) return null
+        if (pairs.isEmpty()) {
+            lastProbeReport = "pm_total=${pkgs.size}, candidates=${candidates.size}, pairs=0"
+            return null
+        }
 
+        // Inspect FULL dumpsys package (filtering directly with grep -E so Packages: is never truncated!)
         val script =
             "( " +
             "for entry in ${pairs.joinToString(" ") { "'$it'" }}; do " +
             "  pkg=\${entry%%|*}; nat=\${entry#*|}; " +
-            "  d=\$(dumpsys package \"\$pkg\" 2>/dev/null | head -n 90); " +
+            "  d=\$(dumpsys package \"\$pkg\" 2>/dev/null | grep -E 'primaryCpuAbi=|forceQueryable=|nativeLibraryDir='); " +
             "  abi=0; fq=0; mode='NONE'; " +
             "  printf '%s' \"\$d\" | grep -q 'primaryCpuAbi=arm64-v8a' && abi=1; " +
             "  printf '%s' \"\$d\" | grep -q 'forceQueryable=true' && fq=1; " +
-            "  case \"\$nat\" in /data/app/*) p=\$(dirname \"\$nat\"); pp=\$(dirname \"\$p\"); if [ -d \"\$nat\" ] || [ -d \"\$p\" ] || [ -d \"\$pp\" ]; then mode='DATA_APP'; fi ;; *) if [ -d \"\$nat\" ]; then mode='TMPFS'; fi ;; esac; " +
+            "  case \"\$nat\" in " +
+            "    /data/app/*) p=\$(dirname \"\$nat\"); pp=\$(dirname \"\$p\"); if [ -d \"\$nat\" ] || [ -d \"\$p\" ] || [ -d \"\$pp\" ]; then mode='DATA_APP'; fi ;; " +
+            "    *) if [ -d \"\$nat\" ]; then mode='TMPFS'; fi ;; " +
+            "  esac; " +
             "  printf 'CAND|%s|%s|%s|%s|%s\\n' \"\$pkg\" \"\$abi\" \"\$fq\" \"\$mode\" \"\$nat\"; " +
+            "  if [ \"\$abi\" = '1' ] && [ \"\$fq\" = '1' ] && [ \"\$mode\" = 'DATA_APP' ]; then break; fi; " +
             "done " +
             ")"
 
         val r = shell.runReadOnly(script)
         val verifiedFq = mutableListOf<VulkanCarrierInfo>()
         val verifiedFallback = mutableListOf<VulkanCarrierInfo>()
+        val probeLines = mutableListOf<String>()
 
         r.stdout.forEach { line ->
             if (!line.startsWith("CAND|")) return@forEach
@@ -124,6 +143,9 @@ object VulkanCarrierResolver {
             val fqOk = parts[3] == "1"
             val mode = parts[4]
             val natDir = parts[5]
+            if (probeLines.size < 12) {
+                probeLines.add("$pkg(abi=${parts[2]},fq=${parts[3]},mode=$mode)")
+            }
             if (!abiOk || mode == "NONE") return@forEach
             val info = VulkanCarrierInfo(
                 packageName = pkg,
@@ -134,13 +156,15 @@ object VulkanCarrierResolver {
             if (fqOk) verifiedFq.add(info) else verifiedFallback.add(info)
         }
 
-        // Strongly prefer forceQueryable=true + DATA_APP first, then forceQueryable=true + TMPFS
-        return verifiedFq.firstOrNull { it.mode == "DATA_APP" }
+        val chosen = verifiedFq.firstOrNull { it.mode == "DATA_APP" }
             ?: verifiedFq.firstOrNull()
             ?: verifiedFallback.firstOrNull { it.packageName in preferredPackages && it.mode == "DATA_APP" }
             ?: verifiedFallback.firstOrNull { it.packageName in preferredPackages }
             ?: verifiedFallback.firstOrNull { it.mode == "DATA_APP" }
             ?: verifiedFallback.firstOrNull()
+
+        lastProbeReport = "pm=${pkgs.size}, cand=${candidates.size}, checked=${r.stdout.count { it.startsWith("CAND|") }}, chosen=${chosen?.packageName ?: "NONE"}[${chosen?.mode ?: "-"}] | sample: ${probeLines.joinToString("; ")}"
+        return chosen
     }
 
     private fun isBlocked(pkg: String): Boolean =
