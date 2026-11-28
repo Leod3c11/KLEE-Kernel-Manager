@@ -12,8 +12,8 @@ android {
         applicationId = "dev.klee.kernelmanager"
         minSdk = 28
         targetSdk = 35
-        versionCode = 23
-        versionName = "0.8.0"
+        versionCode = 24
+        versionName = "0.8.1"
 
         ndk {
             abiFilters += "arm64-v8a"

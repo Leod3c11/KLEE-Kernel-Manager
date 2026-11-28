@@ -1161,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.8.0 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.8.1 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1341,7 +1341,8 @@ class KernelControlRepository(private val shell: RootShell) {
                     val apiTag = if (apiInfo != null) {
                         " [API: ${apiInfo.kind.shortLabel}${if (apiInfo.runtimeConfirmed) " ✓" else ""}]"
                     } else ""
-                    appendLine("  ${rule.appLabel} (${rule.packageName})$patchedTag$apiTag: perfil=${rule.profileId}, mtk=${rule.mtkPerfPreset}, hz=${rule.refreshRateHz}, bypass=${rule.enableBypassCharging}, vulkan=${rule.vulkanDriverId}, forceAngle=${rule.forceVulkanAngle}")
+                    val tamperTag = if (apiInfo?.antiTamperWarning != null) " [ANTI-TAMPER]" else ""
+                    appendLine("  ${rule.appLabel} (${rule.packageName})$patchedTag$apiTag$tamperTag: perfil=${rule.profileId}, mtk=${rule.mtkPerfPreset}, hz=${rule.refreshRateHz}, bypass=${rule.enableBypassCharging}, vulkan=${rule.vulkanDriverId}, forceAngle=${rule.forceVulkanAngle}")
                 }
             }
             appendLine()
@@ -1408,7 +1409,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.8.0 ===")
+            appendLine("=== FIM DO LOG KLEE v0.8.1 ===")
         }
     }
 
@@ -1859,9 +1860,12 @@ class KernelControlRepository(private val shell: RootShell) {
             "logcat -d -t 1500 2>/dev/null | " +
             "  grep -iE 'KLEE-Bootstrap|KLEE-Bridge|KLEE-Hooks|hook_impl|GraphicsEnvironment.*(updatable|driver|not installed|failed|choosing)|Unload builtin Vulkan|avc:.*(vulkan|klee_drivers|klee_adrenotools|panvk|panfrost|apk_data_file|system_file)|libvulkan.*(failed|error|unable|dlopen|Could not load|couldn.t find)|linker.*(vulkan|panvk|panfrost)|FATAL.*$pkgRegex|Fatal signal.*$pkgRegex' | " +
             "  tail -n 20 | sed 's/^/GLOG|/'; " +
-            "logcat -b crash -d -t 80 2>/dev/null | " +
-            "  grep -iE 'F DEBUG|Fatal signal|backtrace:|#[0-9][0-9] pc|Build fingerprint|Cmdline:|Abort message|cause |Exception|FATAL|$pkgRegex' | " +
-            "  tail -n 30 | sed 's/^/GLOG|/' " +
+            "logcat -b crash -d -t 200 2>/dev/null | " +
+            "  awk -v pkg='$packageName' 'BEGIN { keep=0; buf=\"\"; last=\"\" } " +
+            "    /FATAL EXCEPTION:|\\*\\*\\* \\*\\*\\* \\*\\*\\*/ { if (keep && buf != \"\") last = buf; buf = \$0 \"\\n\"; keep = 0; next } " +
+            "    { buf = buf \$0 \"\\n\"; if (index(\$0, pkg) > 0) keep = 1 } " +
+            "    END { if (keep && buf != \"\") last = buf; printf \"%s\", last }' | " +
+            "  tail -n 35 | sed 's/^/GLOG|/' " +
             ")"
 
         val r = shell.runReadOnly(script)

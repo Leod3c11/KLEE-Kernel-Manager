@@ -321,6 +321,9 @@ fun PerAppScreen(
                                 GraphicsApiKind.UNKNOWN -> "API: Java / UI"
                             }
                             StatusPill(pillLabel, graphicsApiColor(detectedApi.kind))
+                            if (detectedApi.antiTamperWarning != null) {
+                                StatusPill("⚠ Anti-Tamper", KleeColors.Warning)
+                            }
                         }
                         driverDisplay?.let { StatusPill("VK: $it", KleeColors.Gpu) }
                         if (rule.forceVulkanAngle) StatusPill("Forçar Vulkan (ANGLE)", KleeColors.Monitor)
@@ -433,20 +436,51 @@ fun PerAppScreen(
     }
 
     confirmPatchRule?.let { targetRule ->
+        val antiTamper = appGraphicsApis[targetRule.packageName]?.antiTamperWarning
         AlertDialog(
             onDismissRequest = { confirmPatchRule = null },
             containerColor = KleeColors.CardElevated,
             title = { Text("Injetar AdrenoTools em ${targetRule.appLabel}?", color = KleeColors.TextPrimary) },
             text = {
-                Text(
-                    "O KLEE vai:\n" +
-                        "1. Salvar um backup intacto do(s) APK(s) originais em /data/adb/klee_drivers/apk_backups/.\n" +
-                        "2. Injetar o carregador libadrenotools (mesmo método do PPSSPP) + hooks de Vulkan mantendo OpenGL ES / libMEOW 100% original.\n" +
-                        "3. Reassinar e instalar o app via Root (sem Zygisk e sem reiniciar).\n\n" +
-                        "Depois de injetado, você troca entre PanVK e Mali instantaneamente ao tocar em 'Lançar'. Como a assinatura muda, os dados locais do app serão resetados nesta primeira vez. Você pode restaurar o APK original a qualquer momento.",
-                    color = KleeColors.TextSecondary,
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (antiTamper != null) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(KleeColors.Warning.copy(alpha = 0.14f))
+                                .border(1.dp, KleeColors.Warning.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                "⚠ Proteção Anti-Tamper Detectada",
+                                color = KleeColors.Warning,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                antiTamper,
+                                color = KleeColors.TextPrimary,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                "Se o app fechar ao abrir, toque em 'Restaurar Original' no card dele para voltar ao APK intacto.",
+                                color = KleeColors.TextSecondary,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                    Text(
+                        "O KLEE vai:\n" +
+                            "1. Salvar um backup intacto do(s) APK(s) originais em /data/adb/klee_drivers/apk_backups/.\n" +
+                            "2. Injetar o carregador libadrenotools (mesmo método do PPSSPP) + hooks de Vulkan mantendo OpenGL ES / libMEOW 100% original.\n" +
+                            "3. Reassinar e instalar o app via Root (sem Zygisk e sem reiniciar).\n\n" +
+                            "Depois de injetado, você troca entre PanVK e Mali instantaneamente ao tocar em 'Lançar'. Como a assinatura muda, os dados locais do app serão resetados nesta primeira vez. Você pode restaurar o APK original a qualquer momento.",
+                        color = KleeColors.TextSecondary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             },
             confirmButton = {
                 Button(
@@ -457,7 +491,7 @@ fun PerAppScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = KleeColors.Gpu, contentColor = Color.White)
                 ) {
-                    Text("Injetar Agora", fontWeight = FontWeight.Bold)
+                    Text(if (antiTamper != null) "Injetar Mesmo Assim" else "Injetar Agora", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -753,6 +787,14 @@ private fun PerAppRuleEditorDialog(
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium
                         )
+                        if (detectedApi.antiTamperWarning != null) {
+                            Text(
+                                "⚠ ${detectedApi.antiTamperWarning}",
+                                color = KleeColors.Warning,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     } else {
                         Text(
                             "Inspecionando bibliotecas nativas (.so) e manifest do aplicativo...",
