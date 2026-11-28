@@ -1,5 +1,7 @@
 package dev.klee.kernelmanager
 
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
@@ -1159,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.5.1 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.5.3 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1303,7 +1305,8 @@ class KernelControlRepository(private val shell: RootShell) {
     fun buildFullLogBundle(
         actionLogs: List<ActionLogEntry>,
         perAppRules: List<PerAppRule>,
-        includeDmesg: Boolean
+        includeDmesg: Boolean,
+        lastVulkanCheck: VulkanVerificationResult? = null
     ): String {
         val baseReport = buildDiagnosticReport()
         val pid = android.os.Process.myPid()
@@ -1340,6 +1343,26 @@ class KernelControlRepository(private val shell: RootShell) {
             appendLine("ANGLE disponível: ${vkInfo.angleAvailable} · Overlay montado: ${vkInfo.overlayMounted} (driver=${vkInfo.activeDriverId}, app=${vkInfo.activePackage})")
             val anglePkgs = shell.runReadOnly("printf 'pkgs=%s | vals=%s\\n' \"\$(settings get global angle_gl_driver_selection_pkgs 2>/dev/null)\" \"\$(settings get global angle_gl_driver_selection_values 2>/dev/null)\"").stdout.joinToString(" ")
             appendLine("ANGLE settings: $anglePkgs")
+            if (lastVulkanCheck != null) {
+                appendLine()
+                appendLine("--- Última Verificação de Driver Vulkan (Monitor Pós-Lançamento) ---")
+                appendLine("App: ${lastVulkanCheck.appLabel} (${lastVulkanCheck.packageName}) · Hora: ${lastVulkanCheck.timestamp}")
+                appendLine("Driver esperado: ${lastVulkanCheck.driverName} · Inode esperado: ${lastVulkanCheck.expectedInode.ifBlank { "N/A" }}")
+                appendLine("Status: ${lastVulkanCheck.status} · PID: ${lastVulkanCheck.pid ?: "não rodando"} · ANGLE carregado: ${lastVulkanCheck.angleLoaded}")
+                appendLine("Resumo: ${lastVulkanCheck.summary}")
+                appendLine("Bibliotecas mapeadas (/proc/<pid>/maps):")
+                if (lastVulkanCheck.matchedMaps.isEmpty()) {
+                    appendLine("  (nenhuma biblioteca vulkan/mali/angle mapeada)")
+                } else {
+                    lastVulkanCheck.matchedMaps.forEach { appendLine("  $it") }
+                }
+                appendLine("Logcat relevante (${lastVulkanCheck.relevantLogcat.size} linhas):")
+                if (lastVulkanCheck.relevantLogcat.isEmpty()) {
+                    appendLine("  (nenhuma linha relevante capturada)")
+                } else {
+                    lastVulkanCheck.relevantLogcat.forEach { appendLine("  $it") }
+                }
+            }
             appendLine()
             appendLine("--- Histórico de Ações Root KLEE (${actionLogs.size}) ---")
             if (actionLogs.isEmpty()) {
@@ -1359,7 +1382,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.5.1 ===")
+            appendLine("=== FIM DO LOG KLEE v0.5.3 ===")
         }
     }
 
@@ -1498,11 +1521,217 @@ class KernelControlRepository(private val shell: RootShell) {
     fun launchAppClean(packageName: String): String {
         require(packageName.matches(Regex("^[A-Za-z0-9._-]+$"))) { "Pacote inválido." }
         val script =
+            "( " +
             "am force-stop '$packageName' 2>/dev/null || true; " +
             "sleep 0.35; " +
             "monkey -p '$packageName' -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || { echo 'APP_LAUNCH_FAILED'; exit 2; }; " +
-            "echo 'OK App $packageName iniciado com driver customizado'"
+            "echo 'OK App $packageName iniciado com driver customizado' " +
+            ")"
         return result(shell.runRoot(script), "Falha ao iniciar $packageName.")
+    }
+
+    fun verifyAppVulkanDriver(
+        packageName: String,
+        appLabel: String,
+        driver: VulkanDriverPackage?
+    ): VulkanVerificationResult {
+        require(packageName.matches(Regex("^[A-Za-z0-9._-]+$"))) { "Pacote inválido." }
+        val ts = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+        val drvLabel = driver?.name ?: "Padrão do Sistema (Mali)"
+
+        if (!shell.rootCheck()) {
+            return VulkanVerificationResult(
+                packageName = packageName,
+                appLabel = appLabel,
+                driverName = drvLabel,
+                status = VulkanLoadStatus.ERROR_DETECTED,
+                summary = "Sem acesso root para inspecionar /proc/<pid>/maps.",
+                timestamp = ts
+            )
+        }
+
+        val srcLib = if (driver != null) {
+            require(driver.installDir.matches(Regex("^/data/adb/klee_drivers/drv_[a-f0-9-]+$"))) { "Diretório de driver inválido." }
+            require(driver.primaryLibName.matches(Regex("^[A-Za-z0-9._-]+\\.so$"))) { "Biblioteca principal inválida." }
+            "${driver.installDir}/${driver.primaryLibName}"
+        } else ""
+
+        val pkgRegex = packageName.replace(".", "\\.")
+        val expInodeCmd = if (srcLib.isNotEmpty()) {
+            "exp_inode=\$(stat -c '%i' '$srcLib' 2>/dev/null); "
+        } else {
+            "exp_inode=''; "
+        }
+
+        val script =
+            "( " +
+            expInodeCmd +
+            "printf 'EXP_INODE|%s\\n' \"\$exp_inode\"; " +
+            "pids=\$(pidof '$packageName' 2>/dev/null); " +
+            "if [ -z \"\$pids\" ]; then " +
+            "  pids=\$(ps -A -o PID,NAME 2>/dev/null | awk -v pkg='$packageName' '\$2 == pkg || index(\$2, pkg \":\") == 1 {printf \"%s \", \$1}'); " +
+            "fi; " +
+            "main_pid=\$(printf '%s' \"\$pids\" | awk '{print \$1}'); " +
+            "printf 'PID|%s\\n' \"\$main_pid\"; " +
+            "if [ -n \"\$pids\" ]; then " +
+            "  cnt=0; " +
+            "  for p in \$pids; do " +
+            "    [ -r \"/proc/\$p/maps\" ] || continue; " +
+            "    grep -iE 'vulkan|panvk|panfrost|mali|angle|klee_drivers' \"/proc/\$p/maps\" 2>/dev/null | " +
+            "      awk 'NF>=6 { key=\$5\"|\"\$6; if (!seen[key]++) printf \"MAP|%s|%s\\n\", \$5, \$6 }'; " +
+            "    cnt=\$((cnt + 1)); [ \"\$cnt\" -ge 3 ] && break; " +
+            "  done; " +
+            "  if [ -n \"\$main_pid\" ]; then " +
+            "    logcat -d -t 500 --pid=\"\$main_pid\" 2>/dev/null | " +
+            "      grep -iE 'vulkan|panvk|panfrost|mesa|dlopen|linker|angle|avc|denied|fatal|sigsegv|sigabrt|vkcreate|libvulkan' | " +
+            "      tail -n 25 | sed 's/^/LOG|/'; " +
+            "  fi; " +
+            "fi; " +
+            "logcat -d -t 300 2>/dev/null | " +
+            "  grep -iE 'avc:.*(vulkan|klee_drivers|panvk|panfrost)|libvulkan.*(failed|error|unable|dlopen|found|loaded)|linker.*(vulkan|panvk|panfrost)|FATAL.*$pkgRegex|Fatal signal.*$pkgRegex' | " +
+            "  tail -n 15 | sed 's/^/GLOG|/' " +
+            ")"
+
+        val r = shell.runReadOnly(script)
+        var expectedInode = ""
+        var pid: Int? = null
+        val mappedEntries = mutableListOf<Pair<String, String>>() // inode -> path
+        val seenMaps = linkedSetOf<String>()
+        val pidLogs = mutableListOf<String>()
+        val globalLogs = mutableListOf<String>()
+
+        r.stdout.forEach { line ->
+            when {
+                line.startsWith("EXP_INODE|") -> {
+                    expectedInode = line.removePrefix("EXP_INODE|").trim()
+                }
+                line.startsWith("PID|") -> {
+                    pid = line.removePrefix("PID|").trim().toIntOrNull()
+                }
+                line.startsWith("MAP|") -> {
+                    val rest = line.removePrefix("MAP|")
+                    val sep = rest.indexOf('|')
+                    if (sep > 0) {
+                        val inode = rest.substring(0, sep).trim()
+                        val path = rest.substring(sep + 1).trim()
+                        val dedupKey = "$inode|$path"
+                        if (seenMaps.add(dedupKey)) {
+                            mappedEntries.add(inode to path)
+                        }
+                    }
+                }
+                line.startsWith("LOG|") -> {
+                    val msg = line.removePrefix("LOG|").trim()
+                    if (msg.isNotEmpty()) pidLogs.add(msg.take(240))
+                }
+                line.startsWith("GLOG|") -> {
+                    val msg = line.removePrefix("GLOG|").trim()
+                    if (msg.isNotEmpty()) globalLogs.add(msg.take(240))
+                }
+            }
+        }
+
+        val combinedLogs = (pidLogs + globalLogs).distinct().takeLast(25)
+        val angleLoaded = mappedEntries.any { (_, path) ->
+            val low = path.lowercase(Locale.US)
+            low.contains("libegl_angle") || low.contains("libglesv2_angle") || low.contains("libglesv1_cm_angle")
+        }
+
+        val hasCustomMatch = (expectedInode.isNotBlank() && mappedEntries.any { (inode, _) -> inode == expectedInode }) ||
+            mappedEntries.any { (_, path) ->
+                val low = path.lowercase(Locale.US)
+                low.contains("klee_drivers") || low.contains("panvk") || low.contains("panfrost")
+            }
+
+        val hasVulkanHalPath = mappedEntries.any { (_, path) ->
+            val name = path.substringAfterLast('/').lowercase(Locale.US)
+            name.startsWith("vulkan.") && name.endsWith(".so")
+        }
+
+        val hasLibVulkanLoader = mappedEntries.any { (_, path) ->
+            path.substringAfterLast('/').equals("libvulkan.so", ignoreCase = true)
+        }
+
+        val errorKeywords = listOf(
+            "dlopen failed",
+            "cannot locate symbol",
+            "cannot open shared object",
+            "avc: denied",
+            "failed to load vulkan",
+            "unable to load",
+            "fatal signal",
+            "sigsegv",
+            "sigabrt",
+            "fatal exception"
+        )
+        val hasLoadError = combinedLogs.any { line ->
+            val low = line.lowercase(Locale.US)
+            errorKeywords.any { low.contains(it) }
+        }
+
+        val formattedMaps = mappedEntries.map { (inode, path) ->
+            val tag = when {
+                expectedInode.isNotBlank() && inode == expectedInode -> "[CUSTOM ✓] "
+                path.lowercase(Locale.US).contains("angle") -> "[ANGLE] "
+                path.substringAfterLast('/').lowercase(Locale.US).startsWith("vulkan.") -> "[HAL] "
+                else -> ""
+            }
+            "${tag}inode=$inode · $path"
+        }
+
+        val (status, summary) = when {
+            pid == null -> {
+                if (hasLoadError) {
+                    VulkanLoadStatus.ERROR_DETECTED to
+                        "O app $appLabel fechou/crashou logo após abrir! Verifique o logcat abaixo."
+                } else {
+                    VulkanLoadStatus.APP_NOT_RUNNING to
+                        "Processo de $appLabel não está em execução no momento."
+                }
+            }
+            driver != null && hasCustomMatch -> {
+                VulkanLoadStatus.LOADED_CUSTOM to
+                    "Driver '${driver.name}' CARREGADO no processo (PID $pid · inode $expectedInode)${if (angleLoaded) " + ANGLE ativo" else ""}!"
+            }
+            driver != null && hasLoadError && !hasVulkanHalPath -> {
+                VulkanLoadStatus.ERROR_DETECTED to
+                    "Falha ao carregar '${driver.name}' (erro dlopen/SELinux/crash no PID $pid). Veja o logcat abaixo."
+            }
+            driver != null && hasVulkanHalPath -> {
+                val extra = if (hasLoadError) " Erro detectado no logcat!" else ""
+                VulkanLoadStatus.LOADED_STOCK to
+                    "Driver Mali original foi carregado no lugar de '${driver.name}' (PID $pid · inode diferente de $expectedInode).$extra"
+            }
+            driver == null && hasVulkanHalPath -> {
+                VulkanLoadStatus.LOADED_STOCK to
+                    "Driver Vulkan padrão do sistema (Mali) ativo no processo (PID $pid)${if (angleLoaded) " + ANGLE ativo" else ""}."
+            }
+            hasLoadError -> {
+                VulkanLoadStatus.ERROR_DETECTED to
+                    "Erro gráfico/linker detectado no logcat (PID $pid), sem HAL Vulkan mapeado."
+            }
+            else -> {
+                VulkanLoadStatus.VULKAN_NOT_MAPPED to if (hasLibVulkanLoader) {
+                    "Loader libvulkan.so presente (PID $pid), mas o HAL Vulkan ainda não foi aberto pelo app."
+                } else {
+                    "O app (PID $pid) ainda não carregou Vulkan (pode estar na tela inicial ou usando OpenGL ES${if (angleLoaded) " via ANGLE" else ""})."
+                }
+            }
+        }
+
+        return VulkanVerificationResult(
+            packageName = packageName,
+            appLabel = appLabel,
+            driverName = drvLabel,
+            status = status,
+            pid = pid,
+            expectedInode = expectedInode,
+            matchedMaps = formattedMaps,
+            angleLoaded = angleLoaded,
+            relevantLogcat = combinedLogs,
+            summary = summary,
+            timestamp = ts
+        )
     }
 
     private fun normalizeTemp(raw: Long): Double = when {

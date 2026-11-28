@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FolderZip
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +35,7 @@ import dev.klee.kernelmanager.InstalledAppEntry
 import dev.klee.kernelmanager.PerAppRule
 import dev.klee.kernelmanager.SavedProfile
 import dev.klee.kernelmanager.VulkanDriverPackage
+import dev.klee.kernelmanager.VulkanVerificationResult
 import dev.klee.kernelmanager.service.PerAppEngineService
 import dev.klee.kernelmanager.ui.components.KleeCard
 import dev.klee.kernelmanager.ui.components.SectionHeader
@@ -47,12 +49,15 @@ fun PerAppScreen(
     installedApps: List<InstalledAppEntry>,
     savedProfiles: List<SavedProfile>,
     vulkanDrivers: List<VulkanDriverPackage>,
+    lastVulkanVerification: VulkanVerificationResult?,
     supportedHz: List<Int>,
     busy: Boolean,
     onLoadApps: () -> Unit,
     onSaveRule: (PerAppRule) -> Unit,
     onDeleteRule: (String) -> Unit,
     onLaunchWithRule: (PerAppRule) -> Unit,
+    onVerifyDriverNow: (PerAppRule) -> Unit,
+    onRecheckLastVerification: () -> Unit,
     onOpenVulkanDrivers: () -> Unit
 ) {
     val context = LocalContext.current
@@ -124,6 +129,14 @@ fun PerAppScreen(
                 }
                 StatusPill("${vulkanDrivers.size} .zip", KleeColors.Gpu)
             }
+        }
+
+        if (lastVulkanVerification != null) {
+            VulkanVerificationCard(
+                result = lastVulkanVerification,
+                busy = busy,
+                onRecheck = onRecheckLastVerification
+            )
         }
 
         // Engine Daemon Control Card
@@ -254,23 +267,41 @@ fun PerAppScreen(
                         if (rule.enableBypassCharging) StatusPill("Bypass", KleeColors.Warning)
                     }
 
-                    Button(
-                        onClick = { onLaunchWithRule(rule) },
-                        enabled = !busy,
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (driverDisplay != null) KleeColors.Gpu else KleeColors.Primary,
-                            contentColor = if (driverDisplay != null) Color.White else Color.Black
-                        ),
-                        contentPadding = PaddingValues(vertical = 9.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            if (driverDisplay != null) "Lançar com Driver Vulkan" else "Lançar com Regra",
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Button(
+                            onClick = { onLaunchWithRule(rule) },
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (driverDisplay != null) KleeColors.Gpu else KleeColors.Primary,
+                                contentColor = if (driverDisplay != null) Color.White else Color.Black
+                            ),
+                            contentPadding = PaddingValues(vertical = 9.dp)
+                        ) {
+                            Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (driverDisplay != null) "Lançar com Driver" else "Lançar com Regra",
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { onVerifyDriverNow(rule) },
+                            enabled = !busy,
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp)
+                        ) {
+                            Icon(Icons.Rounded.Radar, contentDescription = "Verificar driver", modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Verificar")
+                        }
                     }
                 }
             }

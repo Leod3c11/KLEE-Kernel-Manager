@@ -37,6 +37,29 @@ data class SystemVulkanInfo(
     val message: String = ""
 )
 
+enum class VulkanLoadStatus {
+    CHECKING,
+    LOADED_CUSTOM,
+    LOADED_STOCK,
+    VULKAN_NOT_MAPPED,
+    APP_NOT_RUNNING,
+    ERROR_DETECTED
+}
+
+data class VulkanVerificationResult(
+    val packageName: String,
+    val appLabel: String,
+    val driverName: String,
+    val status: VulkanLoadStatus,
+    val pid: Int? = null,
+    val expectedInode: String = "",
+    val matchedMaps: List<String> = emptyList(),
+    val angleLoaded: Boolean = false,
+    val relevantLogcat: List<String> = emptyList(),
+    val summary: String = "",
+    val timestamp: String = ""
+)
+
 class VulkanDriverStore(private val context: Context) {
     private val prefs = context.getSharedPreferences("klee_vulkan_drivers_v1", Context.MODE_PRIVATE)
 

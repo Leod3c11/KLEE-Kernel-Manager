@@ -21,6 +21,8 @@ import dev.klee.kernelmanager.PerAppRule
 import dev.klee.kernelmanager.ProfileStore
 import dev.klee.kernelmanager.RootShell
 import dev.klee.kernelmanager.VulkanDriverStore
+import dev.klee.kernelmanager.VulkanLoadStatus
+import dev.klee.kernelmanager.VulkanMonitorNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -44,6 +46,7 @@ class PerAppEngineService : Service() {
     private val repository = KernelControlRepository(RootShell())
 
     private var watchJob: Job? = null
+    private var verifyJob: Job? = null
     private var lastPackage: String? = null
     private var activeRule: PerAppRule? = null
     private var bypassWasEnabledByRule = false
@@ -143,6 +146,7 @@ class PerAppEngineService : Service() {
     private suspend fun applyRule(rule: PerAppRule) = withContext(Dispatchers.IO) {
         activeRule = rule
         val appliedParts = mutableListOf<String>()
+        var selectedDriver: dev.klee.kernelmanager.VulkanDriverPackage? = null
 
         if (rule.forceVulkanAngle) {
             repository.applyForceVulkanAngle(rule.packageName, true)
@@ -151,6 +155,7 @@ class PerAppEngineService : Service() {
         if (rule.vulkanDriverId != "SYSTEM") {
             val driver = vulkanDriverStore.loadDrivers().firstOrNull { it.id == rule.vulkanDriverId }
             if (driver != null) {
+                selectedDriver = driver
                 val mountRes = repository.mountCustomVulkanDriver(driver, rule.packageName)
                 if (mountRes.startsWith("OK")) {
                     vulkanMountedByRule = true
@@ -178,9 +183,30 @@ class PerAppEngineService : Service() {
 
         val summary = "${rule.appLabel} -> ${appliedParts.joinToString(" · ").ifBlank { "Regra ativa" }}"
         updateNotification(summary)
+
+        if (selectedDriver != null || rule.forceVulkanAngle) {
+            val cur = VulkanMonitorNotifier.latestResult.value
+            val alreadyCheckingThisPkg = cur != null &&
+                cur.packageName == rule.packageName &&
+                cur.status == VulkanLoadStatus.CHECKING
+            if (!alreadyCheckingThisPkg) {
+                verifyJob?.cancel()
+                verifyJob = scope.launch {
+                    delay(2500L)
+                    var res = repository.verifyAppVulkanDriver(rule.packageName, rule.appLabel, selectedDriver)
+                    if (res.status != VulkanLoadStatus.LOADED_CUSTOM && res.status != VulkanLoadStatus.ERROR_DETECTED) {
+                        delay(3500L)
+                        res = repository.verifyAppVulkanDriver(rule.packageName, rule.appLabel, selectedDriver)
+                    }
+                    VulkanMonitorNotifier.publish(applicationContext, res, notifyUser = true)
+                    updateNotification("${rule.appLabel} · ${res.summary.take(70)}")
+                }
+            }
+        }
     }
 
     private suspend fun restoreDefaultAfterRule(previousRule: PerAppRule) = withContext(Dispatchers.IO) {
+        verifyJob?.cancel()
         if (vulkanMountedByRule) {
             repository.unmountCustomVulkanDriver()
             vulkanMountedByRule = false

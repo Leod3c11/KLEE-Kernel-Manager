@@ -38,6 +38,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
     private val vulkanDriverStore = VulkanDriverStore(application.applicationContext)
 
     private var autoUnmountJob: Job? = null
+    private var verifyJob: Job? = null
 
     private val _themePreset = MutableStateFlow(settingsStore.loadTheme())
     val themePreset = _themePreset.asStateFlow()
@@ -65,6 +66,8 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
 
     private val _vulkanAutoUnmountSec = MutableStateFlow(settingsStore.loadVulkanAutoUnmountSec())
     val vulkanAutoUnmountSec = _vulkanAutoUnmountSec.asStateFlow()
+
+    val vulkanVerification = VulkanMonitorNotifier.latestResult
 
     private val _dashboard = MutableStateFlow(DashboardSummary(root = false, loaded = false))
     val dashboard = _dashboard.asStateFlow()
@@ -265,6 +268,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
     fun launchAppWithRule(rule: PerAppRule) = runTask {
         val logSteps = mutableListOf<String>()
         var mountedCustom = false
+        var selectedDriver: VulkanDriverPackage? = null
 
         // 1. Force Vulkan via ANGLE if enabled
         if (rule.forceVulkanAngle) {
@@ -283,6 +287,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
                 error("Falha ao montar driver ${driver.name}: $mountRes")
             }
             mountedCustom = true
+            selectedDriver = driver
             logSteps.add("Vulkan: ${driver.name}")
         }
 
@@ -330,16 +335,126 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
         _feedback.value = UiFeedback(text = if (isErr) launchRes else summary, isError = isErr)
 
-        // 8. Schedule safe auto-unmount so the game keeps the custom .so mapped in RAM while the rest of Android reverts to stock Mali
-        val unmountSec = _vulkanAutoUnmountSec.value
-        if (mountedCustom && unmountSec > 0) {
-            autoUnmountJob?.cancel()
-            autoUnmountJob = viewModelScope.launch {
-                delay(unmountSec * 1000L)
-                val umRes = withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
-                recordLog("Auto-Unmount Vulkan (${unmountSec}s)", umRes, !umRes.startsWith("OK"))
-                _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        // 8. Automatically monitor whether the custom Vulkan driver loaded, then safely auto-unmount
+        if (!isErr && (mountedCustom || rule.forceVulkanAngle)) {
+            startPostLaunchVerification(
+                rule = rule,
+                driver = selectedDriver,
+                mountedCustom = mountedCustom,
+                unmountSec = _vulkanAutoUnmountSec.value
+            )
+        }
+    }
+
+    private fun startPostLaunchVerification(
+        rule: PerAppRule,
+        driver: VulkanDriverPackage?,
+        mountedCustom: Boolean,
+        unmountSec: Int
+    ) {
+        verifyJob?.cancel()
+        autoUnmountJob?.cancel()
+        val appCtx = getApplication<Application>().applicationContext
+        val drvName = driver?.name ?: "Padrão do Sistema (Mali)"
+
+        VulkanMonitorNotifier.publish(
+            context = appCtx,
+            result = VulkanVerificationResult(
+                packageName = rule.packageName,
+                appLabel = rule.appLabel,
+                driverName = drvName,
+                status = VulkanLoadStatus.CHECKING,
+                summary = "Aguardando ${rule.appLabel} inicializar e mapear o driver Vulkan...",
+                timestamp = timeFormat.format(Date())
+            ),
+            notifyUser = true
+        )
+
+        verifyJob = viewModelScope.launch {
+            val startedAt = System.currentTimeMillis()
+            val delaysMs = listOf(1800L, 2200L, 2500L, 3000L)
+            var finalResult: VulkanVerificationResult? = null
+
+            for ((idx, waitMs) in delaysMs.withIndex()) {
+                delay(waitMs)
+                val check = withContext(Dispatchers.IO) {
+                    repository.verifyAppVulkanDriver(rule.packageName, rule.appLabel, driver)
+                }
+                finalResult = check
+
+                val doneEarly = check.status == VulkanLoadStatus.LOADED_CUSTOM ||
+                    (check.status == VulkanLoadStatus.ERROR_DETECTED && idx >= 1)
+
+                if (doneEarly || idx == delaysMs.lastIndex) {
+                    break
+                } else {
+                    VulkanMonitorNotifier.publish(
+                        context = appCtx,
+                        result = check.copy(
+                            status = VulkanLoadStatus.CHECKING,
+                            summary = "Verificando ${rule.appLabel} (tentativa ${idx + 1}/${delaysMs.size})... ${check.summary}"
+                        ),
+                        notifyUser = false
+                    )
+                }
             }
+
+            finalResult?.let { res ->
+                VulkanMonitorNotifier.publish(appCtx, res, notifyUser = true)
+                val isProblem = res.status == VulkanLoadStatus.ERROR_DETECTED ||
+                    (driver != null && res.status == VulkanLoadStatus.LOADED_STOCK)
+                recordLog(
+                    "Monitor Vulkan (${rule.appLabel})",
+                    "[${res.status}] ${res.summary} | maps=${res.matchedMaps.size} | logs=${res.relevantLogcat.size}",
+                    isProblem
+                )
+            }
+
+            // Coordinate safe auto-unmount AFTER verification completes so we never unmount before the game maps the .so
+            if (mountedCustom && unmountSec > 0) {
+                val elapsed = System.currentTimeMillis() - startedAt
+                val remaining = (unmountSec * 1000L - elapsed).coerceAtLeast(1500L)
+                autoUnmountJob = viewModelScope.launch {
+                    delay(remaining)
+                    val umRes = withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
+                    recordLog("Auto-Unmount Vulkan (${unmountSec}s)", umRes, !umRes.startsWith("OK"))
+                    _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+                }
+            }
+        }
+    }
+
+    fun verifyDriverNow(rule: PerAppRule) = runTask {
+        val driver = if (rule.vulkanDriverId == "SYSTEM") null
+        else _vulkanDrivers.value.firstOrNull { it.id == rule.vulkanDriverId }
+        val res = withContext(Dispatchers.IO) {
+            repository.verifyAppVulkanDriver(rule.packageName, rule.appLabel, driver)
+        }
+        val appCtx = getApplication<Application>().applicationContext
+        VulkanMonitorNotifier.publish(appCtx, res, notifyUser = true)
+        val isProblem = res.status == VulkanLoadStatus.ERROR_DETECTED ||
+            (driver != null && res.status == VulkanLoadStatus.LOADED_STOCK)
+        recordLog("Verificar Vulkan (${rule.appLabel})", "[${res.status}] ${res.summary}", isProblem)
+        _feedback.value = UiFeedback(text = res.summary, isError = isProblem)
+    }
+
+    fun recheckLastVulkanVerification() {
+        val last = vulkanVerification.value ?: return
+        val matchedRule = _perAppRules.value.firstOrNull { it.packageName == last.packageName }
+        if (matchedRule != null) {
+            verifyDriverNow(matchedRule)
+            return
+        }
+        runTask {
+            val driver = _vulkanDrivers.value.firstOrNull { it.name == last.driverName }
+            val res = withContext(Dispatchers.IO) {
+                repository.verifyAppVulkanDriver(last.packageName, last.appLabel, driver)
+            }
+            VulkanMonitorNotifier.publish(getApplication<Application>().applicationContext, res, notifyUser = true)
+            val isProblem = res.status == VulkanLoadStatus.ERROR_DETECTED ||
+                (driver != null && res.status == VulkanLoadStatus.LOADED_STOCK)
+            recordLog("Verificar Vulkan (${last.appLabel})", "[${res.status}] ${res.summary}", isProblem)
+            _feedback.value = UiFeedback(text = res.summary, isError = isProblem)
         }
     }
 
@@ -401,7 +516,8 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
             repository.buildFullLogBundle(
                 actionLogs = _actionLogs.value,
                 perAppRules = _perAppRules.value,
-                includeDmesg = includeDmesg
+                includeDmesg = includeDmesg,
+                lastVulkanCheck = vulkanVerification.value
             )
         }
         val exported = withContext(Dispatchers.IO) {

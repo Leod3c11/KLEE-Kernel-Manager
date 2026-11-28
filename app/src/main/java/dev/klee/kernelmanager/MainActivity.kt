@@ -94,6 +94,7 @@ fun KleeApp(vm: KernelManagerViewModel) {
     val vulkanDrivers by vm.vulkanDrivers.collectAsState()
     val systemVulkan by vm.systemVulkan.collectAsState()
     val vulkanAutoUnmountSec by vm.vulkanAutoUnmountSec.collectAsState()
+    val vulkanVerification by vm.vulkanVerification.collectAsState()
     val dashboard by vm.dashboard.collectAsState()
     val cpu by vm.cpu.collectAsState()
     val gpu by vm.gpu.collectAsState()
@@ -317,24 +318,29 @@ fun KleeApp(vm: KernelManagerViewModel) {
                         installedApps = installedApps,
                         savedProfiles = savedProfiles,
                         vulkanDrivers = vulkanDrivers,
+                        lastVulkanVerification = vulkanVerification,
                         supportedHz = refreshInfo.supportedHz,
                         busy = busy,
                         onLoadApps = vm::loadInstalledApps,
                         onSaveRule = vm::savePerAppRule,
                         onDeleteRule = vm::deletePerAppRule,
                         onLaunchWithRule = vm::launchAppWithRule,
+                        onVerifyDriverNow = vm::verifyDriverNow,
+                        onRecheckLastVerification = vm::recheckLastVulkanVerification,
                         onOpenVulkanDrivers = { currentRoute = "VULKAN_DRIVERS" }
                     )
                     "VULKAN_DRIVERS" -> VulkanDriverScreen(
                         drivers = vulkanDrivers,
                         systemInfo = systemVulkan,
                         autoUnmountSec = vulkanAutoUnmountSec,
+                        lastVerification = vulkanVerification,
                         busy = busy,
                         onRefresh = vm::loadSystemVulkan,
                         onImportZip = vm::importVulkanDriverZip,
                         onDeleteDriver = vm::deleteVulkanDriver,
                         onRestoreDefault = vm::restoreDefaultVulkanDriver,
-                        onSelectAutoUnmount = vm::setVulkanAutoUnmountSec
+                        onSelectAutoUnmount = vm::setVulkanAutoUnmountSec,
+                        onRecheckVerification = vm::recheckLastVulkanVerification
                     )
                     "THERMAL" -> ThermalScreen(
                         state = thermal,
