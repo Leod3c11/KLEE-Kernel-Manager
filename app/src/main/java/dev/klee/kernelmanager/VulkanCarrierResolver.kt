@@ -68,16 +68,17 @@ object VulkanCarrierResolver {
             val pkg = pi.packageName ?: continue
             if ((ai.flags and ApplicationInfo.FLAG_SYSTEM) == 0) continue
             if (ai.targetSdkVersion < 26) continue
-            if (ai.metaData == null || ai.metaData.isEmpty) continue
+            val isOrig = pkg == origProp && origProp.isNotBlank()
+            if (!isOrig && (ai.metaData == null || ai.metaData.isEmpty)) continue
             val natDir = ai.nativeLibraryDir?.trim().orEmpty()
             if (natDir.isBlank()) continue
-            if (!natDir.endsWith("/arm64") && !natDir.endsWith("/arm64-v8a")) continue
-            if (pkg != origProp && isBlocked(pkg)) continue
+            if (!isOrig && !natDir.endsWith("/arm64") && !natDir.endsWith("/arm64-v8a")) continue
+            if (!isOrig && isBlocked(pkg)) continue
 
             val isDataApp = natDir.startsWith("/data/app/")
             val prefIdx = preferredPackages.indexOf(pkg)
             val rank = when {
-                pkg == origProp && origProp.isNotBlank() -> 0
+                isOrig -> 0
                 prefIdx >= 0 && isDataApp -> 10 + prefIdx
                 isDataApp -> 100
                 prefIdx >= 0 -> 200 + prefIdx
@@ -87,26 +88,30 @@ object VulkanCarrierResolver {
         }
 
         if (candidates.isEmpty()) return null
-        val top = candidates.sortedBy { it.rank }.take(28)
+        val top = candidates.sortedBy { it.rank }.take(24)
 
-        // Verify primaryCpuAbi=arm64-v8a, forceQueryable=true, and filesystem mountability in one shell pass
-        val scriptBuilder = StringBuilder("( ")
-        for (c in top) {
-            if (!c.pkg.matches(Regex("^[A-Za-z0-9._-]+$"))) continue
-            if (!c.nativeLibDir.matches(Regex("^[A-Za-z0-9._/~=+@-]+$"))) continue
-            scriptBuilder.append(
-                "d=\$(dumpsys package '${c.pkg}' 2>/dev/null | head -n 90); " +
-                "abi=0; fq=0; mode='NONE'; " +
-                "printf '%s' \"\$d\" | grep -q 'primaryCpuAbi=arm64-v8a' && abi=1; " +
-                "printf '%s' \"\$d\" | grep -q 'forceQueryable=true' && fq=1; " +
-                "nat='${c.nativeLibDir}'; " +
-                "case \"\$nat\" in /data/app/*) p=\$(dirname \"\$nat\"); pp=\$(dirname \"\$p\"); if [ -d \"\$nat\" ] || [ -d \"\$p\" ] || [ -d \"\$pp\" ]; then mode='DATA_APP'; fi ;; *) if [ -d \"\$nat\" ]; then mode='TMPFS'; fi ;; esac; " +
-                "printf 'CAND|${c.pkg}|%s|%s|%s|%s\\n' \"\$abi\" \"\$fq\" \"\$mode\" \"\$nat\"; "
-            )
+        // Compact shell loop verifying primaryCpuAbi=arm64-v8a, forceQueryable=true, and filesystem mountability
+        val pairs = top.mapNotNull { c ->
+            if (!c.pkg.matches(Regex("^[A-Za-z0-9._-]+$"))) return@mapNotNull null
+            if (!c.nativeLibDir.matches(Regex("^[A-Za-z0-9._/~=+@-]+$"))) return@mapNotNull null
+            "${c.pkg}|${c.nativeLibDir}"
         }
-        scriptBuilder.append(")")
+        if (pairs.isEmpty()) return null
 
-        val r = shell.runReadOnly(scriptBuilder.toString())
+        val script =
+            "( " +
+            "for entry in ${pairs.joinToString(" ") { "'$it'" }}; do " +
+            "  pkg=\${entry%%|*}; nat=\${entry#*|}; " +
+            "  d=\$(dumpsys package \"\$pkg\" 2>/dev/null | head -n 90); " +
+            "  abi=0; fq=0; mode='NONE'; " +
+            "  printf '%s' \"\$d\" | grep -q 'primaryCpuAbi=arm64-v8a' && abi=1; " +
+            "  printf '%s' \"\$d\" | grep -q 'forceQueryable=true' && fq=1; " +
+            "  case \"\$nat\" in /data/app/*) p=\$(dirname \"\$nat\"); pp=\$(dirname \"\$p\"); if [ -d \"\$nat\" ] || [ -d \"\$p\" ] || [ -d \"\$pp\" ]; then mode='DATA_APP'; fi ;; *) if [ -d \"\$nat\" ]; then mode='TMPFS'; fi ;; esac; " +
+            "  printf 'CAND|%s|%s|%s|%s|%s\\n' \"\$pkg\" \"\$abi\" \"\$fq\" \"\$mode\" \"\$nat\"; " +
+            "done " +
+            ")"
+
+        val r = shell.runReadOnly(script)
         val verifiedFq = mutableListOf<VulkanCarrierInfo>()
         val verifiedFallback = mutableListOf<VulkanCarrierInfo>()
 

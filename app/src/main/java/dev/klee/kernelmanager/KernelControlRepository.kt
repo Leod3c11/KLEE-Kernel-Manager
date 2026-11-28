@@ -1161,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.6.0 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.6.1 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1306,7 +1306,8 @@ class KernelControlRepository(private val shell: RootShell) {
         actionLogs: List<ActionLogEntry>,
         perAppRules: List<PerAppRule>,
         includeDmesg: Boolean,
-        lastVulkanCheck: VulkanVerificationResult? = null
+        lastVulkanCheck: VulkanVerificationResult? = null,
+        carrierHint: VulkanCarrierInfo? = null
     ): String {
         val baseReport = buildDiagnosticReport()
         val pid = android.os.Process.myPid()
@@ -1336,7 +1337,7 @@ class KernelControlRepository(private val shell: RootShell) {
                     appendLine("  ${rule.appLabel} (${rule.packageName}): perfil=${rule.profileId}, mtk=${rule.mtkPerfPreset}, hz=${rule.refreshRateHz}, bypass=${rule.enableBypassCharging}, vulkan=${rule.vulkanDriverId}, forceAngle=${rule.forceVulkanAngle}")
                 }
             }
-            val vkInfo = inspectSystemVulkan()
+            val vkInfo = inspectSystemVulkan(carrierHint)
             appendLine()
             appendLine("--- Sistema Vulkan, GraphicsEnvironment & ANGLE ---")
             appendLine("Vendor HW Dir: ${vkInfo.vendorHwDir} · Vulkan SO: ${vkInfo.vulkanFullPath} (symlink=${vkInfo.isSymlink} -> ${vkInfo.symlinkTarget})")
@@ -1386,7 +1387,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.6.0 ===")
+            appendLine("=== FIM DO LOG KLEE v0.6.1 ===")
         }
     }
 
@@ -1574,10 +1575,10 @@ class KernelControlRepository(private val shell: RootShell) {
             "    cp -f \"\$ex\" \"\$TDIR/\$bn\" && chmod 644 \"\$TDIR/\$bn\" && (chcon \"\$SECTX\" \"\$TDIR/\$bn\" 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 \"\$TDIR/\$bn\" 2>/dev/null || true) && printf '%s\\n' \"\$TDIR/\$bn\" >> /data/adb/klee_drivers/staged_files.list; " +
             "  fi; " +
             "done; " +
-            // 6. Stage native Mali OpenGL ES / EGL libs (deduplicating symlinks) so hybrid GLES+Vulkan apps work when ANGLE is OFF
+            // 6. Stage native Mali / MediaTek MEOW OpenGL ES / EGL libs (deduplicating symlinks) so hybrid GLES+Vulkan apps work when ANGLE is OFF
             "egl_cnt=0; " +
             "if [ -d /vendor/lib64/egl ]; then " +
-            "  for ef in /vendor/lib64/egl/*.so; do " +
+            "  for ef in /vendor/lib64/egl/*.so /vendor/lib64/libMEOW*.so /vendor/lib64/mt6899/libGLES_mali.so; do " +
             "    [ -e \"\$ef\" ] || continue; " +
             "    ebn=\$(basename \"\$ef\"); " +
             "    case \"\$ebn\" in vulkan*) continue;; esac; " +
@@ -1591,7 +1592,7 @@ class KernelControlRepository(private val shell: RootShell) {
             "    fi; " +
             "  done; " +
             "fi; " +
-            // 7. Stage transitive /vendor/lib64 DT_NEEDED dependencies (up to 35 libs) so linker namespace resolves all non-public vendor libs
+            // 7. Stage transitive /vendor/lib64 DT_NEEDED dependencies (up to 60 libs) so linker namespace resolves all non-public vendor libs
             "RE=''; " +
             "if command -v readelf >/dev/null 2>&1; then RE='readelf'; " +
             "elif toybox readelf --help >/dev/null 2>&1; then RE='toybox readelf'; " +
@@ -1615,7 +1616,7 @@ class KernelControlRepository(private val shell: RootShell) {
             "      needed=\$(strings \"\$elf\" 2>/dev/null | grep -E '^lib[A-Za-z0-9._+-]+\\.so(\\.[0-9]+)*\$' | sort -u); " +
             "    fi; " +
             "    for lib in \$needed; do " +
-            "      [ \"\$dep_cnt\" -ge 35 ] && break 2; " +
+            "      [ \"\$dep_cnt\" -ge 60 ] && break 2; " +
             "      case \"\$lib\" in vulkan*) continue;; esac; " +
             "      case \" \$PUB \" in *\" \$lib \"*) continue;; esac; " +
             "      [ -e \"\$TDIR/\$lib\" ] && continue; " +

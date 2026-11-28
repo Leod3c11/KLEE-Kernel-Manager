@@ -524,12 +524,14 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun exportFullLogs(includeDmesg: Boolean, onReady: (ExportedLogFile, String) -> Unit) = runTask {
+        val carrier = ensureCarrier()
         val bundle = withContext(Dispatchers.IO) {
             repository.buildFullLogBundle(
                 actionLogs = _actionLogs.value,
                 perAppRules = _perAppRules.value,
                 includeDmesg = includeDmesg,
-                lastVulkanCheck = vulkanVerification.value
+                lastVulkanCheck = vulkanVerification.value,
+                carrierHint = carrier
             )
         }
         val exported = withContext(Dispatchers.IO) {

@@ -23,13 +23,13 @@ class RootShell {
     }
 
     fun runReadOnly(command: String): CommandResult {
-        require(command.length <= 12_000)
+        require(command.length <= 64_000) { "Comando read-only muito grande (${command.length} chars)." }
         val result = Shell.cmd(command).exec()
         return CommandResult(result.code, result.out, result.err)
     }
 
     fun runRoot(command: String): CommandResult {
-        require(command.length <= 24_000)
+        require(command.length <= 64_000) { "Comando root muito grande (${command.length} chars)." }
         val result = Shell.cmd(command).exec()
         return CommandResult(result.code, result.out, result.err)
     }
