@@ -195,7 +195,7 @@ object ApkPatchOrchestrator {
                     .map { it.trim() }
                     .filter { it.endsWith(".apk") }
                 if (rollbackApks.isNotEmpty()) {
-                    installRemoteApkPathsViaRoot(rollbackApks, shell)
+                    installRemoteApkPathsViaRoot(packageName, rollbackApks, uninstallFirst = false, shell = shell)
                 }
                 error("Falha ao instalar APK modificado: ${installRes.combinedOutput()}")
             }
@@ -235,11 +235,8 @@ object ApkPatchOrchestrator {
             error("Backup original de $packageName não encontrado em $backupOrigDir.")
         }
 
-        onProgress("Desinstalando versão AdrenoTools...")
-        shell.runRoot("pm uninstall '$packageName' >/dev/null 2>&1 || true")
-
-        onProgress("Reinstalando APK original (${origPaths.size} arquivo(s))...")
-        val res = installRemoteApkPathsViaRoot(origPaths, shell)
+        onProgress("Preparando backup original (${origPaths.size} arquivo(s))...")
+        val res = installRemoteApkPathsViaRoot(packageName, origPaths, uninstallFirst = true, shell = shell)
         if (!res.success) {
             error("Falha ao restaurar APK original: ${res.combinedOutput()}")
         }
@@ -283,18 +280,35 @@ object ApkPatchOrchestrator {
         return shell.runRoot(script)
     }
 
-    private fun installRemoteApkPathsViaRoot(apkPaths: List<String>, shell: RootShell): CommandResult {
+    private fun installRemoteApkPathsViaRoot(
+        packageName: String,
+        apkPaths: List<String>,
+        uninstallFirst: Boolean = false,
+        shell: RootShell
+    ): CommandResult {
+        val stageRoot = "/data/local/tmp/klee_restore_$packageName"
         val script = buildString {
             append("( ")
-            append("out=\$(pm install-create -r -g 2>&1); ")
-            append("sid=\$(printf '%s' \"\$out\" | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p'); ")
-            append("[ -n \"\$sid\" ] || { echo \"INSTALL_CREATE_FAILED: \$out\"; exit 2; }; ")
+            append("rm -rf '$stageRoot' && mkdir -p '$stageRoot' && chmod 755 '$stageRoot' && ")
             apkPaths.forEachIndexed { idx, p ->
                 val bn = p.substringAfterLast('/')
-                append("sz=\$(stat -c '%s' '$p' 2>/dev/null); ")
-                append("wout=\$(pm install-write -S \"\$sz\" \"\$sid\" '${idx}_$bn' '$p' 2>&1) || { echo \"INSTALL_WRITE_FAILED: \$wout\"; pm install-abandon \"\$sid\" 2>/dev/null; exit 3; }; ")
+                val dst = "$stageRoot/${idx}_$bn"
+                append("cp -f '$p' '$dst' && chmod 644 '$dst' || { echo \"STAGE_COPY_FAILED: $p\"; rm -rf '$stageRoot'; exit 5; }; ")
+            }
+            if (uninstallFirst) {
+                append("pm uninstall '$packageName' >/dev/null 2>&1 || true; ")
+            }
+            append("out=\$(pm install-create -r -g 2>&1); ")
+            append("sid=\$(printf '%s' \"\$out\" | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p'); ")
+            append("[ -n \"\$sid\" ] || { echo \"INSTALL_CREATE_FAILED: \$out\"; rm -rf '$stageRoot'; exit 2; }; ")
+            apkPaths.forEachIndexed { idx, p ->
+                val bn = p.substringAfterLast('/')
+                val dst = "$stageRoot/${idx}_$bn"
+                append("sz=\$(stat -c '%s' '$dst' 2>/dev/null); ")
+                append("wout=\$(pm install-write -S \"\$sz\" \"\$sid\" '${idx}_$bn' '$dst' 2>&1) || { echo \"INSTALL_WRITE_FAILED: \$wout\"; pm install-abandon \"\$sid\" 2>/dev/null; rm -rf '$stageRoot'; exit 3; }; ")
             }
             append("cout=\$(pm install-commit \"\$sid\" 2>&1); rc=\$?; ")
+            append("rm -rf '$stageRoot'; ")
             append("if [ \"\$rc\" != 0 ] || ! printf '%s' \"\$cout\" | grep -qi 'Success'; then echo \"INSTALL_COMMIT_FAILED: \$cout\"; exit 4; fi; ")
             append("echo \"OK \$cout\" )")
         }

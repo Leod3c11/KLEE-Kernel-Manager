@@ -1,9 +1,8 @@
 #pragma once
 
-#include <link.h>
-#include <elf.h>
 #include <cstddef>
 #include <cstdint>
+#include <link.h>
 
 namespace kleevk {
 
@@ -13,14 +12,20 @@ bool hook_plt_symbol(
     size_t phnum,
     const char *target_symbol,
     void *new_func,
-    void **old_func = nullptr
+    void **old_func
 );
 
 int hook_all_matching_libraries(
     const char *target_symbol,
     void *new_func,
     void **old_func,
-    const char *ignore_driver_lib
+    const char *ignore_driver_lib = nullptr
+);
+
+int hook_loader_libraries(
+    const char *target_symbol,
+    void *new_func,
+    void **old_func
 );
 
 } // namespace kleevk
