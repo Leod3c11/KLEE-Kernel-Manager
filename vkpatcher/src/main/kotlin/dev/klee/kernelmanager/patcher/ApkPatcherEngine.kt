@@ -15,8 +15,6 @@ object ApkPatcherEngine {
 
     private val NATIVE_LIBS = listOf(
         "libklee_vk_bridge.so",
-        "libbytehook.so",
-        "libshadowhook.so",
         "libhook_impl.so",
         "libfile_redirect_hook.so",
         "libmain_hook.so",
@@ -107,7 +105,7 @@ object ApkPatcherEngine {
             entryMap.add(dexSource)
 
             // 4. Inject arm64-v8a libadrenotools + ByteHook + ShadowHook + KLEE bridge .so libs
-            onProgress?.invoke("Injetando libadrenotools + hooks arm64-v8a (7 libs)...")
+            onProgress?.invoke("Injetando libadrenotools + hooks arm64-v8a (${NATIVE_LIBS.size} libs)...")
             for (libName in NATIVE_LIBS) {
                 val libBytes = readResourceBytes("/arm64-v8a/$libName.bin")
                 val entryPath = "lib/arm64-v8a/$libName"

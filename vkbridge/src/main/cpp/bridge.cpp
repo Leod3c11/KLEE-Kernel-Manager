@@ -22,6 +22,10 @@
 #define LOGW(...) kleetrace::logf(TAG, ANDROID_LOG_WARN, __VA_ARGS__)
 #define LOGE(...) kleetrace::logf(TAG, ANDROID_LOG_ERROR, __VA_ARGS__)
 
+extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM * /* vm */, void * /* reserved */) {
+    return JNI_VERSION_1_6;
+}
+
 static std::string jstrToStd(JNIEnv *env, jstring s) {
     if (!s) return "";
     const char *c = env->GetStringUTFChars(s, nullptr);

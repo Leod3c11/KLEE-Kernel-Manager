@@ -12,8 +12,8 @@ android {
         applicationId = "dev.klee.kernelmanager"
         minSdk = 28
         targetSdk = 35
-        versionCode = 19
-        versionName = "0.7.2"
+        versionCode = 20
+        versionName = "0.7.3"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -24,7 +24,6 @@ android {
         jniLibs {
             // Required so KLEE's own nativeLibraryDir has extracted libhook_impl.so / libmain_hook.so / etc. for AdrenoToolsProbe
             useLegacyPackaging = true
-            pickFirsts += listOf("**/libbytehook.so", "**/libshadowhook.so")
         }
     }
 

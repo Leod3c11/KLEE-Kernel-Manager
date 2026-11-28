@@ -14,9 +14,6 @@ foreach(_hook_tgt main_hook file_redirect_hook gsl_alloc_hook hook_impl)
     endif()
 endforeach()
 
-find_package(bytehook REQUIRED CONFIG)
-find_package(shadowhook REQUIRED CONFIG)
-
 add_library(klee_vk_bridge SHARED
     bridge.cpp
     hooks.cpp
@@ -35,8 +32,6 @@ target_link_options(klee_vk_bridge PRIVATE
 
 target_link_libraries(klee_vk_bridge PRIVATE
     adrenotools
-    bytehook::bytehook
-    shadowhook::shadowhook
     android
     log
     dl
