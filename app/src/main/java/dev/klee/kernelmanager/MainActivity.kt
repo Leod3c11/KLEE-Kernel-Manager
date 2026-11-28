@@ -49,6 +49,8 @@ import dev.klee.kernelmanager.ui.theme.KleeTheme
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
+    private val resumeTick = mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -60,9 +62,14 @@ class MainActivity : ComponentActivity() {
             val vm: KernelManagerViewModel = viewModel()
             val activeTheme by vm.themePreset.collectAsState()
             KleeTheme(preset = activeTheme) {
-                KleeApp(vm)
+                KleeApp(vm, resumeTick.intValue)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumeTick.intValue++
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -84,7 +91,7 @@ private data class BottomNavDestination(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun KleeApp(vm: KernelManagerViewModel) {
+fun KleeApp(vm: KernelManagerViewModel, resumeTick: Int = 0) {
     val activeTheme by vm.themePreset.collectAsState()
     val hudConfig by vm.hudConfig.collectAsState()
     val refreshInfo by vm.refreshInfo.collectAsState()
@@ -137,6 +144,15 @@ fun KleeApp(vm: KernelManagerViewModel) {
             delay(5000)
             if (vm.feedback.value?.id == current.id) {
                 vm.dismissFeedback()
+            }
+        }
+    }
+
+    LaunchedEffect(resumeTick) {
+        if (resumeTick > 1 && !dashboard.root) {
+            vm.loadDashboard()
+            if (currentRoute == "VULKAN_DRIVERS" || currentRoute == "PER_APP") {
+                vm.loadSystemVulkan()
             }
         }
     }

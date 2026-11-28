@@ -168,6 +168,15 @@ fun RootWarningCard() {
                     color = KleeColors.TextSecondary,
                     style = MaterialTheme.typography.bodySmall
                 )
+                val diag = dev.klee.kernelmanager.RootShell.lastDiagnostic
+                if (diag.isNotBlank()) {
+                    Text(
+                        diag,
+                        color = KleeColors.TextMuted,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
             }
         }
     }
