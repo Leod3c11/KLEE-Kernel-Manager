@@ -1411,15 +1411,15 @@ class KernelControlRepository(private val shell: RootShell) {
 
         val srcLib = "${driver.installDir}/${driver.primaryLibName}"
         val script =
-            "exec 2>&1; " +
+            "( " +
             "NS=''; if command -v nsenter >/dev/null 2>&1 && nsenter --mount=/proc/1/ns/mnt true 2>/dev/null; then NS='nsenter --mount=/proc/1/ns/mnt --'; fi; " +
             "[ -f '$srcLib' ] || { echo 'DRIVER_SO_MISSING: $srcLib'; exit 2; }; " +
-            "hwdir=''; vkfile=''; vkpath=''; " +
+            "vkpath=''; " +
             "for dir in /vendor/lib64/hw /odm/lib64/hw /system/vendor/lib64/hw; do " +
             "  [ -d \"\$dir\" ] || continue; " +
             "  for f in \"\$dir\"/vulkan.*.so; do " +
             "    [ -e \"\$f\" ] || continue; " +
-            "    hwdir=\"\$dir\"; vkfile=\$(basename \"\$f\"); vkpath=\"\$f\"; break 2; " +
+            "    vkpath=\"\$f\"; break 2; " +
             "  done; " +
             "done; " +
             "[ -n \"\$vkpath\" ] || { echo 'SYSTEM_VULKAN_HAL_NOT_FOUND'; exit 3; }; " +
@@ -1429,21 +1429,20 @@ class KernelControlRepository(private val shell: RootShell) {
             "chmod 755 /data/adb /data/adb/klee_drivers '${driver.installDir}' 2>/dev/null || true; " +
             "chmod 644 '$srcLib' || { echo 'CHMOD_FAILED'; exit 5; }; " +
             "chcon --reference=\"\$realvk\" '$srcLib' 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 '$srcLib' 2>/dev/null || chcon u:object_r:vendor_file:s0 '$srcLib' 2>/dev/null || true; " +
-            "if ! \$NS mount --bind '$srcLib' \"\$realvk\"; then " +
-            "  if ! mount --bind '$srcLib' \"\$realvk\"; then " +
-            "    echo \"MOUNT_BIND_FAILED target=\$realvk src=$srcLib\"; exit 6; " +
-            "  fi; " +
-            "fi; " +
+            "merr=\$(\$NS mount --bind '$srcLib' \"\$realvk\" 2>&1); rc=\$?; " +
+            "if [ \"\$rc\" != 0 ]; then merr=\$(mount --bind '$srcLib' \"\$realvk\" 2>&1); rc=\$?; fi; " +
+            "if [ \"\$rc\" != 0 ]; then echo \"MOUNT_BIND_FAILED target=\$realvk err=\$merr\"; exit 6; fi; " +
             "mkdir -p /data/adb/klee_drivers; " +
             "printf '%s:%s:%s' '${driver.id}' '$targetPkg' \"\$realvk\" > /data/adb/klee_drivers/active_state.txt; " +
             "ctx=\$(ls -Z \"\$realvk\" 2>/dev/null | head -n 1); " +
-            "echo \"OK Vulkan montado (global=\$([ -n \"\$NS\" ] && echo sim || echo master)): \$realvk -> ${driver.primaryLibName} [\$ctx]\""
+            "echo \"OK Vulkan montado (global=\$([ -n \"\$NS\" ] && echo sim || echo master)): \$realvk -> ${driver.primaryLibName} [\$ctx]\" " +
+            ")"
         return result(shell.runRoot(script), "Falha ao montar driver Vulkan customizado.")
     }
 
     fun unmountCustomVulkanDriver(): String {
         val script =
-            "exec 2>&1; " +
+            "( " +
             "NS=''; if command -v nsenter >/dev/null 2>&1 && nsenter --mount=/proc/1/ns/mnt true 2>/dev/null; then NS='nsenter --mount=/proc/1/ns/mnt --'; fi; " +
             "saved=\$(cat /data/adb/klee_drivers/active_state.txt 2>/dev/null | cut -d: -f3); " +
             "if [ -n \"\$saved\" ]; then \$NS umount -l \"\$saved\" 2>/dev/null || umount -l \"\$saved\" 2>/dev/null || true; fi; " +
@@ -1456,7 +1455,8 @@ class KernelControlRepository(private val shell: RootShell) {
             "  if grep -q 'klee_hw_overlay' /proc/1/mountinfo 2>/dev/null; then \$NS umount -l \"\$dir\" 2>/dev/null || true; fi; " +
             "done; " +
             "rm -rf /dev/klee_hw_overlay /dev/klee_orig_hw /data/adb/klee_drivers/active_state.txt; " +
-            "echo 'OK Driver Vulkan padrão do sistema restaurado'"
+            "echo 'OK Driver Vulkan padrão do sistema restaurado' " +
+            ")"
         return result(shell.runRoot(script), "Falha ao desmontar driver Vulkan.")
     }
 
