@@ -77,6 +77,9 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
     private val _patchProgress = MutableStateFlow<String?>(null)
     val patchProgress = _patchProgress.asStateFlow()
 
+    private val _appGraphicsApis = MutableStateFlow<Map<String, AppGraphicsApiInfo>>(emptyMap())
+    val appGraphicsApis = _appGraphicsApis.asStateFlow()
+
     val vulkanVerification = VulkanMonitorNotifier.latestResult
 
     private val _dashboard = MutableStateFlow(DashboardSummary(root = false, loaded = false))
@@ -215,7 +218,52 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
             "perfil=${rule.profileId}, hz=${rule.refreshRateHz}, mtk=${rule.mtkPerfPreset}, vk=${rule.vulkanDriverId}, angle=${rule.forceVulkanAngle} ($angleRes)",
             false
         )
+        detectGraphicsApiForPackage(rule.packageName)
         showInfo("Regra salva para ${rule.appLabel}!")
+    }
+
+    fun detectGraphicsApisForRules() = runQuietTask {
+        val ctx = getApplication<Application>().applicationContext
+        val pkgs = _perAppRules.value.map { it.packageName }.distinct()
+        if (pkgs.isEmpty()) return@runQuietTask
+        withContext(Dispatchers.IO) {
+            pkgs.forEach { pkg -> AppGraphicsApiDetector.detect(ctx, pkg) }
+        }
+        _appGraphicsApis.value = AppGraphicsApiDetector.snapshotAll()
+    }
+
+    fun detectGraphicsApiForPackage(packageName: String) = runQuietTask {
+        val ctx = getApplication<Application>().applicationContext
+        withContext(Dispatchers.IO) {
+            AppGraphicsApiDetector.detect(ctx, packageName)
+        }
+        _appGraphicsApis.value = AppGraphicsApiDetector.snapshotAll()
+    }
+
+    private fun updateRuntimeGraphicsApi(res: VulkanVerificationResult) {
+        if (res.pid == null) return
+        val mapsLower = res.matchedMaps.map { it.lowercase(Locale.US) }
+        val hasVulkanIcd = mapsLower.any { m ->
+            m.contains("panfrost") ||
+                m.contains("panvk") ||
+                m.contains("klee_adrenotools/driver") ||
+                m.contains("vulkan.") ||
+                m.contains("[adrenotools") ||
+                m.contains("[custom") ||
+                m.contains("[stock hal]")
+        }
+        val hasStockGles = mapsLower.any { m ->
+            m.contains("libgles_mali") || m.contains("libglesv2") || m.contains("libegl")
+        }
+        val updated = AppGraphicsApiDetector.recordRuntimeObservation(
+            packageName = res.packageName,
+            hasVulkanIcd = hasVulkanIcd,
+            hasAngle = res.angleLoaded,
+            hasStockGles = hasStockGles
+        )
+        if (updated != null) {
+            _appGraphicsApis.value = AppGraphicsApiDetector.snapshotAll()
+        }
     }
 
     fun deletePerAppRule(packageName: String) = runTask {
@@ -328,6 +376,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
                 )
             }
         }
+        detectGraphicsApisForRules()
     }
 
     fun setVulkanAutoUnmountSec(sec: Int) {
@@ -550,6 +599,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
             }
 
             finalResult?.let { res ->
+                updateRuntimeGraphicsApi(res)
                 VulkanMonitorNotifier.publish(appCtx, res, notifyUser = true)
                 val isProblem = res.status == VulkanLoadStatus.ERROR_DETECTED ||
                     (driver != null && res.status == VulkanLoadStatus.LOADED_STOCK)
@@ -568,6 +618,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         val res = withContext(Dispatchers.IO) {
             repository.verifyAppVulkanDriver(rule.packageName, rule.appLabel, driver)
         }
+        updateRuntimeGraphicsApi(res)
         val appCtx = getApplication<Application>().applicationContext
         VulkanMonitorNotifier.publish(appCtx, res, notifyUser = true)
         val isProblem = res.status == VulkanLoadStatus.ERROR_DETECTED ||
@@ -588,6 +639,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
             val res = withContext(Dispatchers.IO) {
                 repository.verifyAppVulkanDriver(last.packageName, last.appLabel, driver)
             }
+            updateRuntimeGraphicsApi(res)
             VulkanMonitorNotifier.publish(getApplication<Application>().applicationContext, res, notifyUser = true)
             val isProblem = res.status == VulkanLoadStatus.ERROR_DETECTED ||
                 (driver != null && res.status == VulkanLoadStatus.LOADED_STOCK)

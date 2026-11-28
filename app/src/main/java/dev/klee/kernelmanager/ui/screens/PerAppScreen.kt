@@ -32,7 +32,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.klee.kernelmanager.AppGraphicsApiInfo
 import dev.klee.kernelmanager.BuiltInProfile
+import dev.klee.kernelmanager.GraphicsApiKind
 import dev.klee.kernelmanager.InstalledAppEntry
 import dev.klee.kernelmanager.PerAppRule
 import dev.klee.kernelmanager.SavedProfile
@@ -53,10 +55,12 @@ fun PerAppScreen(
     vulkanDrivers: List<VulkanDriverPackage>,
     patchedPackages: Set<String>,
     patchProgress: String?,
+    appGraphicsApis: Map<String, AppGraphicsApiInfo>,
     lastVulkanVerification: VulkanVerificationResult?,
     supportedHz: List<Int>,
     busy: Boolean,
     onLoadApps: () -> Unit,
+    onDetectGraphicsApi: (String) -> Unit,
     onSaveRule: (PerAppRule) -> Unit,
     onDeleteRule: (String) -> Unit,
     onLaunchWithRule: (PerAppRule) -> Unit,
@@ -72,6 +76,7 @@ fun PerAppScreen(
 
     var showAppPicker by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf<PerAppRule?>(null) }
+    var editingIsNew by remember { mutableStateOf(false) }
     var confirmPatchRule by remember { mutableStateOf<PerAppRule?>(null) }
     var confirmRestoreRule by remember { mutableStateOf<PerAppRule?>(null) }
 
@@ -248,6 +253,7 @@ fun PerAppScreen(
                 val driverDisplay = if (rule.vulkanDriverId == "SYSTEM") null
                 else vulkanDrivers.firstOrNull { it.id == rule.vulkanDriverId }?.name ?: "Driver Removido"
                 val isPatched = patchedPackages.contains(rule.packageName)
+                val detectedApi = appGraphicsApis[rule.packageName]
 
                 KleeCard(
                     modifier = Modifier.fillMaxWidth(),
@@ -277,9 +283,21 @@ fun PerAppScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            if (detectedApi != null) {
+                                Text(
+                                    detectedApi.detail,
+                                    color = graphicsApiColor(detectedApi.kind).copy(alpha = 0.9f),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                         Row {
-                            IconButton(onClick = { editingRule = rule }) {
+                            IconButton(onClick = {
+                                editingIsNew = false
+                                editingRule = rule
+                            }) {
                                 Icon(Icons.Rounded.Edit, contentDescription = "Editar", tint = KleeColors.Primary, modifier = Modifier.size(18.dp))
                             }
                             IconButton(onClick = { onDeleteRule(rule.packageName) }) {
@@ -295,6 +313,15 @@ fun PerAppScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         if (isPatched) StatusPill("AdrenoTools PPSSPP ✓", KleeColors.Success)
+                        if (detectedApi != null) {
+                            val pillLabel = when (detectedApi.kind) {
+                                GraphicsApiKind.VULKAN_NATIVE -> "API: Vulkan${if (detectedApi.runtimeConfirmed) " ✓" else ""}"
+                                GraphicsApiKind.OPENGL_ES -> "API: OpenGL ES${if (detectedApi.runtimeConfirmed) " ✓" else ""}"
+                                GraphicsApiKind.HYBRID -> "API: Vulkan / GLES"
+                                GraphicsApiKind.UNKNOWN -> "API: Java / UI"
+                            }
+                            StatusPill(pillLabel, graphicsApiColor(detectedApi.kind))
+                        }
                         driverDisplay?.let { StatusPill("VK: $it", KleeColors.Gpu) }
                         if (rule.forceVulkanAngle) StatusPill("Forçar Vulkan (ANGLE)", KleeColors.Monitor)
                         profileDisplay?.let { StatusPill("Perfil: $it", KleeColors.Cpu) }
@@ -477,7 +504,10 @@ fun PerAppScreen(
             onDismiss = { showAppPicker = false },
             onSelect = { entry ->
                 showAppPicker = false
+                onDetectGraphicsApi(entry.packageName)
                 val existing = rules.firstOrNull { it.packageName == entry.packageName }
+                val cachedApi = appGraphicsApis[entry.packageName]
+                editingIsNew = (existing == null)
                 editingRule = existing ?: PerAppRule(
                     packageName = entry.packageName,
                     appLabel = entry.label,
@@ -486,7 +516,7 @@ fun PerAppScreen(
                     refreshRateHz = supportedHz.maxOrNull() ?: 120,
                     enableBypassCharging = false,
                     vulkanDriverId = vulkanDrivers.firstOrNull()?.id ?: "SYSTEM",
-                    forceVulkanAngle = false
+                    forceVulkanAngle = cachedApi?.kind == GraphicsApiKind.OPENGL_ES
                 )
             }
         )
@@ -495,9 +525,12 @@ fun PerAppScreen(
     editingRule?.let { rule ->
         PerAppRuleEditorDialog(
             initialRule = rule,
+            isNewRule = editingIsNew,
+            detectedApi = appGraphicsApis[rule.packageName],
             savedProfiles = savedProfiles,
             vulkanDrivers = vulkanDrivers,
             supportedHz = supportedHz,
+            onDetectApi = { onDetectGraphicsApi(rule.packageName) },
             onDismiss = { editingRule = null },
             onSave = { updated ->
                 editingRule = null
@@ -505,6 +538,13 @@ fun PerAppScreen(
             }
         )
     }
+}
+
+private fun graphicsApiColor(kind: GraphicsApiKind): Color = when (kind) {
+    GraphicsApiKind.VULKAN_NATIVE -> KleeColors.Gpu
+    GraphicsApiKind.OPENGL_ES -> KleeColors.Monitor
+    GraphicsApiKind.HYBRID -> KleeColors.Primary
+    GraphicsApiKind.UNKNOWN -> KleeColors.TextMuted
 }
 
 @Composable
@@ -590,9 +630,12 @@ private fun AppPickerDialog(
 @Composable
 private fun PerAppRuleEditorDialog(
     initialRule: PerAppRule,
+    isNewRule: Boolean,
+    detectedApi: AppGraphicsApiInfo?,
     savedProfiles: List<SavedProfile>,
     vulkanDrivers: List<VulkanDriverPackage>,
     supportedHz: List<Int>,
+    onDetectApi: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (PerAppRule) -> Unit
 ) {
@@ -623,8 +666,25 @@ private fun PerAppRuleEditorDialog(
     var mtkPreset by remember { mutableStateOf(initialRule.mtkPerfPreset) }
     var driverId by remember { mutableStateOf(initialRule.vulkanDriverId) }
     var forceAngle by remember { mutableStateOf(initialRule.forceVulkanAngle) }
+    var userTouchedAngle by remember { mutableStateOf(false) }
     var hz by remember { mutableIntStateOf(initialRule.refreshRateHz) }
     var bypass by remember { mutableStateOf(initialRule.enableBypassCharging) }
+
+    LaunchedEffect(initialRule.packageName) {
+        if (detectedApi == null) {
+            onDetectApi()
+        }
+    }
+
+    LaunchedEffect(detectedApi?.kind, isNewRule) {
+        if (isNewRule && !userTouchedAngle && detectedApi != null) {
+            when (detectedApi.kind) {
+                GraphicsApiKind.OPENGL_ES -> forceAngle = true
+                GraphicsApiKind.VULKAN_NATIVE -> forceAngle = false
+                else -> {}
+            }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -640,6 +700,68 @@ private fun PerAppRuleEditorDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Detected Graphics API Info Box
+                val apiAccent = detectedApi?.let { graphicsApiColor(it.kind) } ?: KleeColors.Primary
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(apiAccent.copy(alpha = 0.10f))
+                        .border(1.dp, apiAccent.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "API Gráfica Detectada",
+                            color = KleeColors.TextSecondary,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (detectedApi == null) {
+                            StatusPill("Analisando...", KleeColors.Primary)
+                        } else {
+                            StatusPill(
+                                "${detectedApi.kind.shortLabel}${if (detectedApi.runtimeConfirmed) " ✓" else ""}",
+                                apiAccent
+                            )
+                        }
+                    }
+                    if (detectedApi != null) {
+                        Text(
+                            detectedApi.detail,
+                            color = KleeColors.TextPrimary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        val guidance = when (detectedApi.kind) {
+                            GraphicsApiKind.VULKAN_NATIVE ->
+                                "Recomendado: deixe ANGLE DESLIGADO (o app já usa Vulkan diretamente)."
+                            GraphicsApiKind.OPENGL_ES ->
+                                "Recomendado: ATIVE ANGLE abaixo para rodar este app OpenGL ES sobre o driver PanVK."
+                            GraphicsApiKind.HYBRID ->
+                                "Suporta ambas APIs: tente ANGLE desligado primeiro; ative se o jogo iniciar em OpenGL ES."
+                            GraphicsApiKind.UNKNOWN ->
+                                "App sem engine nativa dedicada (UI padrão Android / Java)."
+                        }
+                        Text(
+                            guidance,
+                            color = apiAccent,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        Text(
+                            "Inspecionando bibliotecas nativas (.so) e manifest do aplicativo...",
+                            color = KleeColors.TextMuted,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+
                 SelectorBox(
                     label = "Driver Vulkan Customizado (.zip)",
                     selectedText = driverOptions.firstOrNull { it.first == driverId }?.second ?: "Padrão do Sistema (Mali)",
@@ -658,9 +780,15 @@ private fun PerAppRuleEditorDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                         Text("Forçar Vulkan (ANGLE)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.bodyMedium)
-                        Text("Ative para jogos OpenGL ES rodarem sobre Vulkan. Para apps já em Vulkan (ex.: Vulkan Caps Viewer), deixe desligado.", color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+                        Text("Traduz OpenGL ES para Vulkan. Necessário apenas para apps/jogos OpenGL ES.", color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
                     }
-                    Switch(checked = forceAngle, onCheckedChange = { forceAngle = it })
+                    Switch(
+                        checked = forceAngle,
+                        onCheckedChange = {
+                            userTouchedAngle = true
+                            forceAngle = it
+                        }
+                    )
                 }
 
                 HorizontalDivider(color = KleeColors.Border)

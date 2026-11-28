@@ -104,6 +104,7 @@ fun KleeApp(vm: KernelManagerViewModel, resumeTick: Int = 0) {
     val patchedPackages by vm.patchedPackages.collectAsState()
     val probeResult by vm.probeResult.collectAsState()
     val patchProgress by vm.patchProgress.collectAsState()
+    val appGraphicsApis by vm.appGraphicsApis.collectAsState()
     val vulkanVerification by vm.vulkanVerification.collectAsState()
     val dashboard by vm.dashboard.collectAsState()
     val cpu by vm.cpu.collectAsState()
@@ -174,6 +175,7 @@ fun KleeApp(vm: KernelManagerViewModel, resumeTick: Int = 0) {
             "PER_APP" -> {
                 vm.loadRefreshRate()
                 vm.loadSystemVulkan()
+                vm.detectGraphicsApisForRules()
                 if (installedApps.isEmpty()) vm.loadInstalledApps()
             }
             "THERMAL" -> vm.loadThermal()
@@ -339,10 +341,12 @@ fun KleeApp(vm: KernelManagerViewModel, resumeTick: Int = 0) {
                         vulkanDrivers = vulkanDrivers,
                         patchedPackages = patchedPackages,
                         patchProgress = patchProgress,
+                        appGraphicsApis = appGraphicsApis,
                         lastVulkanVerification = vulkanVerification,
                         supportedHz = refreshInfo.supportedHz,
                         busy = busy,
                         onLoadApps = vm::loadInstalledApps,
+                        onDetectGraphicsApi = vm::detectGraphicsApiForPackage,
                         onSaveRule = vm::savePerAppRule,
                         onDeleteRule = vm::deletePerAppRule,
                         onLaunchWithRule = vm::launchAppWithRule,

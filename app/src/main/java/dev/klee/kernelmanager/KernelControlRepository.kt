@@ -1161,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.7.5 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.8.0 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1337,7 +1337,11 @@ class KernelControlRepository(private val shell: RootShell) {
             } else {
                 perAppRules.forEach { rule ->
                     val patchedTag = if (patchedPackages.contains(rule.packageName)) " [ADRENOTOOLS_PATCHED]" else ""
-                    appendLine("  ${rule.appLabel} (${rule.packageName})$patchedTag: perfil=${rule.profileId}, mtk=${rule.mtkPerfPreset}, hz=${rule.refreshRateHz}, bypass=${rule.enableBypassCharging}, vulkan=${rule.vulkanDriverId}, forceAngle=${rule.forceVulkanAngle}")
+                    val apiInfo = AppGraphicsApiDetector.getCached(rule.packageName)
+                    val apiTag = if (apiInfo != null) {
+                        " [API: ${apiInfo.kind.shortLabel}${if (apiInfo.runtimeConfirmed) " ✓" else ""}]"
+                    } else ""
+                    appendLine("  ${rule.appLabel} (${rule.packageName})$patchedTag$apiTag: perfil=${rule.profileId}, mtk=${rule.mtkPerfPreset}, hz=${rule.refreshRateHz}, bypass=${rule.enableBypassCharging}, vulkan=${rule.vulkanDriverId}, forceAngle=${rule.forceVulkanAngle}")
                 }
             }
             appendLine()
@@ -1404,7 +1408,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.7.5 ===")
+            appendLine("=== FIM DO LOG KLEE v0.8.0 ===")
         }
     }
 
