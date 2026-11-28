@@ -1161,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.6.6 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.6.7 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1390,7 +1390,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.6.6 ===")
+            appendLine("=== FIM DO LOG KLEE v0.6.7 ===")
         }
     }
 
@@ -1598,10 +1598,24 @@ class KernelControlRepository(private val shell: RootShell) {
             "    cp -f \"\$ex\" \"\$TDIR/\$bn\" && chown system:system \"\$TDIR/\$bn\" 2>/dev/null || true; chmod 755 \"\$TDIR/\$bn\" && printf '%s\\n' \"\$TDIR/\$bn\" >> /data/adb/klee_drivers/staged_files.list; " +
             "  fi; " +
             "done; " +
-            // 6. Stage native Mali / MediaTek MEOW OpenGL ES / EGL libs (including /vendor/lib64/egl/mt6899/libGLES_mali.so!) so hybrid GLES+Vulkan apps work when ANGLE is OFF
-            "egl_cnt=0; " +
-            "if [ -d /vendor/lib64/egl ]; then " +
-            "  for ef in /vendor/lib64/egl/*.so /vendor/lib64/egl/*/*.so /vendor/lib64/libMEOW*.so; do " +
+            // 6. Stage native OpenGL ES / EGL libs so hybrid GLES+Vulkan apps (e.g. Vulkan Caps Viewer, Unity/Qt games) work when ANGLE is OFF.
+            // On MediaTek MEOW (ro.hardware.egl=meow), libEGL_meow.so hardcodes dlopen("/vendor/lib64/egl/libGLES_mali.so") which Android's
+            // updatable gfx driver linker namespace blocks! Bypass libMEOW completely by exposing monolithic libGLES_mali.so directly as libGLES_meow.so.
+            "egl_cnt=0; hw_egl=\$(getprop ro.hardware.egl 2>/dev/null); mali_gles=''; " +
+            "for cand in /vendor/lib64/egl/libGLES_mali.so /vendor/lib64/egl/*/libGLES_mali.so /vendor/lib64/libGLES_mali.so; do " +
+            "  if [ -e \"\$cand\" ]; then mali_gles=\$(readlink -f \"\$cand\" 2>/dev/null); [ -n \"\$mali_gles\" ] || mali_gles=\"\$cand\"; break; fi; " +
+            "done; " +
+            "if [ \"\$hw_egl\" = 'meow' ] && [ -n \"\$mali_gles\" ] && [ -f \"\$mali_gles\" ]; then " +
+            "  if ! grep -Fxq 'libGLES_mali.so' /data/adb/klee_drivers/orig_dir.list 2>/dev/null; then " +
+            "    cp -f \"\$mali_gles\" \"\$TDIR/libGLES_mali.so\" 2>/dev/null && chown system:system \"\$TDIR/libGLES_mali.so\" 2>/dev/null || true; chmod 755 \"\$TDIR/libGLES_mali.so\" 2>/dev/null && printf '%s\\n' \"\$TDIR/libGLES_mali.so\" >> /data/adb/klee_drivers/staged_files.list && egl_cnt=\$((egl_cnt+1)); " +
+            "    for ealias in libGLES_meow.so libEGL_meow.so libGLESv1_CM_meow.so libGLESv2_meow.so; do " +
+            "      if ! grep -Fxq \"\$ealias\" /data/adb/klee_drivers/orig_dir.list 2>/dev/null; then " +
+            "        ln -sf 'libGLES_mali.so' \"\$TDIR/\$ealias\" 2>/dev/null && printf '%s\\n' \"\$TDIR/\$ealias\" >> /data/adb/klee_drivers/staged_files.list; " +
+            "      fi; " +
+            "    done; " +
+            "  fi; " +
+            "elif [ -d /vendor/lib64/egl ]; then " +
+            "  for ef in /vendor/lib64/egl/*.so /vendor/lib64/egl/*/*.so; do " +
             "    [ -e \"\$ef\" ] || continue; " +
             "    ebn=\$(basename \"\$ef\"); " +
             "    case \"\$ebn\" in vulkan*) continue;; esac; " +
