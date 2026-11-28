@@ -20,6 +20,7 @@ import dev.klee.kernelmanager.MainActivity
 import dev.klee.kernelmanager.PerAppRule
 import dev.klee.kernelmanager.ProfileStore
 import dev.klee.kernelmanager.RootShell
+import dev.klee.kernelmanager.VulkanDriverStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,12 +40,14 @@ class PerAppEngineService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var settingsStore: AppSettingsStore
     private lateinit var profileStore: ProfileStore
+    private lateinit var vulkanDriverStore: VulkanDriverStore
     private val repository = KernelControlRepository(RootShell())
 
     private var watchJob: Job? = null
     private var lastPackage: String? = null
     private var activeRule: PerAppRule? = null
     private var bypassWasEnabledByRule = false
+    private var vulkanMountedByRule = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -52,6 +55,7 @@ class PerAppEngineService : Service() {
         super.onCreate()
         settingsStore = AppSettingsStore(applicationContext)
         profileStore = ProfileStore(applicationContext)
+        vulkanDriverStore = VulkanDriverStore(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -74,7 +78,7 @@ class PerAppEngineService : Service() {
                 "KLEE Perfis por Aplicativo",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Aplica automaticamente perfis de desempenho e taxa de atualização ao abrir apps."
+                description = "Aplica automaticamente perfis de desempenho, driver Vulkan e taxa de atualização ao abrir apps."
             }
             nm.createNotificationChannel(ch)
         }
@@ -140,6 +144,20 @@ class PerAppEngineService : Service() {
         activeRule = rule
         val appliedParts = mutableListOf<String>()
 
+        if (rule.forceVulkanAngle) {
+            repository.applyForceVulkanAngle(rule.packageName, true)
+            appliedParts.add("ANGLE/VK")
+        }
+        if (rule.vulkanDriverId != "SYSTEM") {
+            val driver = vulkanDriverStore.loadDrivers().firstOrNull { it.id == rule.vulkanDriverId }
+            if (driver != null) {
+                val mountRes = repository.mountCustomVulkanDriver(driver, rule.packageName)
+                if (mountRes.startsWith("OK")) {
+                    vulkanMountedByRule = true
+                    appliedParts.add("VK:${driver.name.take(14)}")
+                }
+            }
+        }
         if (rule.profileId != "NONE") {
             applyProfileById(rule.profileId)
             appliedParts.add(rule.profileId)
@@ -163,6 +181,10 @@ class PerAppEngineService : Service() {
     }
 
     private suspend fun restoreDefaultAfterRule(previousRule: PerAppRule) = withContext(Dispatchers.IO) {
+        if (vulkanMountedByRule) {
+            repository.unmountCustomVulkanDriver()
+            vulkanMountedByRule = false
+        }
         if (previousRule.profileId != "NONE") {
             applyProfileById(BuiltInProfile.BALANCED.id)
         }
@@ -259,6 +281,13 @@ class PerAppEngineService : Service() {
 
     override fun onDestroy() {
         watchJob?.cancel()
+        if (vulkanMountedByRule) {
+            try {
+                repository.unmountCustomVulkanDriver()
+            } catch (_: Throwable) {
+            }
+            vulkanMountedByRule = false
+        }
         scope.cancel()
         _running.value = false
         _status.value = "Motor Per-App parado"

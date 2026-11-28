@@ -43,6 +43,7 @@ import dev.klee.kernelmanager.ui.screens.ProfilesScreen
 import dev.klee.kernelmanager.ui.screens.SettingsLogsScreen
 import dev.klee.kernelmanager.ui.screens.ThermalScreen
 import dev.klee.kernelmanager.ui.screens.TuningScreen
+import dev.klee.kernelmanager.ui.screens.VulkanDriverScreen
 import dev.klee.kernelmanager.ui.theme.KleeColors
 import dev.klee.kernelmanager.ui.theme.KleeTheme
 import kotlinx.coroutines.delay
@@ -90,6 +91,9 @@ fun KleeApp(vm: KernelManagerViewModel) {
     val defaultRefreshHz by vm.defaultRefreshHz.collectAsState()
     val perAppRules by vm.perAppRules.collectAsState()
     val installedApps by vm.installedApps.collectAsState()
+    val vulkanDrivers by vm.vulkanDrivers.collectAsState()
+    val systemVulkan by vm.systemVulkan.collectAsState()
+    val vulkanAutoUnmountSec by vm.vulkanAutoUnmountSec.collectAsState()
     val dashboard by vm.dashboard.collectAsState()
     val cpu by vm.cpu.collectAsState()
     val gpu by vm.gpu.collectAsState()
@@ -120,10 +124,10 @@ fun KleeApp(vm: KernelManagerViewModel) {
         )
     }
 
-    val isSubModule = currentRoute in setOf("CPU", "GPU", "MTK_PERF", "THERMAL", "POWER", "PROFILES", "TUNING")
+    val isSubModule = currentRoute in setOf("CPU", "GPU", "MTK_PERF", "VULKAN_DRIVERS", "THERMAL", "POWER", "PROFILES", "TUNING")
 
     BackHandler(enabled = currentRoute != "HOME") {
-        currentRoute = "HOME"
+        currentRoute = if (currentRoute == "VULKAN_DRIVERS") "PER_APP" else "HOME"
     }
 
     LaunchedEffect(feedback?.id) {
@@ -142,12 +146,14 @@ fun KleeApp(vm: KernelManagerViewModel) {
             "CPU" -> vm.loadCpu()
             "GPU" -> vm.loadGpu()
             "MTK_PERF" -> vm.loadMtkPerf()
+            "VULKAN_DRIVERS" -> vm.loadSystemVulkan()
             "CONTROL" -> {
                 if (cpu.cpuPolicies.isEmpty()) vm.loadCpu()
                 if (gpu.gpu == null) vm.loadGpu()
             }
             "PER_APP" -> {
                 vm.loadRefreshRate()
+                vm.loadSystemVulkan()
                 if (installedApps.isEmpty()) vm.loadInstalledApps()
             }
             "THERMAL" -> vm.loadThermal()
@@ -179,7 +185,7 @@ fun KleeApp(vm: KernelManagerViewModel) {
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = { currentRoute = "HOME" }) {
+                        IconButton(onClick = { currentRoute = if (currentRoute == "VULKAN_DRIVERS") "PER_APP" else "HOME" }) {
                             Icon(
                                 Icons.AutoMirrored.Rounded.ArrowBack,
                                 contentDescription = "Voltar",
@@ -201,6 +207,7 @@ fun KleeApp(vm: KernelManagerViewModel) {
                 bottomDestinations.forEach { dest ->
                     val selected = when (dest.route) {
                         "CONTROL" -> currentRoute == "CONTROL" || currentRoute == "CPU" || currentRoute == "GPU"
+                        "PER_APP" -> currentRoute == "PER_APP" || currentRoute == "VULKAN_DRIVERS"
                         else -> currentRoute == dest.route
                     }
                     NavigationBarItem(
@@ -309,11 +316,25 @@ fun KleeApp(vm: KernelManagerViewModel) {
                         rules = perAppRules,
                         installedApps = installedApps,
                         savedProfiles = savedProfiles,
+                        vulkanDrivers = vulkanDrivers,
                         supportedHz = refreshInfo.supportedHz,
                         busy = busy,
                         onLoadApps = vm::loadInstalledApps,
                         onSaveRule = vm::savePerAppRule,
-                        onDeleteRule = vm::deletePerAppRule
+                        onDeleteRule = vm::deletePerAppRule,
+                        onLaunchWithRule = vm::launchAppWithRule,
+                        onOpenVulkanDrivers = { currentRoute = "VULKAN_DRIVERS" }
+                    )
+                    "VULKAN_DRIVERS" -> VulkanDriverScreen(
+                        drivers = vulkanDrivers,
+                        systemInfo = systemVulkan,
+                        autoUnmountSec = vulkanAutoUnmountSec,
+                        busy = busy,
+                        onRefresh = vm::loadSystemVulkan,
+                        onImportZip = vm::importVulkanDriverZip,
+                        onDeleteDriver = vm::deleteVulkanDriver,
+                        onRestoreDefault = vm::restoreDefaultVulkanDriver,
+                        onSelectAutoUnmount = vm::setVulkanAutoUnmountSec
                     )
                     "THERMAL" -> ThermalScreen(
                         state = thermal,
@@ -384,6 +405,7 @@ private fun routeTitle(route: String): String = when (route) {
     "CPU" -> "CPU & UCLAMP"
     "GPU" -> "GPU, GED & DRAM"
     "MTK_PERF" -> "FPSGO & Metis"
+    "VULKAN_DRIVERS" -> "Drivers Vulkan (.zip)"
     "THERMAL" -> "Monitor Térmico"
     "POWER" -> "Bateria & Bypass"
     "PROFILES" -> "Perfis & Gaming"

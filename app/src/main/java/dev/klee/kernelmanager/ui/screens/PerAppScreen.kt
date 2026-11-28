@@ -16,6 +16,8 @@ import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.AutoMode
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.FolderZip
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,6 +33,7 @@ import dev.klee.kernelmanager.BuiltInProfile
 import dev.klee.kernelmanager.InstalledAppEntry
 import dev.klee.kernelmanager.PerAppRule
 import dev.klee.kernelmanager.SavedProfile
+import dev.klee.kernelmanager.VulkanDriverPackage
 import dev.klee.kernelmanager.service.PerAppEngineService
 import dev.klee.kernelmanager.ui.components.KleeCard
 import dev.klee.kernelmanager.ui.components.SectionHeader
@@ -43,11 +46,14 @@ fun PerAppScreen(
     rules: List<PerAppRule>,
     installedApps: List<InstalledAppEntry>,
     savedProfiles: List<SavedProfile>,
+    vulkanDrivers: List<VulkanDriverPackage>,
     supportedHz: List<Int>,
     busy: Boolean,
     onLoadApps: () -> Unit,
     onSaveRule: (PerAppRule) -> Unit,
-    onDeleteRule: (String) -> Unit
+    onDeleteRule: (String) -> Unit,
+    onLaunchWithRule: (PerAppRule) -> Unit,
+    onOpenVulkanDrivers: () -> Unit
 ) {
     val context = LocalContext.current
     val engineRunning by PerAppEngineService.running.collectAsState()
@@ -64,8 +70,8 @@ fun PerAppScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         SectionHeader(
-            title = "Perfis por Aplicativo",
-            subtitle = "Aplica perfil, FPSGO/Metis, taxa Hz e Bypass ao abrir cada app",
+            title = "Perfis & Drivers por App",
+            subtitle = "Perfil CPU/GPU, FPSGO, Hz, ANGLE/Vulkan e Driver .zip por jogo",
             trailing = {
                 FilledTonalButton(
                     onClick = {
@@ -80,6 +86,45 @@ fun PerAppScreen(
                 }
             }
         )
+
+        // Vulkan Drivers .zip Manager Shortcut Card
+        KleeCard(
+            modifier = Modifier.fillMaxWidth(),
+            accentBorder = KleeColors.Gpu.copy(alpha = 0.4f),
+            onClick = onOpenVulkanDrivers
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(KleeColors.Gpu.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.FolderZip, contentDescription = null, tint = KleeColors.Gpu)
+                    }
+                    Column {
+                        Text("Drivers Vulkan Customizados (.zip)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (vulkanDrivers.isEmpty()) "Toque para importar um driver PanVK / Vulkan .zip"
+                            else "${vulkanDrivers.size} driver(s) .zip prontos para vincular aos jogos",
+                            color = KleeColors.TextSecondary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                StatusPill("${vulkanDrivers.size} .zip", KleeColors.Gpu)
+            }
+        }
 
         // Engine Daemon Control Card
         KleeCard(
@@ -112,7 +157,7 @@ fun PerAppScreen(
                     Column {
                         Text("Motor Automático Per-App", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
                         Text(
-                            if (engineRunning) engineStatus else "Desativado · ative para troca automática",
+                            if (engineRunning) engineStatus else "Desativado · ou use 'Lançar' abaixo",
                             color = if (engineRunning) KleeColors.Success else KleeColors.TextSecondary,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
@@ -129,7 +174,7 @@ fun PerAppScreen(
                 )
             }
             Text(
-                "Detecta o app ativo em primeiro plano via root, aplica a regra configurada e restaura o padrão automaticamente ao sair.",
+                "Dica: para garantir que o jogo carregue o driver Vulkan customizado desde o início, use o botão 'Lançar' no card do jogo (ou ative o Motor Per-App).",
                 color = KleeColors.TextMuted,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -146,7 +191,7 @@ fun PerAppScreen(
                 ) {
                     Icon(Icons.Rounded.Apps, contentDescription = null, tint = KleeColors.Primary)
                     Text(
-                        "Nenhum aplicativo configurado ainda. Toque em \"+ App\" para escolher um jogo ou aplicativo e definir perfil de desempenho e taxa de atualização (Hz).",
+                        "Nenhum aplicativo configurado ainda. Toque em \"+ App\" para escolher um jogo e definir perfil, taxa de atualização (Hz), Forçar Vulkan (ANGLE) e driver .zip (PanVK).",
                         color = KleeColors.TextSecondary,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -157,10 +202,12 @@ fun PerAppScreen(
                 val profileDisplay = BuiltInProfile.entries.firstOrNull { it.id == rule.profileId }?.title
                     ?: savedProfiles.firstOrNull { it.id == rule.profileId }?.name
                     ?: if (rule.profileId == "NONE") null else rule.profileId
+                val driverDisplay = if (rule.vulkanDriverId == "SYSTEM") null
+                else vulkanDrivers.firstOrNull { it.id == rule.vulkanDriverId }?.name ?: "Driver Removido"
 
                 KleeCard(
                     modifier = Modifier.fillMaxWidth(),
-                    accentBorder = KleeColors.Primary.copy(alpha = 0.28f)
+                    accentBorder = (if (driverDisplay != null) KleeColors.Gpu else KleeColors.Primary).copy(alpha = 0.35f)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -199,16 +246,31 @@ fun PerAppScreen(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        driverDisplay?.let { StatusPill("VK: $it", KleeColors.Gpu) }
+                        if (rule.forceVulkanAngle) StatusPill("Forçar Vulkan (ANGLE)", KleeColors.Monitor)
                         profileDisplay?.let { StatusPill("Perfil: $it", KleeColors.Cpu) }
-                        if (rule.mtkPerfPreset != "NONE") {
-                            StatusPill("MTK: ${rule.mtkPerfPreset}", KleeColors.Gaming)
-                        }
-                        if (rule.refreshRateHz > 0) {
-                            StatusPill("${rule.refreshRateHz} Hz", KleeColors.Primary)
-                        }
-                        if (rule.enableBypassCharging) {
-                            StatusPill("Bypass Auto", KleeColors.Warning)
-                        }
+                        if (rule.mtkPerfPreset != "NONE") StatusPill("MTK: ${rule.mtkPerfPreset}", KleeColors.Gaming)
+                        if (rule.refreshRateHz > 0) StatusPill("${rule.refreshRateHz} Hz", KleeColors.Primary)
+                        if (rule.enableBypassCharging) StatusPill("Bypass", KleeColors.Warning)
+                    }
+
+                    Button(
+                        onClick = { onLaunchWithRule(rule) },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (driverDisplay != null) KleeColors.Gpu else KleeColors.Primary,
+                            contentColor = if (driverDisplay != null) Color.White else Color.Black
+                        ),
+                        contentPadding = PaddingValues(vertical = 9.dp)
+                    ) {
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (driverDisplay != null) "Lançar com Driver Vulkan" else "Lançar com Regra",
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
@@ -231,7 +293,9 @@ fun PerAppScreen(
                     profileId = BuiltInProfile.GAMING.id,
                     mtkPerfPreset = "GAMING",
                     refreshRateHz = supportedHz.maxOrNull() ?: 120,
-                    enableBypassCharging = false
+                    enableBypassCharging = false,
+                    vulkanDriverId = vulkanDrivers.firstOrNull()?.id ?: "SYSTEM",
+                    forceVulkanAngle = true
                 )
             }
         )
@@ -241,6 +305,7 @@ fun PerAppScreen(
         PerAppRuleEditorDialog(
             initialRule = rule,
             savedProfiles = savedProfiles,
+            vulkanDrivers = vulkanDrivers,
             supportedHz = supportedHz,
             onDismiss = { editingRule = null },
             onSave = { updated ->
@@ -271,7 +336,7 @@ private fun AppPickerDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = KleeColors.CardElevated,
-        title = { Text("Escolher Aplicativo", color = KleeColors.TextPrimary) },
+        title = { Text("Escolher Aplicativo / Jogo", color = KleeColors.TextPrimary) },
         text = {
             Column(
                 modifier = Modifier.heightIn(min = 260.dp, max = 440.dp),
@@ -335,6 +400,7 @@ private fun AppPickerDialog(
 private fun PerAppRuleEditorDialog(
     initialRule: PerAppRule,
     savedProfiles: List<SavedProfile>,
+    vulkanDrivers: List<VulkanDriverPackage>,
     supportedHz: List<Int>,
     onDismiss: () -> Unit,
     onSave: (PerAppRule) -> Unit
@@ -344,6 +410,12 @@ private fun PerAppRuleEditorDialog(
             add("NONE" to "Não alterar")
             BuiltInProfile.entries.forEach { add(it.id to it.title) }
             savedProfiles.forEach { add(it.id to "Salvo: ${it.name}") }
+        }
+    }
+    val driverOptions = remember(vulkanDrivers) {
+        buildList {
+            add("SYSTEM" to "Padrão do Sistema (Mali)")
+            vulkanDrivers.forEach { add(it.id to "${it.name} (${it.primaryLibName})") }
         }
     }
     val mtkOptions = listOf(
@@ -358,6 +430,8 @@ private fun PerAppRuleEditorDialog(
 
     var profileId by remember { mutableStateOf(initialRule.profileId) }
     var mtkPreset by remember { mutableStateOf(initialRule.mtkPerfPreset) }
+    var driverId by remember { mutableStateOf(initialRule.vulkanDriverId) }
+    var forceAngle by remember { mutableStateOf(initialRule.forceVulkanAngle) }
     var hz by remember { mutableIntStateOf(initialRule.refreshRateHz) }
     var bypass by remember { mutableStateOf(initialRule.enableBypassCharging) }
 
@@ -375,6 +449,31 @@ private fun PerAppRuleEditorDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                SelectorBox(
+                    label = "Driver Vulkan Customizado (.zip)",
+                    selectedText = driverOptions.firstOrNull { it.first == driverId }?.second ?: "Padrão do Sistema (Mali)",
+                    options = driverOptions.map { it.second },
+                    enabled = true,
+                    accent = KleeColors.Gpu,
+                    onSelected = { label ->
+                        driverId = driverOptions.firstOrNull { it.second == label }?.first ?: "SYSTEM"
+                    }
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text("Forçar Vulkan (ANGLE)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.bodyMedium)
+                        Text("Traduz jogos OpenGL ES para rodar sobre Vulkan + Game Mode Performance", color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = forceAngle, onCheckedChange = { forceAngle = it })
+                }
+
+                HorizontalDivider(color = KleeColors.Border)
+
                 SelectorBox(
                     label = "Perfil de Desempenho (CPU/GPU)",
                     selectedText = profileOptions.firstOrNull { it.first == profileId }?.second ?: "Não alterar",
@@ -436,7 +535,9 @@ private fun PerAppRuleEditorDialog(
                             profileId = profileId,
                             mtkPerfPreset = mtkPreset,
                             refreshRateHz = hz,
-                            enableBypassCharging = bypass
+                            enableBypassCharging = bypass,
+                            vulkanDriverId = driverId,
+                            forceVulkanAngle = forceAngle
                         )
                     )
                 },

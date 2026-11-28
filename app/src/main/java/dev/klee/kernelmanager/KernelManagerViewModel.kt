@@ -4,12 +4,15 @@ import android.app.Application
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.hardware.display.DisplayManager
+import android.net.Uri
 import android.view.Display
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.klee.kernelmanager.service.FloatingMonitorService
 import dev.klee.kernelmanager.ui.theme.KleeThemePreset
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -32,6 +35,9 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
     private val repository = KernelControlRepository(shell)
     private val profileStore = ProfileStore(application.applicationContext)
     private val settingsStore = AppSettingsStore(application.applicationContext)
+    private val vulkanDriverStore = VulkanDriverStore(application.applicationContext)
+
+    private var autoUnmountJob: Job? = null
 
     private val _themePreset = MutableStateFlow(settingsStore.loadTheme())
     val themePreset = _themePreset.asStateFlow()
@@ -50,6 +56,15 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
 
     private val _installedApps = MutableStateFlow<List<InstalledAppEntry>>(emptyList())
     val installedApps = _installedApps.asStateFlow()
+
+    private val _vulkanDrivers = MutableStateFlow<List<VulkanDriverPackage>>(vulkanDriverStore.loadDrivers())
+    val vulkanDrivers = _vulkanDrivers.asStateFlow()
+
+    private val _systemVulkan = MutableStateFlow(SystemVulkanInfo())
+    val systemVulkan = _systemVulkan.asStateFlow()
+
+    private val _vulkanAutoUnmountSec = MutableStateFlow(settingsStore.loadVulkanAutoUnmountSec())
+    val vulkanAutoUnmountSec = _vulkanAutoUnmountSec.asStateFlow()
 
     private val _dashboard = MutableStateFlow(DashboardSummary(root = false, loaded = false))
     val dashboard = _dashboard.asStateFlow()
@@ -174,21 +189,211 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         _installedApps.value = list
     }
 
-    fun savePerAppRule(rule: PerAppRule) {
+    fun savePerAppRule(rule: PerAppRule) = runTask {
         val updated = (_perAppRules.value.filterNot { it.packageName == rule.packageName } + rule)
             .sortedBy { it.appLabel.lowercase() }
         settingsStore.savePerAppRules(updated)
         _perAppRules.value = updated
-        recordLog("Regra Per-App (${rule.appLabel})", "perfil=${rule.profileId}, hz=${rule.refreshRateHz}, mtk=${rule.mtkPerfPreset}, bypass=${rule.enableBypassCharging}", false)
+        val angleRes = withContext(Dispatchers.IO) {
+            repository.applyForceVulkanAngle(rule.packageName, rule.forceVulkanAngle)
+        }
+        recordLog(
+            "Regra Per-App (${rule.appLabel})",
+            "perfil=${rule.profileId}, hz=${rule.refreshRateHz}, mtk=${rule.mtkPerfPreset}, vk=${rule.vulkanDriverId}, angle=${rule.forceVulkanAngle} ($angleRes)",
+            false
+        )
         showInfo("Regra salva para ${rule.appLabel}!")
     }
 
-    fun deletePerAppRule(packageName: String) {
+    fun deletePerAppRule(packageName: String) = runTask {
         val removed = _perAppRules.value.firstOrNull { it.packageName == packageName }
         val updated = _perAppRules.value.filterNot { it.packageName == packageName }
         settingsStore.savePerAppRules(updated)
         _perAppRules.value = updated
+        if (removed?.forceVulkanAngle == true) {
+            withContext(Dispatchers.IO) { repository.applyForceVulkanAngle(packageName, false) }
+        }
         showInfo("Regra removida${removed?.let { ": ${it.appLabel}" } ?: ""}.")
+    }
+
+    fun loadSystemVulkan() = runQuietTask {
+        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        _vulkanDrivers.value = vulkanDriverStore.loadDrivers()
+    }
+
+    fun setVulkanAutoUnmountSec(sec: Int) {
+        settingsStore.saveVulkanAutoUnmountSec(sec)
+        _vulkanAutoUnmountSec.value = sec
+    }
+
+    fun importVulkanDriverZip(uri: Uri) = runTask {
+        val pkg = withContext(Dispatchers.IO) { vulkanDriverStore.importFromZip(uri, shell) }
+        _vulkanDrivers.value = vulkanDriverStore.loadDrivers()
+        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        val msg = "Driver '${pkg.name}' importado (${pkg.primaryLibName})!"
+        recordLog("Importar Driver Vulkan", msg, false)
+        _feedback.value = UiFeedback(text = msg, isError = false)
+    }
+
+    fun deleteVulkanDriver(driverId: String) = runTask {
+        val curSys = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        if (curSys.overlayMounted && curSys.activeDriverId == driverId) {
+            withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
+        }
+        val updated = withContext(Dispatchers.IO) { vulkanDriverStore.deleteDriver(driverId, shell) }
+        _vulkanDrivers.value = updated
+        // Reset any per-app rules referencing the deleted driver
+        val fixedRules = _perAppRules.value.map {
+            if (it.vulkanDriverId == driverId) it.copy(vulkanDriverId = "SYSTEM") else it
+        }
+        settingsStore.savePerAppRules(fixedRules)
+        _perAppRules.value = fixedRules
+        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        recordLog("Remover Driver Vulkan", "Driver $driverId removido.", false)
+        showInfo("Driver Vulkan removido.")
+    }
+
+    fun restoreDefaultVulkanDriver() = runTask {
+        autoUnmountJob?.cancel()
+        val res = withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
+        val isErr = !res.startsWith("OK")
+        recordLog("Restaurar Driver Vulkan Padrão", res, isErr)
+        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        _feedback.value = UiFeedback(text = res, isError = isErr)
+    }
+
+    fun launchAppWithRule(rule: PerAppRule) = runTask {
+        val logSteps = mutableListOf<String>()
+        var mountedCustom = false
+
+        // 1. Force Vulkan via ANGLE if enabled
+        if (rule.forceVulkanAngle) {
+            val angleRes = withContext(Dispatchers.IO) { repository.applyForceVulkanAngle(rule.packageName, true) }
+            logSteps.add("ANGLE: $angleRes")
+        }
+
+        // 2. Mount Custom Vulkan Driver from .zip if selected
+        if (rule.vulkanDriverId != "SYSTEM") {
+            val driver = _vulkanDrivers.value.firstOrNull { it.id == rule.vulkanDriverId }
+                ?: error("Driver Vulkan selecionado não encontrado.")
+            val mountRes = withContext(Dispatchers.IO) {
+                repository.mountCustomVulkanDriver(driver, rule.packageName)
+            }
+            if (!mountRes.startsWith("OK")) {
+                error("Falha ao montar driver ${driver.name}: $mountRes")
+            }
+            mountedCustom = true
+            logSteps.add("Vulkan: ${driver.name}")
+        }
+
+        // 3. Performance profile
+        if (rule.profileId != "NONE") {
+            val builtIn = BuiltInProfile.entries.firstOrNull { it.id == rule.profileId }
+            if (builtIn != null) {
+                applyBuiltInProfileSync(builtIn)
+                logSteps.add("Perfil: ${builtIn.title}")
+            } else {
+                val custom = _savedProfiles.value.firstOrNull { it.id == rule.profileId }
+                if (custom != null) {
+                    custom.cpuTargets.forEach { t ->
+                        withContext(Dispatchers.IO) { repository.applyCpu(t.policyId, t.minKHz, t.maxKHz, t.governor.ifBlank { null }) }
+                    }
+                    logSteps.add("Perfil: ${custom.name}")
+                }
+            }
+        }
+
+        // 4. MTK FPSGO / Metis preset
+        if (rule.mtkPerfPreset != "NONE") {
+            applyMtkPresetSync(rule.mtkPerfPreset)
+            logSteps.add("MTK: ${rule.mtkPerfPreset}")
+        }
+
+        // 5. Refresh Rate
+        if (rule.refreshRateHz > 0) {
+            val (_, supported) = queryDisplayModes()
+            withContext(Dispatchers.IO) { repository.applyRefreshRate(rule.refreshRateHz, supported.maxOrNull() ?: 120) }
+            logSteps.add("${rule.refreshRateHz}Hz")
+        }
+
+        // 6. Bypass Charging
+        if (rule.enableBypassCharging) {
+            withContext(Dispatchers.IO) { repository.applyBypassCharging(true) }
+            logSteps.add("Bypass ON")
+        }
+
+        // 7. Clean restart & launch game so it loads the custom driver .so + ANGLE from scratch
+        val launchRes = withContext(Dispatchers.IO) { repository.launchAppClean(rule.packageName) }
+        val isErr = !launchRes.startsWith("OK")
+        val summary = "${rule.appLabel} iniciado (${logSteps.joinToString(" · ")})"
+        recordLog("Lançar ${rule.appLabel}", "$summary | $launchRes", isErr)
+        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        _feedback.value = UiFeedback(text = if (isErr) launchRes else summary, isError = isErr)
+
+        // 8. Schedule safe auto-unmount so the game keeps the custom .so mapped in RAM while the rest of Android reverts to stock Mali
+        val unmountSec = _vulkanAutoUnmountSec.value
+        if (mountedCustom && unmountSec > 0) {
+            autoUnmountJob?.cancel()
+            autoUnmountJob = viewModelScope.launch {
+                delay(unmountSec * 1000L)
+                val umRes = withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
+                recordLog("Auto-Unmount Vulkan (${unmountSec}s)", umRes, !umRes.startsWith("OK"))
+                _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+            }
+        }
+    }
+
+    private suspend fun applyBuiltInProfileSync(profile: BuiltInProfile) = withContext(Dispatchers.IO) {
+        val cpuSnap = repository.readCpu()
+        captureCpuBaseline(cpuSnap.cpuPolicies)
+        cpuSnap.cpuPolicies.forEach { policy ->
+            val hwMin = policy.hardwareMinKHz.takeIf { it > 0 } ?: policy.minKHz
+            val hwMax = policy.hardwareMaxKHz.takeIf { it > 0 } ?: policy.maxKHz
+            val freqs = policy.frequenciesKHz
+            val (tMin, tMax, tGov) = when (profile) {
+                BuiltInProfile.ECO -> {
+                    val ecoMax = pickClosestFrequency(freqs, hwMin + ((hwMax - hwMin) * 0.65).toLong(), hwMin, hwMax)
+                    val g = listOf("conservative", "sugov_ext", "powersave").firstOrNull { policy.governors.contains(it) }
+                    Triple(hwMin, ecoMax.coerceAtLeast(hwMin), g)
+                }
+                BuiltInProfile.BALANCED -> {
+                    val g = listOf("sugov_ext", "schedutil").firstOrNull { policy.governors.contains(it) }
+                    Triple(hwMin, hwMax, g)
+                }
+                BuiltInProfile.PERFORMANCE -> {
+                    val perfMin = pickClosestFrequency(freqs, hwMin + ((hwMax - hwMin) * 0.35).toLong(), hwMin, hwMax)
+                    val g = listOf("sugov_ext", "schedutil", "performance").firstOrNull { policy.governors.contains(it) }
+                    Triple(perfMin.coerceAtMost(hwMax), hwMax, g)
+                }
+                BuiltInProfile.GAMING -> {
+                    val g = if (policy.governors.contains("performance")) "performance" else "sugov_ext"
+                    Triple(hwMin, hwMax, g)
+                }
+            }
+            if (policy.canWriteMin && policy.canWriteMax) {
+                repository.applyCpu(policy.id, tMin, tMax, tGov?.takeIf { policy.canWriteGovernor })
+            }
+        }
+        _activeProfileName.value = profile.title
+    }
+
+    private suspend fun applyMtkPresetSync(preset: String) = withContext(Dispatchers.IO) {
+        val pairs = when (preset) {
+            "GAMING" -> listOf(
+                "fpsgo_enable" to true, "boost_ta" to true, "boost_VIP" to true,
+                "rescue_enable" to true, "ultra_rescue" to true,
+                "mi_fboost_enable" to true, "speed_touch_enable" to true, "in_perf_mod" to true
+            )
+            "COOL" -> listOf(
+                "fpsgo_enable" to true, "boost_ta" to false, "ultra_rescue" to false,
+                "powerRL_enable" to true, "in_perf_mod" to false, "thermal_break_enable" to true
+            )
+            else -> listOf(
+                "fpsgo_enable" to true, "boost_ta" to true, "rescue_enable" to true,
+                "ultra_rescue" to false, "in_perf_mod" to false, "thermal_break_enable" to true
+            )
+        }
+        pairs.forEach { (k, v) -> repository.applyMtkPerfBool(k, v) }
     }
 
     fun exportFullLogs(includeDmesg: Boolean, onReady: (ExportedLogFile, String) -> Unit) = runTask {

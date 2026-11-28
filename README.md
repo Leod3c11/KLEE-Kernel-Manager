@@ -2,14 +2,17 @@
 
 Gerenciador Android completo, temático e especializado para o **POCO X8 Pro** (`2511FPC34G`, codinome `klee`, plataforma **MediaTek MT6899**, Mali-G720, HyperOS 3 / Android 16, Linux `6.6.89`, KernelSU).
 
-## Funcionalidades (v0.4.0)
+## Funcionalidades (v0.5.0)
 
+- **Drivers Vulkan Customizados (`.zip` / PanVK / AdrenoTools) + Forçar Vulkan por App**:
+  - Importe pacotes `.zip` com drivers Vulkan ARM64 (`meta.json` + `.so`), com validação de cabeçalho ELF64 AArch64 e instalação com contexto SELinux `same_process_hal_file` em `/data/adb/klee_drivers/`.
+  - Vincule um driver `.zip` específico e a opção **Forçar Vulkan (ANGLE)** a qualquer jogo/app na aba **Apps**, com botão **Lançar com Driver Vulkan** e **Auto-Desmontagem Segura** (overlay isolado em `/vendor/lib64/hw` mantendo `libGLES_mali.so` intacto + botão de restauração instantânea).
 - **5 Temas Dinâmicos**: *Obsidian Cyber*, *AMOLED Pitch Black* (`#000000`), *Crimson Gaming*, *Emerald Matrix* e *Hyper Violet* — aplicados em tempo real no app e no HUD Flutuante.
 - **Monitor Flutuante (HUD sobre outros apps)**:
   - Overlay arrastável (`FloatingMonitorService`) com modo **Compacto** e **HUD Completo** (toque simples para alternar), mostrando CPU %, pico MHz, GPU %/MHz, DRAM LPDDR5X, temperatura SoC/Bateria, potência em Watts/mA, RAM e taxa de atualização (Hz).
   - Métricas visíveis, opacidade e taxa de atualização totalmente configuráveis.
 - **Perfis por Aplicativo (`PerAppEngineService`)**:
-  - Motor automático em segundo plano que detecta o aplicativo em primeiro plano via root e aplica automaticamente **Perfil de Desempenho** (integrado ou personalizado), **Preset FPSGO/Metis**, **Taxa de Atualização de Tela (Hz)** e **Bypass Charging automático** por app, restaurando o padrão ao sair.
+  - Motor automático em segundo plano que detecta o aplicativo em primeiro plano via root e aplica automaticamente **Driver Vulkan (`.zip`)**, **Forçar Vulkan (ANGLE)**, **Perfil de Desempenho**, **Preset FPSGO/Metis**, **Taxa de Atualização de Tela (Hz)** e **Bypass Charging automático** por app, restaurando o padrão ao sair.
 - **Controle de Taxa de Atualização de Tela (Hz)**:
   - Controle global e por aplicativo (Automática / 60 / 90 / 120 Hz conforme modos suportados pela tela) compatível com HyperOS 3 / Android 16.
 - **Exportação Profissional de Logs (`.txt`)**:

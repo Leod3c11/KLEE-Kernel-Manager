@@ -24,7 +24,9 @@ data class PerAppRule(
     val profileId: String = "NONE",      // NONE, ECO, BALANCED, PERFORMANCE, GAMING, or custom SavedProfile.id
     val mtkPerfPreset: String = "NONE",  // NONE, GAMING, STOCK, COOL
     val refreshRateHz: Int = 0,          // 0 = Auto/Default, 60, 90, 120, etc.
-    val enableBypassCharging: Boolean = false
+    val enableBypassCharging: Boolean = false,
+    val vulkanDriverId: String = "SYSTEM", // SYSTEM or VulkanDriverPackage.id
+    val forceVulkanAngle: Boolean = false
 )
 
 data class InstalledAppEntry(
@@ -94,6 +96,12 @@ class AppSettingsStore(context: Context) {
         prefs.edit().putInt(KEY_DEFAULT_HZ, hz).apply()
     }
 
+    fun loadVulkanAutoUnmountSec(): Int = prefs.getInt(KEY_VULKAN_UNMOUNT_SEC, 8)
+
+    fun saveVulkanAutoUnmountSec(sec: Int) {
+        prefs.edit().putInt(KEY_VULKAN_UNMOUNT_SEC, sec).apply()
+    }
+
     fun loadPerAppRules(): List<PerAppRule> {
         val raw = prefs.getString(KEY_PER_APP_RULES, null) ?: return emptyList()
         return try {
@@ -108,7 +116,9 @@ class AppSettingsStore(context: Context) {
                             profileId = o.optString("profileId", "NONE"),
                             mtkPerfPreset = o.optString("mtkPerfPreset", "NONE"),
                             refreshRateHz = o.optInt("refreshRateHz", 0),
-                            enableBypassCharging = o.optBoolean("enableBypassCharging", false)
+                            enableBypassCharging = o.optBoolean("enableBypassCharging", false),
+                            vulkanDriverId = o.optString("vulkanDriverId", "SYSTEM"),
+                            forceVulkanAngle = o.optBoolean("forceVulkanAngle", false)
                         )
                     )
                 }
@@ -129,6 +139,8 @@ class AppSettingsStore(context: Context) {
                     put("mtkPerfPreset", r.mtkPerfPreset)
                     put("refreshRateHz", r.refreshRateHz)
                     put("enableBypassCharging", r.enableBypassCharging)
+                    put("vulkanDriverId", r.vulkanDriverId)
+                    put("forceVulkanAngle", r.forceVulkanAngle)
                 }
             )
         }
@@ -139,6 +151,7 @@ class AppSettingsStore(context: Context) {
         private const val KEY_THEME = "theme_preset"
         private const val KEY_HUD_CONFIG = "hud_config_json"
         private const val KEY_DEFAULT_HZ = "default_refresh_rate_hz"
+        private const val KEY_VULKAN_UNMOUNT_SEC = "vulkan_auto_unmount_sec"
         private const val KEY_PER_APP_RULES = "per_app_rules_json"
     }
 }

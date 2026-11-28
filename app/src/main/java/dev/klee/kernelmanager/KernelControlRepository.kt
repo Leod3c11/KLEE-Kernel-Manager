@@ -1330,9 +1330,16 @@ class KernelControlRepository(private val shell: RootShell) {
                 appendLine("Nenhuma regra configurada.")
             } else {
                 perAppRules.forEach { rule ->
-                    appendLine("  ${rule.appLabel} (${rule.packageName}): perfil=${rule.profileId}, mtk=${rule.mtkPerfPreset}, hz=${rule.refreshRateHz}, bypass=${rule.enableBypassCharging}")
+                    appendLine("  ${rule.appLabel} (${rule.packageName}): perfil=${rule.profileId}, mtk=${rule.mtkPerfPreset}, hz=${rule.refreshRateHz}, bypass=${rule.enableBypassCharging}, vulkan=${rule.vulkanDriverId}, forceAngle=${rule.forceVulkanAngle}")
                 }
             }
+            val vkInfo = inspectSystemVulkan()
+            appendLine()
+            appendLine("--- Sistema Vulkan & ANGLE ---")
+            appendLine("Vendor HW Dir: ${vkInfo.vendorHwDir} · Vulkan SO: ${vkInfo.vulkanFullPath} (symlink=${vkInfo.isSymlink} -> ${vkInfo.symlinkTarget})")
+            appendLine("ANGLE disponível: ${vkInfo.angleAvailable} · Overlay montado: ${vkInfo.overlayMounted} (driver=${vkInfo.activeDriverId}, app=${vkInfo.activePackage})")
+            val anglePkgs = shell.runReadOnly("printf 'pkgs=%s | vals=%s\\n' \"\$(settings get global angle_gl_driver_selection_pkgs 2>/dev/null)\" \"\$(settings get global angle_gl_driver_selection_values 2>/dev/null)\"").stdout.joinToString(" ")
+            appendLine("ANGLE settings: $anglePkgs")
             appendLine()
             appendLine("--- Histórico de Ações Root KLEE (${actionLogs.size}) ---")
             if (actionLogs.isEmpty()) {
@@ -1352,8 +1359,146 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.4.0 ===")
+            appendLine("=== FIM DO LOG KLEE v0.5.0 ===")
         }
+    }
+
+    fun inspectSystemVulkan(): SystemVulkanInfo {
+        if (!shell.rootCheck()) {
+            return SystemVulkanInfo(root = false, message = "Autorize o KLEE no KernelSU.")
+        }
+        val script =
+            "hwdir=''; vkfile=''; vkpath=''; " +
+            "for dir in /vendor/lib64/hw /odm/lib64/hw /system/vendor/lib64/hw; do " +
+            "  [ -d \"\$dir\" ] || continue; " +
+            "  for f in \"\$dir\"/vulkan.*.so; do " +
+            "    [ -e \"\$f\" ] || continue; " +
+            "    hwdir=\"\$dir\"; vkfile=\$(basename \"\$f\"); vkpath=\"\$f\"; break 2; " +
+            "  done; " +
+            "done; " +
+            "issym=0; symtgt=''; " +
+            "if [ -L \"\$vkpath\" ]; then issym=1; symtgt=\$(readlink -f \"\$vkpath\" 2>/dev/null); fi; " +
+            "hasangle=0; " +
+            "if pm list packages 2>/dev/null | grep -qi angle || [ -e /system/lib64/libEGL_angle.so ] || [ -e /vendor/lib64/egl/libEGL_angle.so ] || [ -e /apex/com.android.angle/lib64/libEGL_angle.so ]; then hasangle=1; fi; " +
+            "mounted=0; if grep -q 'klee_hw_overlay' /proc/mounts 2>/dev/null || [ -f /data/adb/klee_drivers/active_state.txt ]; then mounted=1; fi; " +
+            "state=\$(cat /data/adb/klee_drivers/active_state.txt 2>/dev/null); " +
+            "printf 'VK|%s|%s|%s|%s|%s|%s|%s|%s\\n' \"\$hwdir\" \"\$vkfile\" \"\$vkpath\" \"\$issym\" \"\$symtgt\" \"\$hasangle\" \"\$mounted\" \"\$state\""
+
+        val r = shell.runReadOnly(script)
+        val p = r.stdout.firstOrNull { it.startsWith("VK|") }?.split("|")
+            ?: return SystemVulkanInfo(root = true, message = "Não foi possível inspecionar Vulkan do sistema.")
+        val stateParts = p.getOrNull(8).orEmpty().split(":")
+        return SystemVulkanInfo(
+            root = true,
+            vendorHwDir = p.getOrNull(1).orEmpty().ifBlank { "/vendor/lib64/hw" },
+            vulkanFileName = p.getOrNull(2).orEmpty(),
+            vulkanFullPath = p.getOrNull(3).orEmpty(),
+            isSymlink = p.getOrNull(4) == "1",
+            symlinkTarget = p.getOrNull(5).orEmpty(),
+            angleAvailable = p.getOrNull(6) == "1",
+            overlayMounted = p.getOrNull(7) == "1",
+            activeDriverId = stateParts.getOrNull(0).orEmpty(),
+            activePackage = stateParts.getOrNull(1).orEmpty(),
+            message = if (p.getOrNull(2).isNullOrBlank()) "Nenhum vulkan.*.so encontrado em /vendor/lib64/hw." else ""
+        )
+    }
+
+    fun mountCustomVulkanDriver(driver: VulkanDriverPackage, targetPkg: String): String {
+        require(driver.installDir.matches(Regex("^/data/adb/klee_drivers/drv_[a-f0-9-]+$"))) { "Diretório de driver inválido." }
+        require(driver.primaryLibName.matches(Regex("^[A-Za-z0-9._-]+\\.so$"))) { "Biblioteca principal inválida." }
+        require(targetPkg.matches(Regex("^[A-Za-z0-9._-]+$"))) { "Pacote alvo inválido." }
+
+        val srcLib = "${driver.installDir}/${driver.primaryLibName}"
+        val script =
+            "set -e; " +
+            "[ -f '$srcLib' ] || { echo 'DRIVER_SO_MISSING'; exit 2; }; " +
+            "hwdir=''; vkfile=''; " +
+            "for dir in /vendor/lib64/hw /odm/lib64/hw /system/vendor/lib64/hw; do " +
+            "  [ -d \"\$dir\" ] || continue; " +
+            "  if grep -q \" \$dir \" /proc/mounts 2>/dev/null; then umount -l \"\$dir\" 2>/dev/null || true; fi; " +
+            "  for f in \"\$dir\"/vulkan.*.so; do " +
+            "    [ -e \"\$f\" ] || continue; " +
+            "    hwdir=\"\$dir\"; vkfile=\$(basename \"\$f\"); break 2; " +
+            "  done; " +
+            "done; " +
+            "[ -n \"\$hwdir\" ] && [ -n \"\$vkfile\" ] || { echo 'SYSTEM_VULKAN_HAL_NOT_FOUND'; exit 3; }; " +
+            "umount -l /dev/klee_orig_hw 2>/dev/null || true; " +
+            "rm -rf /dev/klee_hw_overlay /dev/klee_orig_hw; " +
+            "mkdir -p /dev/klee_orig_hw /dev/klee_hw_overlay; " +
+            "mount --bind \"\$hwdir\" /dev/klee_orig_hw; " +
+            "for f in /dev/klee_orig_hw/*; do " +
+            "  [ -e \"\$f\" ] || [ -L \"\$f\" ] || continue; " +
+            "  b=\$(basename \"\$f\"); " +
+            "  [ \"\$b\" = \"\$vkfile\" ] && continue; " +
+            "  if [ -L \"\$f\" ]; then tgt=\$(readlink -f \"\$f\" 2>/dev/null); ln -sf \"\$tgt\" \"/dev/klee_hw_overlay/\$b\"; " +
+            "  else ln -sf \"/dev/klee_orig_hw/\$b\" \"/dev/klee_hw_overlay/\$b\"; fi; " +
+            "done; " +
+            "cp -f '${driver.installDir}'/*.so /dev/klee_hw_overlay/ 2>/dev/null || true; " +
+            "cp -f '$srcLib' \"/dev/klee_hw_overlay/\$vkfile\"; " +
+            "chmod 755 /dev/klee_hw_overlay /dev/klee_orig_hw; " +
+            "chmod 644 /dev/klee_hw_overlay/*.so 2>/dev/null || true; " +
+            "(chcon -R u:object_r:same_process_hal_file:s0 /dev/klee_hw_overlay 2>/dev/null || chcon -R u:object_r:vendor_file:s0 /dev/klee_hw_overlay 2>/dev/null || true); " +
+            "mount --bind /dev/klee_hw_overlay \"\$hwdir\"; " +
+            "mkdir -p /data/adb/klee_drivers; " +
+            "printf '%s:%s:%s' '${driver.id}' '$targetPkg' \"\$hwdir\" > /data/adb/klee_drivers/active_state.txt; " +
+            "echo \"OK Vulkan overlay montado: \$hwdir/\$vkfile -> ${driver.primaryLibName} (${driver.name})\""
+        return result(shell.runRoot(script), "Falha ao montar driver Vulkan customizado.")
+    }
+
+    fun unmountCustomVulkanDriver(): String {
+        val script =
+            "for dir in /vendor/lib64/hw /odm/lib64/hw /system/vendor/lib64/hw; do " +
+            "  if grep -q \" \$dir \" /proc/mounts 2>/dev/null; then umount -l \"\$dir\" 2>/dev/null || true; fi; " +
+            "done; " +
+            "if grep -q ' /dev/klee_orig_hw ' /proc/mounts 2>/dev/null; then umount -l /dev/klee_orig_hw 2>/dev/null || true; fi; " +
+            "rm -rf /dev/klee_hw_overlay /dev/klee_orig_hw /data/adb/klee_drivers/active_state.txt; " +
+            "echo 'OK Driver Vulkan padrão do sistema restaurado'"
+        return result(shell.runRoot(script), "Falha ao desmontar driver Vulkan.")
+    }
+
+    fun applyForceVulkanAngle(packageName: String, enable: Boolean): String {
+        require(packageName.matches(Regex("^[A-Za-z0-9._-]+$"))) { "Pacote inválido." }
+        val curPkgsRaw = shell.runReadOnly("settings get global angle_gl_driver_selection_pkgs 2>/dev/null").stdout.firstOrNull().orEmpty().trim()
+        val curValsRaw = shell.runReadOnly("settings get global angle_gl_driver_selection_values 2>/dev/null").stdout.firstOrNull().orEmpty().trim()
+
+        val pkgs = if (curPkgsRaw.isBlank() || curPkgsRaw == "null") mutableListOf() else curPkgsRaw.split(",").filter { it.isNotBlank() }.toMutableList()
+        val vals = if (curValsRaw.isBlank() || curValsRaw == "null") mutableListOf() else curValsRaw.split(",").filter { it.isNotBlank() }.toMutableList()
+
+        val map = linkedMapOf<String, String>()
+        for (i in pkgs.indices) {
+            map[pkgs[i]] = vals.getOrElse(i) { "default" }
+        }
+
+        if (enable) {
+            map[packageName] = "angle"
+        } else {
+            map.remove(packageName)
+        }
+
+        val cmd = if (map.isEmpty()) {
+            "settings delete global angle_gl_driver_selection_pkgs 2>/dev/null; " +
+            "settings delete global angle_gl_driver_selection_values 2>/dev/null; " +
+            "echo 'OK ANGLE removido para $packageName'"
+        } else {
+            val newPkgs = map.keys.joinToString(",")
+            val newVals = map.values.joinToString(",")
+            val gameModeCmd = if (enable) "cmd game mode performance '$packageName' 2>/dev/null || true; " else ""
+            "settings put global angle_gl_driver_selection_pkgs '$newPkgs' && " +
+            "settings put global angle_gl_driver_selection_values '$newVals' && " +
+            gameModeCmd +
+            "echo 'OK Forçar Vulkan (ANGLE) ${if (enable) "ATIVADO" else "DESATIVADO"} para $packageName'"
+        }
+        return result(shell.runRoot(cmd), "Falha ao configurar ANGLE para $packageName.")
+    }
+
+    fun launchAppClean(packageName: String): String {
+        require(packageName.matches(Regex("^[A-Za-z0-9._-]+$"))) { "Pacote inválido." }
+        val script =
+            "am force-stop '$packageName' 2>/dev/null || true; " +
+            "sleep 0.35; " +
+            "monkey -p '$packageName' -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || { echo 'APP_LAUNCH_FAILED'; exit 2; }; " +
+            "echo 'OK App $packageName iniciado com driver customizado'"
+        return result(shell.runRoot(script), "Falha ao iniciar $packageName.")
     }
 
     private fun normalizeTemp(raw: Long): Double = when {
