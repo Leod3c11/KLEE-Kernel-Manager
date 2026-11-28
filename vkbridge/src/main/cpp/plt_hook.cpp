@@ -34,7 +34,17 @@ static bool patch_rela_table(
             continue;
         }
         uint32_t sym_idx = ELF64_R_SYM(rela[i].r_info);
-        const char *name = strtab + symtab[sym_idx].st_name;
+        const Elf64_Sym &sym = symtab[sym_idx];
+        // Only patch undefined external function imports — NEVER locally defined STT_OBJECT
+        // global function-pointer variables (e.g. Vulkan Caps Viewer's `PFN_vkCreateInstance vkCreateInstance;`)!
+        if (sym.st_shndx != SHN_UNDEF) {
+            continue;
+        }
+        unsigned char st_type = ELF64_ST_TYPE(sym.st_info);
+        if (st_type == STT_OBJECT || st_type == STT_TLS) {
+            continue;
+        }
+        const char *name = strtab + sym.st_name;
         if (strcmp(name, target_symbol) != 0) {
             continue;
         }
