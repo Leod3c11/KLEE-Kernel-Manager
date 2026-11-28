@@ -43,14 +43,14 @@ class PerAppEngineService : Service() {
     private lateinit var settingsStore: AppSettingsStore
     private lateinit var profileStore: ProfileStore
     private lateinit var vulkanDriverStore: VulkanDriverStore
-    private val repository = KernelControlRepository(RootShell())
+    private val shell = RootShell()
+    private val repository = KernelControlRepository(shell)
 
     private var watchJob: Job? = null
     private var verifyJob: Job? = null
     private var lastPackage: String? = null
     private var activeRule: PerAppRule? = null
     private var bypassWasEnabledByRule = false
-    private var vulkanMountedByRule = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -156,9 +156,22 @@ class PerAppEngineService : Service() {
             val driver = vulkanDriverStore.loadDrivers().firstOrNull { it.id == rule.vulkanDriverId }
             if (driver != null) {
                 selectedDriver = driver
-                val mountRes = repository.mountCustomVulkanDriver(driver, rule.packageName)
-                if (mountRes.startsWith("OK")) {
-                    vulkanMountedByRule = true
+                val curSys = repository.inspectSystemVulkan()
+                val alreadyActive = curSys.overlayMounted &&
+                    curSys.activeDriverId == driver.id &&
+                    curSys.optInApps.split(",").contains(rule.packageName)
+                if (!alreadyActive) {
+                    val carrier = dev.klee.kernelmanager.VulkanCarrierResolver.resolveCarrier(applicationContext, shell)
+                    if (carrier != null) {
+                        val sameDriverPkgs = settingsStore.loadPerAppRules()
+                            .filter { it.vulkanDriverId == driver.id }
+                            .map { it.packageName }
+                        val res = repository.stageCustomVulkanDriver(driver, rule.packageName, carrier, sameDriverPkgs)
+                        if (res.startsWith("OK")) {
+                            appliedParts.add("VK:${driver.name.take(14)}")
+                        }
+                    }
+                } else {
                     appliedParts.add("VK:${driver.name.take(14)}")
                 }
             }
@@ -207,10 +220,6 @@ class PerAppEngineService : Service() {
 
     private suspend fun restoreDefaultAfterRule(previousRule: PerAppRule) = withContext(Dispatchers.IO) {
         verifyJob?.cancel()
-        if (vulkanMountedByRule) {
-            repository.unmountCustomVulkanDriver()
-            vulkanMountedByRule = false
-        }
         if (previousRule.profileId != "NONE") {
             applyProfileById(BuiltInProfile.BALANCED.id)
         }
@@ -307,13 +316,7 @@ class PerAppEngineService : Service() {
 
     override fun onDestroy() {
         watchJob?.cancel()
-        if (vulkanMountedByRule) {
-            try {
-                repository.unmountCustomVulkanDriver()
-            } catch (_: Throwable) {
-            }
-            vulkanMountedByRule = false
-        }
+        verifyJob?.cancel()
         scope.cancel()
         _running.value = false
         _status.value = "Motor Per-App parado"

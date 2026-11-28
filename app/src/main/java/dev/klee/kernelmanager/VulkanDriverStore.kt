@@ -23,6 +23,13 @@ data class VulkanDriverPackage(
     val importedAt: Long
 )
 
+data class VulkanCarrierInfo(
+    val packageName: String,
+    val nativeLibraryDir: String,
+    val mode: String, // "DATA_APP" or "TMPFS"
+    val forceQueryable: Boolean = true
+)
+
 data class SystemVulkanInfo(
     val root: Boolean = false,
     val vendorHwDir: String = "/vendor/lib64/hw",
@@ -34,6 +41,14 @@ data class SystemVulkanInfo(
     val overlayMounted: Boolean = false,
     val activeDriverId: String = "",
     val activePackage: String = "",
+    val roHardwareVulkan: String = "",
+    val roHardwareEgl: String = "",
+    val roGfxDriver0: String = "",
+    val resetpropPath: String = "",
+    val carrierPackage: String = "",
+    val carrierLibDir: String = "",
+    val carrierMode: String = "",
+    val optInApps: String = "",
     val message: String = ""
 )
 
@@ -55,6 +70,8 @@ data class VulkanVerificationResult(
     val expectedInode: String = "",
     val matchedMaps: List<String> = emptyList(),
     val angleLoaded: Boolean = false,
+    val unloadedBuiltin: Boolean = false,
+    val carrierPathMatched: Boolean = false,
     val relevantLogcat: List<String> = emptyList(),
     val summary: String = "",
     val timestamp: String = ""

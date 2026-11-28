@@ -39,6 +39,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
 
     private var autoUnmountJob: Job? = null
     private var verifyJob: Job? = null
+    private var resolvedCarrier: VulkanCarrierInfo? = null
 
     private val _themePreset = MutableStateFlow(settingsStore.loadTheme())
     val themePreset = _themePreset.asStateFlow()
@@ -219,8 +220,18 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         showInfo("Regra removida${removed?.let { ": ${it.appLabel}" } ?: ""}.")
     }
 
+    private suspend fun ensureCarrier(forceRefresh: Boolean = false): VulkanCarrierInfo? {
+        if (!forceRefresh && resolvedCarrier != null) return resolvedCarrier
+        val found = withContext(Dispatchers.IO) {
+            VulkanCarrierResolver.resolveCarrier(getApplication<Application>().applicationContext, shell)
+        }
+        resolvedCarrier = found
+        return found
+    }
+
     fun loadSystemVulkan() = runQuietTask {
-        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        val carrier = ensureCarrier(forceRefresh = true)
+        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(carrier) }
         _vulkanDrivers.value = vulkanDriverStore.loadDrivers()
     }
 
@@ -232,14 +243,16 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
     fun importVulkanDriverZip(uri: Uri) = runTask {
         val pkg = withContext(Dispatchers.IO) { vulkanDriverStore.importFromZip(uri, shell) }
         _vulkanDrivers.value = vulkanDriverStore.loadDrivers()
-        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        val carrier = ensureCarrier()
+        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(carrier) }
         val msg = "Driver '${pkg.name}' importado (${pkg.primaryLibName})!"
         recordLog("Importar Driver Vulkan", msg, false)
         _feedback.value = UiFeedback(text = msg, isError = false)
     }
 
     fun deleteVulkanDriver(driverId: String) = runTask {
-        val curSys = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        val carrier = ensureCarrier()
+        val curSys = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(carrier) }
         if (curSys.overlayMounted && curSys.activeDriverId == driverId) {
             withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
         }
@@ -251,44 +264,60 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         }
         settingsStore.savePerAppRules(fixedRules)
         _perAppRules.value = fixedRules
-        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(carrier) }
         recordLog("Remover Driver Vulkan", "Driver $driverId removido.", false)
         showInfo("Driver Vulkan removido.")
     }
 
     fun restoreDefaultVulkanDriver() = runTask {
         autoUnmountJob?.cancel()
+        verifyJob?.cancel()
         val res = withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
         val isErr = !res.startsWith("OK")
         recordLog("Restaurar Driver Vulkan Padrão", res, isErr)
-        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        val carrier = ensureCarrier()
+        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(carrier) }
         _feedback.value = UiFeedback(text = res, isError = isErr)
     }
 
     fun launchAppWithRule(rule: PerAppRule) = runTask {
         val logSteps = mutableListOf<String>()
-        var mountedCustom = false
+        var stagedCustom = false
         var selectedDriver: VulkanDriverPackage? = null
 
-        // 1. Force Vulkan via ANGLE if enabled
+        // 1. Configure ANGLE (enable or disable according to rule)
+        val angleRes = withContext(Dispatchers.IO) {
+            repository.applyForceVulkanAngle(rule.packageName, rule.forceVulkanAngle)
+        }
         if (rule.forceVulkanAngle) {
-            val angleRes = withContext(Dispatchers.IO) { repository.applyForceVulkanAngle(rule.packageName, true) }
-            logSteps.add("ANGLE: $angleRes")
+            logSteps.add("ANGLE: ON")
         }
 
-        // 2. Mount Custom Vulkan Driver from .zip if selected
+        // 2. Stage Custom Vulkan Driver into GraphicsEnvironment Carrier Namespace (ro.gfx.driver.0)
         if (rule.vulkanDriverId != "SYSTEM") {
             val driver = _vulkanDrivers.value.firstOrNull { it.id == rule.vulkanDriverId }
                 ?: error("Driver Vulkan selecionado não encontrado.")
-            val mountRes = withContext(Dispatchers.IO) {
-                repository.mountCustomVulkanDriver(driver, rule.packageName)
+            val carrier = ensureCarrier()
+                ?: error("Nenhum pacote carrier de sistema (arm64 + forceQueryable + meta-data) encontrado para ro.gfx.driver.0.")
+            val sameDriverPkgs = _perAppRules.value
+                .filter { it.vulkanDriverId == driver.id }
+                .map { it.packageName }
+            val stageRes = withContext(Dispatchers.IO) {
+                repository.stageCustomVulkanDriver(driver, rule.packageName, carrier, sameDriverPkgs)
             }
-            if (!mountRes.startsWith("OK")) {
-                error("Falha ao montar driver ${driver.name}: $mountRes")
+            recordLog("Stage Vulkan (${driver.name})", stageRes, !stageRes.startsWith("OK"))
+            if (!stageRes.startsWith("OK")) {
+                error("Falha ao ativar driver ${driver.name}: $stageRes")
             }
-            mountedCustom = true
+            stagedCustom = true
             selectedDriver = driver
-            logSteps.add("Vulkan: ${driver.name}")
+            logSteps.add("Vulkan: ${driver.name} (${carrier.mode})")
+        } else {
+            // Ensure this app is not opted-in if its rule explicitly requests System Mali
+            val curSys = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(ensureCarrier()) }
+            if (curSys.optInApps.split(",").contains(rule.packageName)) {
+                withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
+            }
         }
 
         // 3. Performance profile
@@ -327,30 +356,26 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
             logSteps.add("Bypass ON")
         }
 
-        // 7. Clean restart & launch game so it loads the custom driver .so + ANGLE from scratch
+        // 7. Clean restart & launch game so GraphicsEnvironment triggers UnloadBuiltinDriver() from scratch
         val launchRes = withContext(Dispatchers.IO) { repository.launchAppClean(rule.packageName) }
         val isErr = !launchRes.startsWith("OK")
-        val summary = "${rule.appLabel} iniciado (${logSteps.joinToString(" · ")})"
-        recordLog("Lançar ${rule.appLabel}", "$summary | $launchRes", isErr)
-        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
+        val summary = "${rule.appLabel} iniciado (${logSteps.joinToString(" · ").ifBlank { "Regra aplicada" }})"
+        recordLog("Lançar ${rule.appLabel}", "$summary | $angleRes | $launchRes", isErr)
+        _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(ensureCarrier()) }
         _feedback.value = UiFeedback(text = if (isErr) launchRes else summary, isError = isErr)
 
-        // 8. Automatically monitor whether the custom Vulkan driver loaded, then safely auto-unmount
-        if (!isErr && (mountedCustom || rule.forceVulkanAngle)) {
+        // 8. Automatically monitor whether GraphicsEnvironment unloaded Mali & loaded the custom driver
+        if (!isErr && (stagedCustom || rule.forceVulkanAngle)) {
             startPostLaunchVerification(
                 rule = rule,
-                driver = selectedDriver,
-                mountedCustom = mountedCustom,
-                unmountSec = _vulkanAutoUnmountSec.value
+                driver = selectedDriver
             )
         }
     }
 
     private fun startPostLaunchVerification(
         rule: PerAppRule,
-        driver: VulkanDriverPackage?,
-        mountedCustom: Boolean,
-        unmountSec: Int
+        driver: VulkanDriverPackage?
     ) {
         verifyJob?.cancel()
         autoUnmountJob?.cancel()
@@ -364,14 +389,13 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
                 appLabel = rule.appLabel,
                 driverName = drvName,
                 status = VulkanLoadStatus.CHECKING,
-                summary = "Aguardando ${rule.appLabel} inicializar e mapear o driver Vulkan...",
+                summary = "Aguardando ${rule.appLabel} inicializar e GraphicsEnvironment carregar o driver...",
                 timestamp = timeFormat.format(Date())
             ),
             notifyUser = true
         )
 
         verifyJob = viewModelScope.launch {
-            val startedAt = System.currentTimeMillis()
             val delaysMs = listOf(1800L, 2200L, 2500L, 3000L)
             var finalResult: VulkanVerificationResult? = null
 
@@ -405,21 +429,9 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
                     (driver != null && res.status == VulkanLoadStatus.LOADED_STOCK)
                 recordLog(
                     "Monitor Vulkan (${rule.appLabel})",
-                    "[${res.status}] ${res.summary} | maps=${res.matchedMaps.size} | logs=${res.relevantLogcat.size}",
+                    "[${res.status}] ${res.summary} | unload=${res.unloadedBuiltin} | carrier=${res.carrierPathMatched} | maps=${res.matchedMaps.size} | logs=${res.relevantLogcat.size}",
                     isProblem
                 )
-            }
-
-            // Coordinate safe auto-unmount AFTER verification completes so we never unmount before the game maps the .so
-            if (mountedCustom && unmountSec > 0) {
-                val elapsed = System.currentTimeMillis() - startedAt
-                val remaining = (unmountSec * 1000L - elapsed).coerceAtLeast(1500L)
-                autoUnmountJob = viewModelScope.launch {
-                    delay(remaining)
-                    val umRes = withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
-                    recordLog("Auto-Unmount Vulkan (${unmountSec}s)", umRes, !umRes.startsWith("OK"))
-                    _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan() }
-                }
             }
         }
     }

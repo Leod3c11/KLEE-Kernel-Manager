@@ -98,10 +98,10 @@ fun VulkanDriverScreen(
             )
         }
 
-        // System Vulkan HAL & Overlay Status Card
+        // System Vulkan HAL & GraphicsEnvironment Status Card
         KleeCard(
             modifier = Modifier.fillMaxWidth(),
-            accentBorder = (if (systemInfo.overlayMounted) KleeColors.Warning else KleeColors.Gpu).copy(alpha = 0.4f)
+            accentBorder = (if (systemInfo.overlayMounted) KleeColors.Success else KleeColors.Gpu).copy(alpha = 0.45f)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -110,29 +110,34 @@ fun VulkanDriverScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Rounded.Layers, contentDescription = null, tint = KleeColors.Gpu, modifier = Modifier.size(20.dp))
-                    Text("HAL Vulkan do Sistema", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                    Text("GraphicsEnvironment (Zero-Patch)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
                 }
                 StatusPill(
-                    text = if (systemInfo.overlayMounted) "Custom Montado" else "Padrão Mali",
-                    color = if (systemInfo.overlayMounted) KleeColors.Warning else KleeColors.Success
+                    text = if (systemInfo.overlayMounted) "Custom Ativo" else "Padrão Mali",
+                    color = if (systemInfo.overlayMounted) KleeColors.Success else KleeColors.Primary
                 )
             }
 
             VkInfoRow("Driver HAL", systemInfo.vulkanFullPath.ifBlank { "Não detectado" })
-            if (systemInfo.isSymlink) {
-                VkInfoRow("Alvo Symlink", systemInfo.symlinkTarget.ifBlank { "--" })
-            }
+            VkInfoRow("ro.hardware.vulkan", systemInfo.roHardwareVulkan.ifBlank { "mali (padrão)" })
+            VkInfoRow(
+                "Carrier (ro.gfx.driver.0)",
+                if (systemInfo.carrierPackage.isNotBlank()) "${systemInfo.carrierPackage} [${systemInfo.carrierMode}]"
+                else "Não detectado"
+            )
+            VkInfoRow(
+                "resetprop",
+                if (systemInfo.resetpropPath.isNotBlank()) "Disponível (${systemInfo.resetpropPath.substringAfterLast('/')})"
+                else "Não encontrado!"
+            )
             VkInfoRow("ANGLE (GLES -> Vulkan)", if (systemInfo.angleAvailable) "Disponível" else "Não detectado")
+            if (systemInfo.optInApps.isNotBlank()) {
+                VkInfoRow("Apps Opt-In", systemInfo.optInApps)
+            }
             if (systemInfo.overlayMounted) {
                 val activeDrv = drivers.firstOrNull { it.id == systemInfo.activeDriverId }?.name ?: systemInfo.activeDriverId
                 VkInfoRow("Driver Ativo", "$activeDrv (${systemInfo.activePackage})")
             }
-
-            Text(
-                "Segurança: o KLEE faz bind-mount isolado diretamente no HAL Vulkan real (${systemInfo.symlinkTarget.ifBlank { systemInfo.vulkanFullPath }}) mantendo libGLES_mali.so intacta, com contexto SELinux preservado.",
-                color = KleeColors.TextMuted,
-                style = MaterialTheme.typography.bodySmall
-            )
 
             OutlinedButton(
                 onClick = onRestoreDefault,
@@ -142,32 +147,20 @@ fun VulkanDriverScreen(
             ) {
                 Icon(Icons.Rounded.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Restaurar Driver Padrão do Sistema (Unmount)")
+                Text("Restaurar Driver Padrão do Sistema (Mali)")
             }
         }
 
-        // Auto-unmount timing safety card
+        // How Zero-Patch GraphicsEnvironment works card
         KleeCard(modifier = Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Rounded.Shield, contentDescription = null, tint = KleeColors.Primary, modifier = Modifier.size(18.dp))
-                Column {
-                    Text("Auto-Desmontagem Segura após Lançar Jogo", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Motor Nativo Android 16 (Unload Builtin)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Depois que o jogo carrega a .so na RAM, o KLEE desmonta o overlay para o resto do Android continuar usando o driver Mali original.",
+                        "No Android 16 o Zygote pré-carrega o Mali no boot, por isso substituir /vendor não basta. O KLEE usa o namespace nativo GraphicsEnvironment (ro.gfx.driver.0 + opt-in por app), forçando o libvulkan.so a descarregar o Mali pré-carregado (Unload builtin Vulkan driver) e carregar seu PanVK .zip somente nos apps escolhidos — sem modificar APKs, sem Zygisk e sem afetar o sistema.",
                         color = KleeColors.TextMuted,
                         style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(5 to "5s", 8 to "8s", 12 to "12s", 0 to "Ao sair").forEach { (sec, label) ->
-                    FilterChip(
-                        selected = autoUnmountSec == sec,
-                        onClick = { onSelectAutoUnmount(sec) },
-                        label = { Text(label) }
                     )
                 }
             }
@@ -362,6 +355,10 @@ fun VulkanVerificationCard(
             StatusPill(
                 text = if (result.pid != null) "PID ${result.pid}" else "Sem PID",
                 color = if (result.pid != null) KleeColors.Primary else KleeColors.TextMuted
+            )
+            StatusPill(
+                text = if (result.unloadedBuiltin) "Unload Mali: SIM" else "Unload Mali: NÃO",
+                color = if (result.unloadedBuiltin) KleeColors.Success else KleeColors.TextMuted
             )
             StatusPill(
                 text = if (result.angleLoaded) "ANGLE: Ativo" else "ANGLE: Inativo",

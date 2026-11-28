@@ -326,7 +326,7 @@ fun PerAppScreen(
                     refreshRateHz = supportedHz.maxOrNull() ?: 120,
                     enableBypassCharging = false,
                     vulkanDriverId = vulkanDrivers.firstOrNull()?.id ?: "SYSTEM",
-                    forceVulkanAngle = true
+                    forceVulkanAngle = false
                 )
             }
         )
@@ -498,7 +498,7 @@ private fun PerAppRuleEditorDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                         Text("Forçar Vulkan (ANGLE)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.bodyMedium)
-                        Text("Traduz jogos OpenGL ES para rodar sobre Vulkan + Game Mode Performance", color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+                        Text("Ative para jogos OpenGL ES rodarem sobre Vulkan. Para apps já em Vulkan (ex.: Vulkan Caps Viewer), deixe desligado.", color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked = forceAngle, onCheckedChange = { forceAngle = it })
                 }

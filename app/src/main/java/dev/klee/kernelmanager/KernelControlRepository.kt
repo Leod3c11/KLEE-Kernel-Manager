@@ -1161,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.5.3 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.6.0 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1338,9 +1338,13 @@ class KernelControlRepository(private val shell: RootShell) {
             }
             val vkInfo = inspectSystemVulkan()
             appendLine()
-            appendLine("--- Sistema Vulkan & ANGLE ---")
+            appendLine("--- Sistema Vulkan, GraphicsEnvironment & ANGLE ---")
             appendLine("Vendor HW Dir: ${vkInfo.vendorHwDir} · Vulkan SO: ${vkInfo.vulkanFullPath} (symlink=${vkInfo.isSymlink} -> ${vkInfo.symlinkTarget})")
-            appendLine("ANGLE disponível: ${vkInfo.angleAvailable} · Overlay montado: ${vkInfo.overlayMounted} (driver=${vkInfo.activeDriverId}, app=${vkInfo.activePackage})")
+            appendLine("Props: ro.hardware.vulkan=${vkInfo.roHardwareVulkan.ifBlank { "(vazio)" }} · ro.hardware.egl=${vkInfo.roHardwareEgl.ifBlank { "(vazio)" }} · ro.gfx.driver.0=${vkInfo.roGfxDriver0.ifBlank { "(vazio)" }}")
+            appendLine("resetprop: ${vkInfo.resetpropPath.ifBlank { "NAO_ENCONTRADO" }} · ANGLE disponível: ${vkInfo.angleAvailable}")
+            appendLine("Carrier ativo/detectado: ${vkInfo.carrierPackage.ifBlank { "nenhum" }} [${vkInfo.carrierMode}] · dir=${vkInfo.carrierLibDir}")
+            appendLine("Driver customizado ativo: ${vkInfo.overlayMounted} (driver=${vkInfo.activeDriverId}, app=${vkInfo.activePackage})")
+            appendLine("updatable_driver_production_opt_in_apps: ${vkInfo.optInApps.ifBlank { "(vazio)" }}")
             val anglePkgs = shell.runReadOnly("printf 'pkgs=%s | vals=%s\\n' \"\$(settings get global angle_gl_driver_selection_pkgs 2>/dev/null)\" \"\$(settings get global angle_gl_driver_selection_values 2>/dev/null)\"").stdout.joinToString(" ")
             appendLine("ANGLE settings: $anglePkgs")
             if (lastVulkanCheck != null) {
@@ -1348,7 +1352,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 appendLine("--- Última Verificação de Driver Vulkan (Monitor Pós-Lançamento) ---")
                 appendLine("App: ${lastVulkanCheck.appLabel} (${lastVulkanCheck.packageName}) · Hora: ${lastVulkanCheck.timestamp}")
                 appendLine("Driver esperado: ${lastVulkanCheck.driverName} · Inode esperado: ${lastVulkanCheck.expectedInode.ifBlank { "N/A" }}")
-                appendLine("Status: ${lastVulkanCheck.status} · PID: ${lastVulkanCheck.pid ?: "não rodando"} · ANGLE carregado: ${lastVulkanCheck.angleLoaded}")
+                appendLine("Status: ${lastVulkanCheck.status} · PID: ${lastVulkanCheck.pid ?: "não rodando"} · UnloadBuiltin: ${lastVulkanCheck.unloadedBuiltin} · CarrierMatch: ${lastVulkanCheck.carrierPathMatched} · ANGLE: ${lastVulkanCheck.angleLoaded}")
                 appendLine("Resumo: ${lastVulkanCheck.summary}")
                 appendLine("Bibliotecas mapeadas (/proc/<pid>/maps):")
                 if (lastVulkanCheck.matchedMaps.isEmpty()) {
@@ -1382,15 +1386,16 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.5.3 ===")
+            appendLine("=== FIM DO LOG KLEE v0.6.0 ===")
         }
     }
 
-    fun inspectSystemVulkan(): SystemVulkanInfo {
+    fun inspectSystemVulkan(carrierHint: VulkanCarrierInfo? = null): SystemVulkanInfo {
         if (!shell.rootCheck()) {
             return SystemVulkanInfo(root = false, message = "Autorize o KLEE no KernelSU.")
         }
         val script =
+            "( " +
             "hwdir=''; vkfile=''; vkpath=''; " +
             "for dir in /vendor/lib64/hw /odm/lib64/hw /system/vendor/lib64/hw; do " +
             "  [ -d \"\$dir\" ] || continue; " +
@@ -1399,76 +1404,269 @@ class KernelControlRepository(private val shell: RootShell) {
             "    hwdir=\"\$dir\"; vkfile=\$(basename \"\$f\"); vkpath=\"\$f\"; break 2; " +
             "  done; " +
             "done; " +
-            "issym=0; symtgt=''; realvk=\"\$vkpath\"; " +
-            "if [ -L \"\$vkpath\" ]; then issym=1; symtgt=\$(readlink -f \"\$vkpath\" 2>/dev/null); [ -n \"\$symtgt\" ] && realvk=\"\$symtgt\"; fi; " +
+            "issym=0; symtgt=''; " +
+            "if [ -L \"\$vkpath\" ]; then issym=1; symtgt=\$(readlink -f \"\$vkpath\" 2>/dev/null); fi; " +
             "hasangle=0; " +
             "if pm list packages 2>/dev/null | grep -qi angle || [ -e /system/lib64/libEGL_angle.so ] || [ -e /vendor/lib64/egl/libEGL_angle.so ] || [ -e /apex/com.android.angle/lib64/libEGL_angle.so ]; then hasangle=1; fi; " +
-            "mounted=0; " +
-            "if [ -n \"\$realvk\" ] && grep -F \" \$realvk \" /proc/1/mountinfo 2>/dev/null | grep -q . || grep -q 'klee_hw_overlay' /proc/1/mountinfo 2>/dev/null || [ -f /data/adb/klee_drivers/active_state.txt ]; then mounted=1; fi; " +
-            "state=\$(cat /data/adb/klee_drivers/active_state.txt 2>/dev/null); " +
-            "printf 'VK|%s|%s|%s|%s|%s|%s|%s|%s\\n' \"\$hwdir\" \"\$vkfile\" \"\$vkpath\" \"\$issym\" \"\$symtgt\" \"\$hasangle\" \"\$mounted\" \"\$state\""
+            "rp=''; " +
+            "for cand in /data/adb/ksu/bin/resetprop /data/adb/magisk/resetprop /data/adb/ap/bin/resetprop /sbin/resetprop; do [ -x \"\$cand\" ] && { rp=\"\$cand\"; break; }; done; " +
+            "if [ -z \"\$rp\" ] && command -v resetprop >/dev/null 2>&1; then rp=\$(command -v resetprop); fi; " +
+            "if [ -z \"\$rp\" ] && [ -x /data/adb/ksud ]; then rp='/data/adb/ksud resetprop'; fi; " +
+            "if [ -z \"\$rp\" ] && [ -x /data/adb/ksu/bin/ksud ]; then rp='/data/adb/ksu/bin/ksud resetprop'; fi; " +
+            "hwvk=\$(getprop ro.hardware.vulkan 2>/dev/null); " +
+            "hwegl=\$(getprop ro.hardware.egl 2>/dev/null); " +
+            "gfx0=\$(getprop ro.gfx.driver.0 2>/dev/null); " +
+            "optin=\$(settings get global updatable_driver_production_opt_in_apps 2>/dev/null); [ \"\$optin\" = 'null' ] && optin=''; " +
+            "active=0; [ -f /data/adb/klee_drivers/active_state.txt ] && active=1; " +
+            "state=\$(cat /data/adb/klee_drivers/active_state.txt 2>/dev/null | tr '\\n' ' '); " +
+            "printf 'VK|%s|%s|%s|%s|%s|%s|%s\\n' \"\$hwdir\" \"\$vkfile\" \"\$vkpath\" \"\$issym\" \"\$symtgt\" \"\$hasangle\" \"\$active\"; " +
+            "printf 'PROPS|%s|%s|%s|%s|%s\\n' \"\$hwvk\" \"\$hwegl\" \"\$gfx0\" \"\$rp\" \"\$optin\"; " +
+            "printf 'STATE|%s\\n' \"\$state\" " +
+            ")"
 
         val r = shell.runReadOnly(script)
-        val p = r.stdout.firstOrNull { it.startsWith("VK|") }?.split("|")
+        val vk = r.stdout.firstOrNull { it.startsWith("VK|") }?.split("|")
             ?: return SystemVulkanInfo(root = true, message = "Não foi possível inspecionar Vulkan do sistema.")
-        val stateParts = p.getOrNull(8).orEmpty().split(":")
+        val props = r.stdout.firstOrNull { it.startsWith("PROPS|") }?.split("|") ?: emptyList()
+        val stateRaw = r.stdout.firstOrNull { it.startsWith("STATE|") }?.removePrefix("STATE|")?.trim().orEmpty()
+        val stateParts = if (stateRaw.contains("|")) stateRaw.split("|") else stateRaw.split(":")
+
+        val activeDriverId = stateParts.getOrNull(0).orEmpty()
+        val activePkg = if (stateRaw.contains("|")) stateParts.getOrNull(2).orEmpty() else stateParts.getOrNull(1).orEmpty()
+        val stateCarrierPkg = if (stateRaw.contains("|")) stateParts.getOrNull(3).orEmpty() else ""
+        val stateCarrierDir = if (stateRaw.contains("|")) stateParts.getOrNull(4).orEmpty() else ""
+        val stateCarrierMode = if (stateRaw.contains("|")) stateParts.getOrNull(6).orEmpty() else ""
+
         return SystemVulkanInfo(
             root = true,
-            vendorHwDir = p.getOrNull(1).orEmpty().ifBlank { "/vendor/lib64/hw" },
-            vulkanFileName = p.getOrNull(2).orEmpty(),
-            vulkanFullPath = p.getOrNull(3).orEmpty(),
-            isSymlink = p.getOrNull(4) == "1",
-            symlinkTarget = p.getOrNull(5).orEmpty(),
-            angleAvailable = p.getOrNull(6) == "1",
-            overlayMounted = p.getOrNull(7) == "1",
-            activeDriverId = stateParts.getOrNull(0).orEmpty(),
-            activePackage = stateParts.getOrNull(1).orEmpty(),
-            message = if (p.getOrNull(2).isNullOrBlank()) "Nenhum vulkan.*.so encontrado em /vendor/lib64/hw." else ""
+            vendorHwDir = vk.getOrNull(1).orEmpty().ifBlank { "/vendor/lib64/hw" },
+            vulkanFileName = vk.getOrNull(2).orEmpty(),
+            vulkanFullPath = vk.getOrNull(3).orEmpty(),
+            isSymlink = vk.getOrNull(4) == "1",
+            symlinkTarget = vk.getOrNull(5).orEmpty(),
+            angleAvailable = vk.getOrNull(6) == "1",
+            overlayMounted = vk.getOrNull(7) == "1",
+            activeDriverId = activeDriverId,
+            activePackage = activePkg,
+            roHardwareVulkan = props.getOrNull(1).orEmpty(),
+            roHardwareEgl = props.getOrNull(2).orEmpty(),
+            roGfxDriver0 = props.getOrNull(3).orEmpty(),
+            resetpropPath = props.getOrNull(4).orEmpty(),
+            optInApps = props.getOrNull(5).orEmpty(),
+            carrierPackage = stateCarrierPkg.ifBlank { carrierHint?.packageName.orEmpty() },
+            carrierLibDir = stateCarrierDir.ifBlank { carrierHint?.nativeLibraryDir.orEmpty() },
+            carrierMode = stateCarrierMode.ifBlank { carrierHint?.mode.orEmpty() },
+            message = if (vk.getOrNull(2).isNullOrBlank()) "Nenhum vulkan.*.so encontrado em /vendor/lib64/hw." else ""
         )
     }
 
-    fun mountCustomVulkanDriver(driver: VulkanDriverPackage, targetPkg: String): String {
+    fun stageCustomVulkanDriver(
+        driver: VulkanDriverPackage,
+        targetPkg: String,
+        carrier: VulkanCarrierInfo,
+        optInPackages: List<String> = listOf(targetPkg)
+    ): String {
         require(driver.installDir.matches(Regex("^/data/adb/klee_drivers/drv_[a-f0-9-]+$"))) { "Diretório de driver inválido." }
         require(driver.primaryLibName.matches(Regex("^[A-Za-z0-9._-]+\\.so$"))) { "Biblioteca principal inválida." }
         require(targetPkg.matches(Regex("^[A-Za-z0-9._-]+$"))) { "Pacote alvo inválido." }
+        require(carrier.packageName.matches(Regex("^[A-Za-z0-9._-]+$"))) { "Pacote carrier inválido." }
+        require(carrier.nativeLibraryDir.matches(Regex("^[A-Za-z0-9._/~=+@-]+$"))) { "Diretório carrier inválido." }
+        require(carrier.mode == "DATA_APP" || carrier.mode == "TMPFS") { "Modo carrier inválido." }
 
+        val cleanOptIn = (optInPackages + targetPkg)
+            .filter { it.matches(Regex("^[A-Za-z0-9._-]+$")) }
+            .distinct()
+            .joinToString(",")
         val srcLib = "${driver.installDir}/${driver.primaryLibName}"
+        val safeDrvName = driver.name.replace("|", "_").replace("'", "")
+
         val script =
             "( " +
             "NS=''; if command -v nsenter >/dev/null 2>&1 && nsenter --mount=/proc/1/ns/mnt true 2>/dev/null; then NS='nsenter --mount=/proc/1/ns/mnt --'; fi; " +
-            "[ -f '$srcLib' ] || { echo 'DRIVER_SO_MISSING: $srcLib'; exit 2; }; " +
-            "vkpath=''; " +
-            "for dir in /vendor/lib64/hw /odm/lib64/hw /system/vendor/lib64/hw; do " +
-            "  [ -d \"\$dir\" ] || continue; " +
+            "RP=''; " +
+            "for cand in /data/adb/ksu/bin/resetprop /data/adb/magisk/resetprop /data/adb/ap/bin/resetprop /sbin/resetprop; do [ -x \"\$cand\" ] && { RP=\"\$cand\"; break; }; done; " +
+            "if [ -z \"\$RP\" ] && command -v resetprop >/dev/null 2>&1; then RP=\$(command -v resetprop); fi; " +
+            "if [ -z \"\$RP\" ] && [ -x /data/adb/ksud ]; then RP='/data/adb/ksud resetprop'; fi; " +
+            "if [ -z \"\$RP\" ] && [ -x /data/adb/ksu/bin/ksud ]; then RP='/data/adb/ksu/bin/ksud resetprop'; fi; " +
+            "[ -n \"\$RP\" ] || { echo 'RESETPROP_NOT_FOUND: resetprop do KernelSU/Magisk não encontrado'; exit 2; }; " +
+            "[ -f '$srcLib' ] || { echo 'DRIVER_SO_MISSING: $srcLib'; exit 3; }; " +
+            "mkdir -p /data/adb/klee_drivers; " +
+            // 1. Clean any prior staging cleanly (without wiping orig_gfx_driver.txt)
+            "if [ -f /data/adb/klee_drivers/active_state.txt ]; then " +
+            "  prev=\$(cat /data/adb/klee_drivers/active_state.txt 2>/dev/null); " +
+            "  pmode=\$(printf '%s' \"\$prev\" | cut -d'|' -f7); " +
+            "  pdir=\$(printf '%s' \"\$prev\" | cut -d'|' -f5); " +
+            "  pcreated=\$(printf '%s' \"\$prev\" | cut -d'|' -f8); " +
+            "  if [ \"\$pmode\" = 'TMPFS' ] && [ -n \"\$pdir\" ]; then \$NS umount -l \"\$pdir\" 2>/dev/null || umount -l \"\$pdir\" 2>/dev/null || true; fi; " +
+            "  if [ \"\$pmode\" = 'DATA_APP' ] && [ -f /data/adb/klee_drivers/staged_files.list ]; then " +
+            "    while IFS= read -r oldf; do [ -n \"\$oldf\" ] && rm -f \"\$oldf\" 2>/dev/null; done < /data/adb/klee_drivers/staged_files.list; " +
+            "    [ \"\$pcreated\" = '1' ] && [ -n \"\$pdir\" ] && rmdir \"\$pdir\" 2>/dev/null || true; " +
+            "  fi; " +
+            "fi; " +
+            // Also clean any legacy v0.5.x bind-mount on /vendor/lib64/hw/vulkan.*.so
+            "for dir in /vendor/lib64/hw /odm/lib64/hw; do " +
             "  for f in \"\$dir\"/vulkan.*.so; do " +
             "    [ -e \"\$f\" ] || continue; " +
-            "    vkpath=\"\$f\"; break 2; " +
+            "    rv=\$(readlink -f \"\$f\" 2>/dev/null); " +
+            "    [ -n \"\$rv\" ] && { \$NS umount -l \"\$rv\" 2>/dev/null || umount -l \"\$rv\" 2>/dev/null || true; }; " +
             "  done; " +
             "done; " +
-            "[ -n \"\$vkpath\" ] || { echo 'SYSTEM_VULKAN_HAL_NOT_FOUND'; exit 3; }; " +
-            "realvk=\$(readlink -f \"\$vkpath\" 2>/dev/null); [ -n \"\$realvk\" ] || realvk=\"\$vkpath\"; " +
-            "case \"\$realvk\" in *libGLES_mali*) echo 'ABORT_GLES_SYMLINK: alvo aponta para libGLES_mali.so'; exit 4;; esac; " +
-            "\$NS umount -l \"\$realvk\" 2>/dev/null || true; " +
-            "chmod 755 /data/adb /data/adb/klee_drivers '${driver.installDir}' 2>/dev/null || true; " +
-            "chmod 644 '$srcLib' || { echo 'CHMOD_FAILED'; exit 5; }; " +
-            "chcon --reference=\"\$realvk\" '$srcLib' 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 '$srcLib' 2>/dev/null || chcon u:object_r:vendor_file:s0 '$srcLib' 2>/dev/null || true; " +
-            "merr=\$(\$NS mount --bind '$srcLib' \"\$realvk\" 2>&1); rc=\$?; " +
-            "if [ \"\$rc\" != 0 ]; then merr=\$(mount --bind '$srcLib' \"\$realvk\" 2>&1); rc=\$?; fi; " +
-            "if [ \"\$rc\" != 0 ]; then echo \"MOUNT_BIND_FAILED target=\$realvk err=\$merr\"; exit 6; fi; " +
-            "mkdir -p /data/adb/klee_drivers; " +
-            "printf '%s:%s:%s' '${driver.id}' '$targetPkg' \"\$realvk\" > /data/adb/klee_drivers/active_state.txt; " +
-            "ctx=\$(ls -Z \"\$realvk\" 2>/dev/null | head -n 1); " +
-            "echo \"OK Vulkan montado (global=\$([ -n \"\$NS\" ] && echo sim || echo master)): \$realvk -> ${driver.primaryLibName} [\$ctx]\" " +
+            // 2. Preserve original ro.gfx.driver.0 once
+            "if [ ! -f /data/adb/klee_drivers/orig_gfx_driver.txt ]; then " +
+            "  getprop ro.gfx.driver.0 2>/dev/null > /data/adb/klee_drivers/orig_gfx_driver.txt; " +
+            "fi; " +
+            // 3. Resolve exact Vulkan HAL filename(s) Android libvulkan.so searches in carrier namespace
+            "hw_vk=\$(getprop ro.hardware.vulkan 2>/dev/null); " +
+            "hw_gen=\$(getprop ro.hardware 2>/dev/null); " +
+            "hw_plat=\$(getprop ro.board.platform 2>/dev/null); " +
+            "sys_vk=''; " +
+            "for dir in /vendor/lib64/hw /odm/lib64/hw /system/vendor/lib64/hw; do " +
+            "  for f in \"\$dir\"/vulkan.*.so; do [ -e \"\$f\" ] || continue; sys_vk=\$(basename \"\$f\"); break 2; done; " +
+            "done; " +
+            "primary_vk=''; " +
+            "if [ -n \"\$hw_vk\" ]; then primary_vk=\"vulkan.\${hw_vk}.so\"; " +
+            "elif [ -n \"\$sys_vk\" ]; then primary_vk=\"\$sys_vk\"; " +
+            "else primary_vk='vulkan.mali.so'; fi; " +
+            // 4. Prepare carrier nativeLibraryDir
+            "TDIR='${carrier.nativeLibraryDir}'; MODE='${carrier.mode}'; dir_created=0; SECTX='u:object_r:same_process_hal_file:s0'; " +
+            "rm -f /data/adb/klee_drivers/staged_files.list /data/adb/klee_drivers/orig_dir.list /data/adb/klee_drivers/dep_queue.txt /data/adb/klee_drivers/dep_seen.txt; " +
+            ": > /data/adb/klee_drivers/staged_files.list; : > /data/adb/klee_drivers/orig_dir.list; " +
+            "if [ \"\$MODE\" = 'DATA_APP' ]; then " +
+            "  SECTX='u:object_r:apk_data_file:s0'; " +
+            "  if [ ! -d \"\$TDIR\" ]; then " +
+            "    dir_created=1; " +
+            "    mkdir -p \"\$TDIR\" || { echo \"MKDIR_CARRIER_FAILED: \$TDIR\"; exit 4; }; " +
+            "    pdir=\$(dirname \"\$TDIR\"); chmod 755 \"\$pdir\" \"\$TDIR\" 2>/dev/null || true; " +
+            "    chcon \"\$SECTX\" \"\$pdir\" \"\$TDIR\" 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 \"\$pdir\" \"\$TDIR\" 2>/dev/null || true; " +
+            "  else " +
+            "    ls -1 \"\$TDIR\" 2>/dev/null > /data/adb/klee_drivers/orig_dir.list; " +
+            "    chmod 755 \"\$TDIR\" 2>/dev/null || true; " +
+            "  fi; " +
+            "else " +
+            "  [ -d \"\$TDIR\" ] || { echo \"CARRIER_DIR_MISSING: \$TDIR\"; exit 4; }; " +
+            "  rm -rf /dev/klee_carrier_orig; mkdir -p /dev/klee_carrier_orig; " +
+            "  cp -a \"\$TDIR\"/. /dev/klee_carrier_orig/ 2>/dev/null || true; " +
+            "  merr=\$(\$NS mount -t tmpfs -o mode=0755 tmpfs \"\$TDIR\" 2>&1); rc=\$?; " +
+            "  if [ \"\$rc\" != 0 ]; then merr=\$(mount -t tmpfs -o mode=0755 tmpfs \"\$TDIR\" 2>&1); rc=\$?; fi; " +
+            "  if [ \"\$rc\" != 0 ]; then rm -rf /dev/klee_carrier_orig; echo \"TMPFS_MOUNT_FAILED: \$merr\"; exit 5; fi; " +
+            "  cp -a /dev/klee_carrier_orig/. \"\$TDIR\"/ 2>/dev/null || true; " +
+            "  rm -rf /dev/klee_carrier_orig; " +
+            "  chcon \"\$SECTX\" \"\$TDIR\" 2>/dev/null || true; " +
+            "fi; " +
+            // 5. Stage custom Vulkan ICD primary .so + name aliases + extraLibs from zip
+            "cp -f '$srcLib' \"\$TDIR/\$primary_vk\" || { echo 'COPY_PRIMARY_VK_FAILED'; exit 6; }; " +
+            "chmod 644 \"\$TDIR/\$primary_vk\"; " +
+            "chcon \"\$SECTX\" \"\$TDIR/\$primary_vk\" 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 \"\$TDIR/\$primary_vk\" 2>/dev/null || true; " +
+            "printf '%s\\n' \"\$TDIR/\$primary_vk\" >> /data/adb/klee_drivers/staged_files.list; " +
+            "for alias in \"\$sys_vk\" \"vulkan.\${hw_gen}.so\" \"vulkan.\${hw_plat}.so\" '${driver.primaryLibName}'; do " +
+            "  [ -n \"\$alias\" ] || continue; " +
+            "  case \"\$alias\" in 'vulkan..so') continue;; esac; " +
+            "  [ \"\$alias\" = \"\$primary_vk\" ] && continue; " +
+            "  if ! grep -Fxq \"\$alias\" /data/adb/klee_drivers/orig_dir.list 2>/dev/null; then " +
+            "    ln -sf \"\$primary_vk\" \"\$TDIR/\$alias\" 2>/dev/null && printf '%s\\n' \"\$TDIR/\$alias\" >> /data/adb/klee_drivers/staged_files.list; " +
+            "  fi; " +
+            "done; " +
+            "for ex in '${driver.installDir}'/*.so; do " +
+            "  [ -f \"\$ex\" ] || continue; " +
+            "  bn=\$(basename \"\$ex\"); " +
+            "  [ \"\$bn\" = '${driver.primaryLibName}' ] && continue; " +
+            "  if ! grep -Fxq \"\$bn\" /data/adb/klee_drivers/orig_dir.list 2>/dev/null; then " +
+            "    cp -f \"\$ex\" \"\$TDIR/\$bn\" && chmod 644 \"\$TDIR/\$bn\" && (chcon \"\$SECTX\" \"\$TDIR/\$bn\" 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 \"\$TDIR/\$bn\" 2>/dev/null || true) && printf '%s\\n' \"\$TDIR/\$bn\" >> /data/adb/klee_drivers/staged_files.list; " +
+            "  fi; " +
+            "done; " +
+            // 6. Stage native Mali OpenGL ES / EGL libs (deduplicating symlinks) so hybrid GLES+Vulkan apps work when ANGLE is OFF
+            "egl_cnt=0; " +
+            "if [ -d /vendor/lib64/egl ]; then " +
+            "  for ef in /vendor/lib64/egl/*.so; do " +
+            "    [ -e \"\$ef\" ] || continue; " +
+            "    ebn=\$(basename \"\$ef\"); " +
+            "    case \"\$ebn\" in vulkan*) continue;; esac; " +
+            "    real=\$(readlink -f \"\$ef\" 2>/dev/null); [ -n \"\$real\" ] || real=\"\$ef\"; " +
+            "    rbn=\$(basename \"\$real\"); " +
+            "    if [ ! -e \"\$TDIR/\$rbn\" ] && ! grep -Fxq \"\$rbn\" /data/adb/klee_drivers/orig_dir.list 2>/dev/null; then " +
+            "      cp -f \"\$real\" \"\$TDIR/\$rbn\" 2>/dev/null && chmod 644 \"\$TDIR/\$rbn\" && (chcon \"\$SECTX\" \"\$TDIR/\$rbn\" 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 \"\$TDIR/\$rbn\" 2>/dev/null || true) && printf '%s\\n' \"\$TDIR/\$rbn\" >> /data/adb/klee_drivers/staged_files.list && egl_cnt=\$((egl_cnt+1)); " +
+            "    fi; " +
+            "    if [ \"\$ebn\" != \"\$rbn\" ] && [ ! -e \"\$TDIR/\$ebn\" ] && ! grep -Fxq \"\$ebn\" /data/adb/klee_drivers/orig_dir.list 2>/dev/null; then " +
+            "      ln -sf \"\$rbn\" \"\$TDIR/\$ebn\" 2>/dev/null && printf '%s\\n' \"\$TDIR/\$ebn\" >> /data/adb/klee_drivers/staged_files.list; " +
+            "    fi; " +
+            "  done; " +
+            "fi; " +
+            // 7. Stage transitive /vendor/lib64 DT_NEEDED dependencies (up to 35 libs) so linker namespace resolves all non-public vendor libs
+            "RE=''; " +
+            "if command -v readelf >/dev/null 2>&1; then RE='readelf'; " +
+            "elif toybox readelf --help >/dev/null 2>&1; then RE='toybox readelf'; " +
+            "elif /data/adb/ksu/bin/busybox readelf --help >/dev/null 2>&1; then RE='/data/adb/ksu/bin/busybox readelf'; fi; " +
+            "PUB='libc.so libm.so libdl.so liblog.so libz.so libandroid.so libnativewindow.so libsync.so libvulkan.so libEGL.so libGLESv1_CM.so libGLESv2.so libGLESv3.so libOpenSLES.so libmediandk.so libjnigraphics.so libvndksupport.so libbinder_ndk.so libneuralnetworks.so libicu.so libaaudio.so libcamera2ndk.so'; " +
+            "if [ -r /system/etc/public.libraries.txt ]; then PUB=\"\$PUB \$(awk '{print \$1}' /system/etc/public.libraries.txt 2>/dev/null | tr '\\n' ' ')\"; fi; " +
+            "printf '%s\\n' \"\$TDIR/\$primary_vk\" > /data/adb/klee_drivers/dep_queue.txt; " +
+            "while IFS= read -r sf; do [ -f \"\$sf\" ] && [ ! -L \"\$sf\" ] && printf '%s\\n' \"\$sf\" >> /data/adb/klee_drivers/dep_queue.txt; done < /data/adb/klee_drivers/staged_files.list; " +
+            ": > /data/adb/klee_drivers/dep_seen.txt; dep_cnt=0; " +
+            "for hop in 1 2 3; do " +
+            "  [ -s /data/adb/klee_drivers/dep_queue.txt ] || break; " +
+            "  mv -f /data/adb/klee_drivers/dep_queue.txt /data/adb/klee_drivers/dep_cur.txt; " +
+            "  : > /data/adb/klee_drivers/dep_queue.txt; " +
+            "  while IFS= read -r elf; do " +
+            "    [ -f \"\$elf\" ] || continue; " +
+            "    grep -Fxq \"\$elf\" /data/adb/klee_drivers/dep_seen.txt 2>/dev/null && continue; " +
+            "    printf '%s\\n' \"\$elf\" >> /data/adb/klee_drivers/dep_seen.txt; " +
+            "    if [ -n \"\$RE\" ]; then " +
+            "      needed=\$(\$RE -d \"\$elf\" 2>/dev/null | sed -n 's/.*Shared library: \\[\\([^]]*\\)\\].*/\\1/p'); " +
+            "    else " +
+            "      needed=\$(strings \"\$elf\" 2>/dev/null | grep -E '^lib[A-Za-z0-9._+-]+\\.so(\\.[0-9]+)*\$' | sort -u); " +
+            "    fi; " +
+            "    for lib in \$needed; do " +
+            "      [ \"\$dep_cnt\" -ge 35 ] && break 2; " +
+            "      case \"\$lib\" in vulkan*) continue;; esac; " +
+            "      case \" \$PUB \" in *\" \$lib \"*) continue;; esac; " +
+            "      [ -e \"\$TDIR/\$lib\" ] && continue; " +
+            "      grep -Fxq \"\$lib\" /data/adb/klee_drivers/orig_dir.list 2>/dev/null && continue; " +
+            "      found=''; " +
+            "      for vdir in /vendor/lib64 /vendor/lib64/mt6899 /vendor/lib64/hw /vendor/lib64/egl; do " +
+            "        if [ -e \"\$vdir/\$lib\" ]; then found=\"\$vdir/\$lib\"; break; fi; " +
+            "      done; " +
+            "      if [ -n \"\$found\" ]; then " +
+            "        cp -fL \"\$found\" \"\$TDIR/\$lib\" 2>/dev/null && chmod 644 \"\$TDIR/\$lib\" && (chcon \"\$SECTX\" \"\$TDIR/\$lib\" 2>/dev/null || chcon u:object_r:same_process_hal_file:s0 \"\$TDIR/\$lib\" 2>/dev/null || true) && printf '%s\\n' \"\$TDIR/\$lib\" >> /data/adb/klee_drivers/staged_files.list && printf '%s\\n' \"\$TDIR/\$lib\" >> /data/adb/klee_drivers/dep_queue.txt && dep_cnt=\$((dep_cnt+1)); " +
+            "      fi; " +
+            "    done; " +
+            "  done < /data/adb/klee_drivers/dep_cur.txt; " +
+            "done; " +
+            "rm -f /data/adb/klee_drivers/dep_queue.txt /data/adb/klee_drivers/dep_cur.txt /data/adb/klee_drivers/dep_seen.txt /data/adb/klee_drivers/orig_dir.list; " +
+            // 8. Activate Android GraphicsEnvironment updatable driver namespace via resetprop + Settings.Global
+            "\$RP ro.gfx.driver.0 '${carrier.packageName}' 2>&1 || { echo 'RESETPROP_EXEC_FAILED'; exit 7; }; " +
+            "got_prop=\$(getprop ro.gfx.driver.0 2>/dev/null); " +
+            "[ \"\$got_prop\" = '${carrier.packageName}' ] || { echo \"RESETPROP_VERIFY_FAILED got=\$got_prop\"; exit 8; }; " +
+            "settings put global updatable_driver_all_apps 0 2>/dev/null || true; " +
+            "settings put global updatable_driver_production_opt_in_apps '$cleanOptIn' || { echo 'OPT_IN_SETTING_FAILED'; exit 9; }; " +
+            "optout=\$(settings get global updatable_driver_production_opt_out_apps 2>/dev/null); " +
+            "case \",\$optout,\" in *',$targetPkg,'*) settings delete global updatable_driver_production_opt_out_apps 2>/dev/null || true ;; esac; " +
+            "printf '%s|%s|%s|%s|%s|%s|%s|%s' '${driver.id}' '$safeDrvName' '$targetPkg' '${carrier.packageName}' \"\$TDIR\" \"\$TDIR/\$primary_vk\" \"\$MODE\" \"\$dir_created\" > /data/adb/klee_drivers/active_state.txt; " +
+            "st_inode=\$(stat -c '%i' \"\$TDIR/\$primary_vk\" 2>/dev/null); " +
+            "echo \"OK GraphicsEnvironment ativo (${carrier.packageName} [\$MODE]) · \$primary_vk (inode=\$st_inode) + \${egl_cnt} EGL + \${dep_cnt} deps · opt_in=$cleanOptIn\" " +
             ")"
-        return result(shell.runRoot(script), "Falha ao montar driver Vulkan customizado.")
+        return result(shell.runRoot(script), "Falha ao ativar driver Vulkan via GraphicsEnvironment.")
     }
 
     fun unmountCustomVulkanDriver(): String {
         val script =
             "( " +
             "NS=''; if command -v nsenter >/dev/null 2>&1 && nsenter --mount=/proc/1/ns/mnt true 2>/dev/null; then NS='nsenter --mount=/proc/1/ns/mnt --'; fi; " +
-            "saved=\$(cat /data/adb/klee_drivers/active_state.txt 2>/dev/null | cut -d: -f3); " +
-            "if [ -n \"\$saved\" ]; then \$NS umount -l \"\$saved\" 2>/dev/null || umount -l \"\$saved\" 2>/dev/null || true; fi; " +
+            "RP=''; " +
+            "for cand in /data/adb/ksu/bin/resetprop /data/adb/magisk/resetprop /data/adb/ap/bin/resetprop /sbin/resetprop; do [ -x \"\$cand\" ] && { RP=\"\$cand\"; break; }; done; " +
+            "if [ -z \"\$RP\" ] && command -v resetprop >/dev/null 2>&1; then RP=\$(command -v resetprop); fi; " +
+            "if [ -z \"\$RP\" ] && [ -x /data/adb/ksud ]; then RP='/data/adb/ksud resetprop'; fi; " +
+            "if [ -z \"\$RP\" ] && [ -x /data/adb/ksu/bin/ksud ]; then RP='/data/adb/ksu/bin/ksud resetprop'; fi; " +
+            "if [ -f /data/adb/klee_drivers/active_state.txt ]; then " +
+            "  prev=\$(cat /data/adb/klee_drivers/active_state.txt 2>/dev/null); " +
+            "  pmode=\$(printf '%s' \"\$prev\" | cut -d'|' -f7); " +
+            "  pdir=\$(printf '%s' \"\$prev\" | cut -d'|' -f5); " +
+            "  pcreated=\$(printf '%s' \"\$prev\" | cut -d'|' -f8); " +
+            "  if [ \"\$pmode\" = 'TMPFS' ] && [ -n \"\$pdir\" ]; then \$NS umount -l \"\$pdir\" 2>/dev/null || umount -l \"\$pdir\" 2>/dev/null || true; fi; " +
+            "  if [ \"\$pmode\" = 'DATA_APP' ] && [ -f /data/adb/klee_drivers/staged_files.list ]; then " +
+            "    while IFS= read -r oldf; do [ -n \"\$oldf\" ] && rm -f \"\$oldf\" 2>/dev/null; done < /data/adb/klee_drivers/staged_files.list; " +
+            "    [ \"\$pcreated\" = '1' ] && [ -n \"\$pdir\" ] && rmdir \"\$pdir\" 2>/dev/null || true; " +
+            "  fi; " +
+            "fi; " +
+            // Clean any legacy v0.5.x bind-mount on /vendor/lib64/hw/vulkan.*.so
             "for dir in /vendor/lib64/hw /odm/lib64/hw /system/vendor/lib64/hw; do " +
             "  for f in \"\$dir\"/vulkan.*.so; do " +
             "    [ -e \"\$f\" ] || continue; " +
@@ -1477,10 +1675,16 @@ class KernelControlRepository(private val shell: RootShell) {
             "  done; " +
             "  if grep -q 'klee_hw_overlay' /proc/1/mountinfo 2>/dev/null; then \$NS umount -l \"\$dir\" 2>/dev/null || true; fi; " +
             "done; " +
-            "rm -rf /dev/klee_hw_overlay /dev/klee_orig_hw /data/adb/klee_drivers/active_state.txt; " +
-            "echo 'OK Driver Vulkan padrão do sistema restaurado' " +
+            "settings delete global updatable_driver_production_opt_in_apps 2>/dev/null || settings put global updatable_driver_production_opt_in_apps '' 2>/dev/null || true; " +
+            "if [ -n \"\$RP\" ] && [ -f /data/adb/klee_drivers/orig_gfx_driver.txt ]; then " +
+            "  orig=\$(cat /data/adb/klee_drivers/orig_gfx_driver.txt 2>/dev/null | tr -d '\\r\\n'); " +
+            "  if [ -n \"\$orig\" ]; then \$RP ro.gfx.driver.0 \"\$orig\" 2>/dev/null || true; " +
+            "  else \$RP --delete ro.gfx.driver.0 2>/dev/null || \$RP ro.gfx.driver.0 '' 2>/dev/null || true; fi; " +
+            "fi; " +
+            "rm -rf /dev/klee_hw_overlay /dev/klee_orig_hw /dev/klee_carrier_orig /data/adb/klee_drivers/active_state.txt /data/adb/klee_drivers/staged_files.list /data/adb/klee_drivers/orig_gfx_driver.txt; " +
+            "echo 'OK Driver Vulkan padrão do sistema (Mali) restaurado' " +
             ")"
-        return result(shell.runRoot(script), "Falha ao desmontar driver Vulkan.")
+        return result(shell.runRoot(script), "Falha ao restaurar driver Vulkan padrão.")
     }
 
     fun applyForceVulkanAngle(packageName: String, enable: Boolean): String {
@@ -1523,9 +1727,9 @@ class KernelControlRepository(private val shell: RootShell) {
         val script =
             "( " +
             "am force-stop '$packageName' 2>/dev/null || true; " +
-            "sleep 0.35; " +
+            "sleep 0.45; " +
             "monkey -p '$packageName' -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || { echo 'APP_LAUNCH_FAILED'; exit 2; }; " +
-            "echo 'OK App $packageName iniciado com driver customizado' " +
+            "echo 'OK App $packageName iniciado com GraphicsEnvironment' " +
             ")"
         return result(shell.runRoot(script), "Falha ao iniciar $packageName.")
     }
@@ -1557,15 +1761,16 @@ class KernelControlRepository(private val shell: RootShell) {
         } else ""
 
         val pkgRegex = packageName.replace(".", "\\.")
-        val expInodeCmd = if (srcLib.isNotEmpty()) {
-            "exp_inode=\$(stat -c '%i' '$srcLib' 2>/dev/null); "
-        } else {
-            "exp_inode=''; "
-        }
 
         val script =
             "( " +
-            expInodeCmd +
+            "state=\$(cat /data/adb/klee_drivers/active_state.txt 2>/dev/null); " +
+            "cdir=\$(printf '%s' \"\$state\" | cut -d'|' -f5); " +
+            "staged_vk=\$(printf '%s' \"\$state\" | cut -d'|' -f6); " +
+            "exp_inode=''; " +
+            "if [ -n \"\$staged_vk\" ] && [ -f \"\$staged_vk\" ]; then exp_inode=\$(stat -c '%i' \"\$staged_vk\" 2>/dev/null); " +
+            "elif [ -n '$srcLib' ] && [ -f '$srcLib' ]; then exp_inode=\$(stat -c '%i' '$srcLib' 2>/dev/null); fi; " +
+            "printf 'CARRIER_DIR|%s\\n' \"\$cdir\"; " +
             "printf 'EXP_INODE|%s\\n' \"\$exp_inode\"; " +
             "pids=\$(pidof '$packageName' 2>/dev/null); " +
             "if [ -z \"\$pids\" ]; then " +
@@ -1582,17 +1787,18 @@ class KernelControlRepository(private val shell: RootShell) {
             "    cnt=\$((cnt + 1)); [ \"\$cnt\" -ge 3 ] && break; " +
             "  done; " +
             "  if [ -n \"\$main_pid\" ]; then " +
-            "    logcat -d -t 500 --pid=\"\$main_pid\" 2>/dev/null | " +
-            "      grep -iE 'vulkan|panvk|panfrost|mesa|dlopen|linker|angle|avc|denied|fatal|sigsegv|sigabrt|vkcreate|libvulkan' | " +
-            "      tail -n 25 | sed 's/^/LOG|/'; " +
+            "    logcat -d -t 800 --pid=\"\$main_pid\" 2>/dev/null | " +
+            "      grep -iE 'Unload builtin|GraphicsEnvironment|updatable driver|vulkan|panvk|panfrost|mesa|kbase|dlopen|linker|angle|avc|denied|fatal|sigsegv|sigabrt|vkcreate|libvulkan|VK_ERROR' | " +
+            "      tail -n 30 | sed 's/^/LOG|/'; " +
             "  fi; " +
             "fi; " +
-            "logcat -d -t 300 2>/dev/null | " +
-            "  grep -iE 'avc:.*(vulkan|klee_drivers|panvk|panfrost)|libvulkan.*(failed|error|unable|dlopen|found|loaded)|linker.*(vulkan|panvk|panfrost)|FATAL.*$pkgRegex|Fatal signal.*$pkgRegex' | " +
+            "logcat -d -t 350 2>/dev/null | " +
+            "  grep -iE 'GraphicsEnvironment.*(updatable|driver|not installed|failed)|Unload builtin Vulkan|avc:.*(vulkan|klee_drivers|panvk|panfrost|apk_data_file)|libvulkan.*(failed|error|unable|dlopen)|linker.*(vulkan|panvk|panfrost)|FATAL.*$pkgRegex|Fatal signal.*$pkgRegex' | " +
             "  tail -n 15 | sed 's/^/GLOG|/' " +
             ")"
 
         val r = shell.runReadOnly(script)
+        var carrierDir = ""
         var expectedInode = ""
         var pid: Int? = null
         val mappedEntries = mutableListOf<Pair<String, String>>() // inode -> path
@@ -1602,6 +1808,9 @@ class KernelControlRepository(private val shell: RootShell) {
 
         r.stdout.forEach { line ->
             when {
+                line.startsWith("CARRIER_DIR|") -> {
+                    carrierDir = line.removePrefix("CARRIER_DIR|").trim()
+                }
                 line.startsWith("EXP_INODE|") -> {
                     expectedInode = line.removePrefix("EXP_INODE|").trim()
                 }
@@ -1631,13 +1840,22 @@ class KernelControlRepository(private val shell: RootShell) {
             }
         }
 
-        val combinedLogs = (pidLogs + globalLogs).distinct().takeLast(25)
+        val combinedLogs = (pidLogs + globalLogs).distinct().takeLast(30)
         val angleLoaded = mappedEntries.any { (_, path) ->
             val low = path.lowercase(Locale.US)
             low.contains("libegl_angle") || low.contains("libglesv2_angle") || low.contains("libglesv1_cm_angle")
         }
 
-        val hasCustomMatch = (expectedInode.isNotBlank() && mappedEntries.any { (inode, _) -> inode == expectedInode }) ||
+        val unloadedBuiltin = combinedLogs.any {
+            it.contains("Unload builtin Vulkan driver", ignoreCase = true)
+        }
+
+        val carrierPathMatched = carrierDir.isNotBlank() && mappedEntries.any { (_, path) ->
+            path.startsWith(carrierDir) && path.substringAfterLast('/').lowercase(Locale.US).contains("vulkan")
+        }
+
+        val hasCustomMatch = carrierPathMatched ||
+            (expectedInode.isNotBlank() && mappedEntries.any { (inode, _) -> inode == expectedInode }) ||
             mappedEntries.any { (_, path) ->
                 val low = path.lowercase(Locale.US)
                 low.contains("klee_drivers") || low.contains("panvk") || low.contains("panfrost")
@@ -1659,6 +1877,8 @@ class KernelControlRepository(private val shell: RootShell) {
             "avc: denied",
             "failed to load vulkan",
             "unable to load",
+            "updatable driver package",
+            "vk_error_incompatible_driver",
             "fatal signal",
             "sigsegv",
             "sigabrt",
@@ -1670,10 +1890,14 @@ class KernelControlRepository(private val shell: RootShell) {
         }
 
         val formattedMaps = mappedEntries.map { (inode, path) ->
+            val isCustomLine = (carrierDir.isNotBlank() && path.startsWith(carrierDir) && path.lowercase(Locale.US).contains("vulkan")) ||
+                (expectedInode.isNotBlank() && inode == expectedInode) ||
+                path.lowercase(Locale.US).contains("panvk") || path.lowercase(Locale.US).contains("panfrost")
             val tag = when {
-                expectedInode.isNotBlank() && inode == expectedInode -> "[CUSTOM ✓] "
+                isCustomLine -> "[CUSTOM ✓] "
+                carrierDir.isNotBlank() && path.startsWith(carrierDir) -> "[CARRIER] "
                 path.lowercase(Locale.US).contains("angle") -> "[ANGLE] "
-                path.substringAfterLast('/').lowercase(Locale.US).startsWith("vulkan.") -> "[HAL] "
+                path.substringAfterLast('/').lowercase(Locale.US).startsWith("vulkan.") -> "[STOCK HAL] "
                 else -> ""
             }
             "${tag}inode=$inode · $path"
@@ -1690,17 +1914,18 @@ class KernelControlRepository(private val shell: RootShell) {
                 }
             }
             driver != null && hasCustomMatch -> {
+                val unloadNote = if (unloadedBuiltin) " · Unload builtin ✓" else ""
                 VulkanLoadStatus.LOADED_CUSTOM to
-                    "Driver '${driver.name}' CARREGADO no processo (PID $pid · inode $expectedInode)${if (angleLoaded) " + ANGLE ativo" else ""}!"
+                    "Driver '${driver.name}' CARREGADO via GraphicsEnvironment (PID $pid$unloadNote · inode $expectedInode)${if (angleLoaded) " + ANGLE" else ""}!"
             }
             driver != null && hasLoadError && !hasVulkanHalPath -> {
                 VulkanLoadStatus.ERROR_DETECTED to
-                    "Falha ao carregar '${driver.name}' (erro dlopen/SELinux/crash no PID $pid). Veja o logcat abaixo."
+                    "Falha ao carregar '${driver.name}' (erro dlopen/SELinux/GraphicsEnvironment no PID $pid). Veja o logcat abaixo."
             }
             driver != null && hasVulkanHalPath -> {
                 val extra = if (hasLoadError) " Erro detectado no logcat!" else ""
                 VulkanLoadStatus.LOADED_STOCK to
-                    "Driver Mali original foi carregado no lugar de '${driver.name}' (PID $pid · inode diferente de $expectedInode).$extra"
+                    "Driver Mali original foi carregado em vez de '${driver.name}' (PID $pid · Unload builtin=${if (unloadedBuiltin) "sim" else "não"}).$extra"
             }
             driver == null && hasVulkanHalPath -> {
                 VulkanLoadStatus.LOADED_STOCK to
@@ -1728,6 +1953,8 @@ class KernelControlRepository(private val shell: RootShell) {
             expectedInode = expectedInode,
             matchedMaps = formattedMaps,
             angleLoaded = angleLoaded,
+            unloadedBuiltin = unloadedBuiltin,
+            carrierPathMatched = carrierPathMatched,
             relevantLogcat = combinedLogs,
             summary = summary,
             timestamp = ts
