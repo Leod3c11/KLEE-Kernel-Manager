@@ -100,7 +100,7 @@ object VulkanCarrierResolver {
             return null
         }
 
-        val top = candidates.sortedBy { it.rank }.take(45)
+        val top = candidates.sortedBy { it.rank }.take(16)
         val pairs = top.mapNotNull { c ->
             if (!c.pkg.matches(Regex("^[A-Za-z0-9._-]+$"))) return@mapNotNull null
             if (!c.nativeLibDir.matches(Regex("^[A-Za-z0-9._/~=+@-]+$"))) return@mapNotNull null
