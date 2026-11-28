@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit
 
 data class CommandResult(val code: Int, val stdout: List<String>, val stderr: List<String>) {
     val success: Boolean get() = code == 0
+    fun combinedOutput(): String = (stdout + stderr).joinToString("\n").trim()
 }
 
 class RootShell {

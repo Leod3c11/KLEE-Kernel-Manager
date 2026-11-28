@@ -101,6 +101,9 @@ fun KleeApp(vm: KernelManagerViewModel, resumeTick: Int = 0) {
     val vulkanDrivers by vm.vulkanDrivers.collectAsState()
     val systemVulkan by vm.systemVulkan.collectAsState()
     val vulkanAutoUnmountSec by vm.vulkanAutoUnmountSec.collectAsState()
+    val patchedPackages by vm.patchedPackages.collectAsState()
+    val probeResult by vm.probeResult.collectAsState()
+    val patchProgress by vm.patchProgress.collectAsState()
     val vulkanVerification by vm.vulkanVerification.collectAsState()
     val dashboard by vm.dashboard.collectAsState()
     val cpu by vm.cpu.collectAsState()
@@ -334,6 +337,8 @@ fun KleeApp(vm: KernelManagerViewModel, resumeTick: Int = 0) {
                         installedApps = installedApps,
                         savedProfiles = savedProfiles,
                         vulkanDrivers = vulkanDrivers,
+                        patchedPackages = patchedPackages,
+                        patchProgress = patchProgress,
                         lastVulkanVerification = vulkanVerification,
                         supportedHz = refreshInfo.supportedHz,
                         busy = busy,
@@ -341,6 +346,8 @@ fun KleeApp(vm: KernelManagerViewModel, resumeTick: Int = 0) {
                         onSaveRule = vm::savePerAppRule,
                         onDeleteRule = vm::deletePerAppRule,
                         onLaunchWithRule = vm::launchAppWithRule,
+                        onPatchApp = vm::patchAppWithAdrenoTools,
+                        onRestorePatchedApp = vm::restorePatchedApp,
                         onVerifyDriverNow = vm::verifyDriverNow,
                         onRecheckLastVerification = vm::recheckLastVulkanVerification,
                         onOpenVulkanDrivers = { currentRoute = "VULKAN_DRIVERS" }
@@ -350,9 +357,11 @@ fun KleeApp(vm: KernelManagerViewModel, resumeTick: Int = 0) {
                         systemInfo = systemVulkan,
                         autoUnmountSec = vulkanAutoUnmountSec,
                         lastVerification = vulkanVerification,
+                        probeResult = probeResult,
                         busy = busy,
                         onRefresh = vm::loadSystemVulkan,
                         onImportZip = vm::importVulkanDriverZip,
+                        onProbeDriver = vm::probeVulkanDriver,
                         onDeleteDriver = vm::deleteVulkanDriver,
                         onRestoreDefault = vm::restoreDefaultVulkanDriver,
                         onSelectAutoUnmount = vm::setVulkanAutoUnmountSec,

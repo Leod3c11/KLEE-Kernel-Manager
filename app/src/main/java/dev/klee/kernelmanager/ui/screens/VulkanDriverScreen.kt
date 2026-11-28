@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.*
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.klee.kernelmanager.AdrenoToolsProbeResult
 import dev.klee.kernelmanager.SystemVulkanInfo
 import dev.klee.kernelmanager.VulkanDriverPackage
 import dev.klee.kernelmanager.VulkanLoadStatus
@@ -48,9 +50,11 @@ fun VulkanDriverScreen(
     systemInfo: SystemVulkanInfo,
     autoUnmountSec: Int,
     lastVerification: VulkanVerificationResult?,
+    probeResult: AdrenoToolsProbeResult?,
     busy: Boolean,
     onRefresh: () -> Unit,
     onImportZip: (Uri) -> Unit,
+    onProbeDriver: (VulkanDriverPackage) -> Unit,
     onDeleteDriver: (String) -> Unit,
     onRestoreDefault: () -> Unit,
     onSelectAutoUnmount: (Int) -> Unit,
@@ -71,7 +75,7 @@ fun VulkanDriverScreen(
     ) {
         SectionHeader(
             title = "Drivers Vulkan (.zip)",
-            subtitle = "PanVK / AdrenoTools .zip · Injeção isolada por jogo + Monitor",
+            subtitle = "Motor AdrenoTools (PPSSPP) + Teste Nativo + Monitor",
             trailing = {
                 FilledTonalIconButton(
                     onClick = onRefresh,
@@ -90,12 +94,34 @@ fun VulkanDriverScreen(
             RootWarningCard()
         }
 
+        if (probeResult != null) {
+            AdrenoToolsProbeCard(probeResult)
+        }
+
         if (lastVerification != null) {
             VulkanVerificationCard(
                 result = lastVerification,
                 busy = busy,
                 onRecheck = onRecheckVerification
             )
+        }
+
+        // How PPSSPP libadrenotools Engine works card
+        KleeCard(
+            modifier = Modifier.fillMaxWidth(),
+            accentBorder = KleeColors.Primary.copy(alpha = 0.45f)
+        ) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Rounded.Shield, contentDescription = null, tint = KleeColors.Primary, modifier = Modifier.size(18.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Motor AdrenoTools (Método PPSSPP · Sem Zygisk)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Use 'Testar (AdrenoTools)' abaixo para validar seu PanVK .zip diretamente aqui dentro (exibe GPU, Vulkan API 1.4.x e extensões). Depois, na aba Apps, toque em 'Injetar AdrenoTools' no app desejado (ex.: Vulkan Caps Viewer): o KLEE faz backup do APK original, injeta libadrenotools + hooks de Vulkan (mantendo OpenGL ES/MEOW 100% intacto) e permite trocar de driver instantaneamente ou restaurar o APK original com 1 toque.",
+                        color = KleeColors.TextMuted,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
         }
 
         // System Vulkan HAL & GraphicsEnvironment Status Card
@@ -115,7 +141,7 @@ fun VulkanDriverScreen(
                 ) {
                     Icon(Icons.Rounded.Layers, contentDescription = null, tint = KleeColors.Gpu, modifier = Modifier.size(20.dp))
                     Text(
-                        "GraphicsEnvironment",
+                        "Vulkan do Sistema & Fallback",
                         color = KleeColors.TextPrimary,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
@@ -124,7 +150,7 @@ fun VulkanDriverScreen(
                 }
                 Spacer(Modifier.width(8.dp))
                 StatusPill(
-                    text = if (systemInfo.overlayMounted) "Preparado" else "Padrão Mali",
+                    text = if (systemInfo.overlayMounted) "Carrier Ativo" else "Padrão Mali",
                     color = if (systemInfo.overlayMounted) KleeColors.Warning else KleeColors.Primary
                 )
             }
@@ -137,11 +163,6 @@ fun VulkanDriverScreen(
                     val fqTag = if (systemInfo.carrierForceQueryable) "fq=✓" else "fq=✗"
                     "${systemInfo.carrierPackage} [${systemInfo.carrierMode} · $fqTag]"
                 } else "Não detectado"
-            )
-            VkInfoRow(
-                "resetprop",
-                if (systemInfo.resetpropPath.isNotBlank()) "Disponível (${systemInfo.resetpropPath.substringAfterLast('/')})"
-                else "Não encontrado!"
             )
             VkInfoRow("ANGLE (GLES -> Vulkan)", if (systemInfo.angleAvailable) "Disponível" else "Não detectado")
             if (systemInfo.optInApps.isNotBlank()) {
@@ -160,22 +181,7 @@ fun VulkanDriverScreen(
             ) {
                 Icon(Icons.Rounded.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Restaurar Driver Padrão do Sistema (Mali)")
-            }
-        }
-
-        // How Zero-Patch GraphicsEnvironment works card
-        KleeCard(modifier = Modifier.fillMaxWidth()) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Rounded.Shield, contentDescription = null, tint = KleeColors.Primary, modifier = Modifier.size(18.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Motor Nativo Android 16 (Unload Builtin)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "No Android 16 o Zygote pré-carrega o Mali no boot, por isso substituir /vendor não basta. O KLEE usa o namespace nativo GraphicsEnvironment (ro.gfx.driver.0 + opt-in por app), forçando o libvulkan.so a descarregar o Mali pré-carregado (Unload builtin Vulkan driver) e carregar seu PanVK .zip somente nos apps escolhidos — sem modificar APKs, sem Zygisk e sem afetar o sistema.",
-                        color = KleeColors.TextMuted,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+                Text("Limpar Staging GraphicsEnvironment (Mali)")
             }
         }
 
@@ -204,7 +210,7 @@ fun VulkanDriverScreen(
                 ) {
                     Icon(Icons.Rounded.FolderZip, contentDescription = null, tint = KleeColors.Gpu)
                     Text(
-                        "Nenhum driver .zip importado ainda. Toque em \"Importar Driver Vulkan (.zip)\" para instalar um pacote PanVK / Vulkan ARM64 (compatível com meta.json do AdrenoTools) e depois vincule ao jogo na aba Apps.",
+                        "Nenhum driver .zip importado ainda. Toque em \"Importar Driver Vulkan (.zip)\" para instalar um pacote PanVK / Vulkan ARM64 (compatível com meta.json do AdrenoTools) e teste diretamente com libadrenotools.",
                         color = KleeColors.TextSecondary,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -214,9 +220,14 @@ fun VulkanDriverScreen(
             drivers.forEach { drv ->
                 val sizeMb = drv.sizeBytes / (1024.0 * 1024.0)
                 val isActive = systemInfo.overlayMounted && systemInfo.activeDriverId == drv.id
+                val probedOk = probeResult?.driverId == drv.id && probeResult.success
                 KleeCard(
                     modifier = Modifier.fillMaxWidth(),
-                    accentBorder = if (isActive) KleeColors.Warning else KleeColors.Gpu.copy(alpha = 0.3f)
+                    accentBorder = when {
+                        probedOk -> KleeColors.Success
+                        isActive -> KleeColors.Warning
+                        else -> KleeColors.Gpu.copy(alpha = 0.3f)
+                    }
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -235,7 +246,8 @@ fun VulkanDriverScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                if (isActive) StatusPill("Montado", KleeColors.Warning)
+                                if (probedOk) StatusPill("VK ${probeResult?.apiVersion}", KleeColors.Success)
+                                else if (isActive) StatusPill("Ativo", KleeColors.Warning)
                             }
                             Text(
                                 "${drv.version} · ${drv.author} · ${"%.2f".format(sizeMb)} MB",
@@ -276,11 +288,92 @@ fun VulkanDriverScreen(
                     if (drv.description.isNotBlank()) {
                         Text(drv.description, color = KleeColors.TextMuted, style = MaterialTheme.typography.bodySmall)
                     }
+
+                    FilledTonalButton(
+                        onClick = { onProbeDriver(drv) },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = KleeColors.Primary.copy(alpha = 0.16f),
+                            contentColor = KleeColors.Primary
+                        )
+                    ) {
+                        Icon(Icons.Rounded.Science, contentDescription = null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Testar Driver Agora (AdrenoTools PPSSPP)", fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
 
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun AdrenoToolsProbeCard(probe: AdrenoToolsProbeResult) {
+    val accent = if (probe.success) KleeColors.Success else KleeColors.Danger
+    KleeCard(
+        modifier = Modifier.fillMaxWidth(),
+        accentBorder = accent.copy(alpha = 0.7f)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    if (probe.success) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(20.dp)
+                )
+                Column {
+                    Text(
+                        "Teste Nativo AdrenoTools (PPSSPP)",
+                        color = KleeColors.TextPrimary,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        probe.driverLabel,
+                        color = KleeColors.TextMuted,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            StatusPill(
+                text = if (probe.success) "VK ${probe.apiVersion} ✓" else "FALHOU",
+                color = accent
+            )
+        }
+
+        if (probe.success) {
+            VkInfoRow("GPU Detectada", probe.deviceName.ifBlank { "Desconhecida" })
+            VkInfoRow("Vulkan API", probe.apiVersion)
+            if (probe.driverName.isNotBlank()) {
+                VkInfoRow("Driver", probe.driverName)
+            }
+            if (probe.driverInfo.isNotBlank()) {
+                VkInfoRow("Versão / Info", probe.driverInfo)
+            }
+            VkInfoRow("Extensões / Tempo", "${probe.extensionCount} extensões · ${probe.elapsedMs} ms")
+        } else {
+            Text(
+                probe.error.ifBlank { "Falha desconhecida ao carregar driver via libadrenotools." },
+                color = KleeColors.Danger,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
     }
 }
 
@@ -414,9 +507,9 @@ fun VulkanVerificationCard(
                 ) {
                     result.matchedMaps.take(8).forEach { line ->
                         val lineColor = when {
-                            line.startsWith("[CUSTOM") -> KleeColors.Success
+                            line.startsWith("[ADRENOTOOLS") || line.startsWith("[CUSTOM") -> KleeColors.Success
                             line.startsWith("[ANGLE]") -> KleeColors.Monitor
-                            line.startsWith("[HAL]") -> KleeColors.Warning
+                            line.startsWith("[STOCK HAL]") || line.startsWith("[HAL]") -> KleeColors.Warning
                             else -> KleeColors.TextSecondary
                         }
                         Text(

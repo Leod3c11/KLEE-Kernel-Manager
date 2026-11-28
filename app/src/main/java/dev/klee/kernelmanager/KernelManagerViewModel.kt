@@ -68,6 +68,15 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
     private val _vulkanAutoUnmountSec = MutableStateFlow(settingsStore.loadVulkanAutoUnmountSec())
     val vulkanAutoUnmountSec = _vulkanAutoUnmountSec.asStateFlow()
 
+    private val _patchedPackages = MutableStateFlow<Set<String>>(emptySet())
+    val patchedPackages = _patchedPackages.asStateFlow()
+
+    private val _probeResult = MutableStateFlow<AdrenoToolsProbeResult?>(null)
+    val probeResult = _probeResult.asStateFlow()
+
+    private val _patchProgress = MutableStateFlow<String?>(null)
+    val patchProgress = _patchProgress.asStateFlow()
+
     val vulkanVerification = VulkanMonitorNotifier.latestResult
 
     private val _dashboard = MutableStateFlow(DashboardSummary(root = false, loaded = false))
@@ -229,8 +238,79 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         return found
     }
 
+    fun refreshPatchedPackages() = runQuietTask {
+        _patchedPackages.value = withContext(Dispatchers.IO) {
+            ApkPatchOrchestrator.listPatchedPackages(shell)
+        }
+    }
+
+    fun probeVulkanDriver(driver: VulkanDriverPackage) = runTask {
+        val ctx = getApplication<Application>().applicationContext
+        val res = withContext(Dispatchers.IO) {
+            AdrenoToolsProbe.probeDriver(ctx, driver, shell)
+        }
+        _probeResult.value = res
+        val msg = if (res.success) {
+            "AdrenoTools OK: ${res.deviceName} · Vulkan ${res.apiVersion} (${res.driverName.ifBlank { driver.name }}) · ${res.extensionCount} exts em ${res.elapsedMs}ms"
+        } else {
+            "AdrenoTools falhou (${driver.name}): ${res.error}"
+        }
+        recordLog("Testar Driver AdrenoTools (${driver.name})", msg, !res.success)
+        _feedback.value = UiFeedback(text = msg, isError = !res.success)
+    }
+
+    fun patchAppWithAdrenoTools(rule: PerAppRule) = runTask {
+        val ctx = getApplication<Application>().applicationContext
+        val driver = if (rule.vulkanDriverId == "SYSTEM") null
+        else _vulkanDrivers.value.firstOrNull { it.id == rule.vulkanDriverId }
+        try {
+            _patchProgress.value = "Iniciando injeção AdrenoTools (PPSSPP) em ${rule.appLabel}..."
+            val res = withContext(Dispatchers.IO) {
+                ApkPatchOrchestrator.patchAndInstallApp(
+                    context = ctx,
+                    packageName = rule.packageName,
+                    driver = driver,
+                    shell = shell,
+                    onProgress = { step -> _patchProgress.value = step }
+                )
+            }
+            _patchedPackages.value = withContext(Dispatchers.IO) {
+                ApkPatchOrchestrator.listPatchedPackages(shell)
+            }
+            val isErr = !res.startsWith("OK")
+            recordLog("Injetar AdrenoTools (${rule.appLabel})", res, isErr)
+            _feedback.value = UiFeedback(text = res, isError = isErr)
+        } finally {
+            _patchProgress.value = null
+        }
+    }
+
+    fun restorePatchedApp(packageName: String, appLabel: String) = runTask {
+        try {
+            _patchProgress.value = "Restaurando APK original de $appLabel..."
+            val res = withContext(Dispatchers.IO) {
+                ApkPatchOrchestrator.restoreOriginalApp(
+                    packageName = packageName,
+                    shell = shell,
+                    onProgress = { step -> _patchProgress.value = step }
+                )
+            }
+            _patchedPackages.value = withContext(Dispatchers.IO) {
+                ApkPatchOrchestrator.listPatchedPackages(shell)
+            }
+            val isErr = !res.startsWith("OK")
+            recordLog("Restaurar APK Original ($appLabel)", res, isErr)
+            _feedback.value = UiFeedback(text = res, isError = isErr)
+        } finally {
+            _patchProgress.value = null
+        }
+    }
+
     fun loadSystemVulkan() = runQuietTask {
         _vulkanDrivers.value = vulkanDriverStore.loadDrivers()
+        _patchedPackages.value = withContext(Dispatchers.IO) {
+            ApkPatchOrchestrator.listPatchedPackages(shell)
+        }
         val initial = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(resolvedCarrier) }
         _systemVulkan.value = initial
         if (initial.root) {
@@ -308,14 +388,44 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
             logSteps.add("ANGLE: ON")
         }
 
-        // 2. Stage Custom Vulkan Driver into GraphicsEnvironment Carrier Namespace (ro.gfx.driver.0)
-        if (rule.vulkanDriverId != "SYSTEM") {
+        // 2. Check if target app has KLEE AdrenoTools (PPSSPP) injected
+        val isPatched = withContext(Dispatchers.IO) {
+            ApkPatchOrchestrator.isPackagePatched(rule.packageName, shell)
+        }
+
+        if (isPatched) {
+            val driver = if (rule.vulkanDriverId == "SYSTEM") null
+            else _vulkanDrivers.value.firstOrNull { it.id == rule.vulkanDriverId }
+                ?: error("Driver Vulkan selecionado não encontrado.")
+
+            // Ensure GraphicsEnvironment is NOT interfering with this AdrenoTools-patched app
+            val curSys = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(ensureCarrier()) }
+            if (curSys.optInApps.split(",").contains(rule.packageName)) {
+                withContext(Dispatchers.IO) { repository.unmountCustomVulkanDriver() }
+            }
+
+            val stageRes = withContext(Dispatchers.IO) {
+                ApkPatchOrchestrator.stageDriverConfigForPatchedApp(rule.packageName, driver, shell)
+            }
+            recordLog("AdrenoTools (${driver?.name ?: "Mali Padrão"})", stageRes, !stageRes.startsWith("OK"))
+            if (!stageRes.startsWith("OK")) {
+                error("Falha ao configurar AdrenoTools: $stageRes")
+            }
+            if (driver != null) {
+                stagedCustom = true
+                selectedDriver = driver
+                logSteps.add("AdrenoTools: ${driver.name}")
+            } else {
+                logSteps.add("AdrenoTools: Mali Padrão")
+            }
+        } else if (rule.vulkanDriverId != "SYSTEM") {
+            // Fallback for unpatched apps: GraphicsEnvironment Carrier Namespace (ro.gfx.driver.0)
             val driver = _vulkanDrivers.value.firstOrNull { it.id == rule.vulkanDriverId }
                 ?: error("Driver Vulkan selecionado não encontrado.")
             val carrier = ensureCarrier(forceRefresh = true)
                 ?: error("Nenhum pacote carrier de sistema encontrado para ro.gfx.driver.0 (${VulkanCarrierResolver.lastProbeReport}).")
             val sameDriverPkgs = _perAppRules.value
-                .filter { it.vulkanDriverId == driver.id }
+                .filter { it.vulkanDriverId == driver.id && !_patchedPackages.value.contains(it.packageName) }
                 .map { it.packageName }
             val stageRes = withContext(Dispatchers.IO) {
                 repository.stageCustomVulkanDriver(driver, rule.packageName, carrier, sameDriverPkgs)
@@ -371,7 +481,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
             logSteps.add("Bypass ON")
         }
 
-        // 7. Clean restart & launch game so GraphicsEnvironment triggers UnloadBuiltinDriver() from scratch
+        // 7. Clean restart & launch app so AdrenoTools/GraphicsEnvironment runs from scratch
         val launchRes = withContext(Dispatchers.IO) { repository.launchAppClean(rule.packageName) }
         val isErr = !launchRes.startsWith("OK")
         val summary = "${rule.appLabel} iniciado (${logSteps.joinToString(" · ").ifBlank { "Regra aplicada" }})"
@@ -379,7 +489,7 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
         _systemVulkan.value = withContext(Dispatchers.IO) { repository.inspectSystemVulkan(ensureCarrier()) }
         _feedback.value = UiFeedback(text = if (isErr) launchRes else summary, isError = isErr)
 
-        // 8. Automatically monitor whether GraphicsEnvironment unloaded Mali & loaded the custom driver
+        // 8. Automatically monitor whether AdrenoTools / GraphicsEnvironment loaded the custom driver
         if (!isErr && (stagedCustom || rule.forceVulkanAngle)) {
             startPostLaunchVerification(
                 rule = rule,
@@ -540,13 +650,17 @@ class KernelManagerViewModel(application: Application) : AndroidViewModel(applic
 
     fun exportFullLogs(includeDmesg: Boolean, onReady: (ExportedLogFile, String) -> Unit) = runTask {
         val carrier = ensureCarrier()
+        val patched = withContext(Dispatchers.IO) { ApkPatchOrchestrator.listPatchedPackages(shell) }
+        _patchedPackages.value = patched
         val bundle = withContext(Dispatchers.IO) {
             repository.buildFullLogBundle(
                 actionLogs = _actionLogs.value,
                 perAppRules = _perAppRules.value,
                 includeDmesg = includeDmesg,
                 lastVulkanCheck = vulkanVerification.value,
-                carrierHint = carrier
+                carrierHint = carrier,
+                patchedPackages = patched,
+                lastProbe = _probeResult.value
             )
         }
         val exported = withContext(Dispatchers.IO) {

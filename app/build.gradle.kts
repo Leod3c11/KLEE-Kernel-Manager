@@ -10,10 +10,22 @@ android {
 
     defaultConfig {
         applicationId = "dev.klee.kernelmanager"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 35
-        versionCode = 16
-        versionName = "0.6.7"
+        versionCode = 17
+        versionName = "0.7.0"
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // Required so KLEE's own nativeLibraryDir has extracted libhook_impl.so / libmain_hook.so / etc. for AdrenoToolsProbe
+            useLegacyPackaging = true
+            pickFirsts += listOf("**/libbytehook.so", "**/libshadowhook.so")
+        }
     }
 
     compileOptions {
@@ -25,6 +37,9 @@ android {
 }
 
 dependencies {
+    implementation(project(":vkbridge"))
+    implementation(project(":vkpatcher"))
+
     implementation(platform("androidx.compose:compose-bom:2025.01.00"))
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-compose:1.10.0")

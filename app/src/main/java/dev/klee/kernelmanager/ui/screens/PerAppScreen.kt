@@ -13,12 +13,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.AutoMode
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FolderZip
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -49,6 +51,8 @@ fun PerAppScreen(
     installedApps: List<InstalledAppEntry>,
     savedProfiles: List<SavedProfile>,
     vulkanDrivers: List<VulkanDriverPackage>,
+    patchedPackages: Set<String>,
+    patchProgress: String?,
     lastVulkanVerification: VulkanVerificationResult?,
     supportedHz: List<Int>,
     busy: Boolean,
@@ -56,6 +60,8 @@ fun PerAppScreen(
     onSaveRule: (PerAppRule) -> Unit,
     onDeleteRule: (String) -> Unit,
     onLaunchWithRule: (PerAppRule) -> Unit,
+    onPatchApp: (PerAppRule) -> Unit,
+    onRestorePatchedApp: (String, String) -> Unit,
     onVerifyDriverNow: (PerAppRule) -> Unit,
     onRecheckLastVerification: () -> Unit,
     onOpenVulkanDrivers: () -> Unit
@@ -66,6 +72,8 @@ fun PerAppScreen(
 
     var showAppPicker by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf<PerAppRule?>(null) }
+    var confirmPatchRule by remember { mutableStateOf<PerAppRule?>(null) }
+    var confirmRestoreRule by remember { mutableStateOf<PerAppRule?>(null) }
 
     Column(
         modifier = Modifier
@@ -76,7 +84,7 @@ fun PerAppScreen(
     ) {
         SectionHeader(
             title = "Perfis & Drivers por App",
-            subtitle = "Perfil CPU/GPU, FPSGO, Hz, ANGLE/Vulkan e Driver .zip por jogo",
+            subtitle = "AdrenoTools (PPSSPP), Perfil CPU/GPU, FPSGO, Hz e Driver .zip",
             trailing = {
                 FilledTonalButton(
                     onClick = {
@@ -120,14 +128,36 @@ fun PerAppScreen(
                     Column {
                         Text("Drivers Vulkan Customizados (.zip)", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
                         Text(
-                            if (vulkanDrivers.isEmpty()) "Toque para importar um driver PanVK / Vulkan .zip"
-                            else "${vulkanDrivers.size} driver(s) .zip prontos para vincular aos jogos",
+                            if (vulkanDrivers.isEmpty()) "Toque para importar e testar um driver PanVK .zip"
+                            else "${vulkanDrivers.size} driver(s) .zip · Toque para testar com AdrenoTools",
                             color = KleeColors.TextSecondary,
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
                 StatusPill("${vulkanDrivers.size} .zip", KleeColors.Gpu)
+            }
+        }
+
+        if (patchProgress != null) {
+            KleeCard(
+                modifier = Modifier.fillMaxWidth(),
+                accentBorder = KleeColors.Primary.copy(alpha = 0.7f)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.5.dp,
+                        color = KleeColors.Primary
+                    )
+                    Column {
+                        Text("Processando AdrenoTools (PPSSPP)...", color = KleeColors.TextPrimary, style = MaterialTheme.typography.titleSmall)
+                        Text(patchProgress, color = KleeColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
         }
 
@@ -187,7 +217,7 @@ fun PerAppScreen(
                 )
             }
             Text(
-                "Dica: para garantir que o jogo carregue o driver Vulkan customizado desde o início, use o botão 'Lançar' no card do jogo (ou ative o Motor Per-App).",
+                "Dica: para carregamento 100% real do PanVK (método PPSSPP / libadrenotools, sem Zygisk), toque em 'Injetar AdrenoTools' no card do app e depois em 'Lançar'.",
                 color = KleeColors.TextMuted,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -204,7 +234,7 @@ fun PerAppScreen(
                 ) {
                     Icon(Icons.Rounded.Apps, contentDescription = null, tint = KleeColors.Primary)
                     Text(
-                        "Nenhum aplicativo configurado ainda. Toque em \"+ App\" para escolher um jogo e definir perfil, taxa de atualização (Hz), Forçar Vulkan (ANGLE) e driver .zip (PanVK).",
+                        "Nenhum aplicativo configurado ainda. Toque em \"+ App\" para escolher um app/jogo (ex.: Vulkan Caps Viewer), vincular seu driver PanVK .zip e injetar AdrenoTools.",
                         color = KleeColors.TextSecondary,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -217,10 +247,15 @@ fun PerAppScreen(
                     ?: if (rule.profileId == "NONE") null else rule.profileId
                 val driverDisplay = if (rule.vulkanDriverId == "SYSTEM") null
                 else vulkanDrivers.firstOrNull { it.id == rule.vulkanDriverId }?.name ?: "Driver Removido"
+                val isPatched = patchedPackages.contains(rule.packageName)
 
                 KleeCard(
                     modifier = Modifier.fillMaxWidth(),
-                    accentBorder = (if (driverDisplay != null) KleeColors.Gpu else KleeColors.Primary).copy(alpha = 0.35f)
+                    accentBorder = when {
+                        isPatched -> KleeColors.Success.copy(alpha = 0.6f)
+                        driverDisplay != null -> KleeColors.Gpu.copy(alpha = 0.35f)
+                        else -> KleeColors.Primary.copy(alpha = 0.35f)
+                    }
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -259,6 +294,7 @@ fun PerAppScreen(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        if (isPatched) StatusPill("AdrenoTools PPSSPP ✓", KleeColors.Success)
                         driverDisplay?.let { StatusPill("VK: $it", KleeColors.Gpu) }
                         if (rule.forceVulkanAngle) StatusPill("Forçar Vulkan (ANGLE)", KleeColors.Monitor)
                         profileDisplay?.let { StatusPill("Perfil: $it", KleeColors.Cpu) }
@@ -278,15 +314,23 @@ fun PerAppScreen(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (driverDisplay != null) KleeColors.Gpu else KleeColors.Primary,
-                                contentColor = if (driverDisplay != null) Color.White else Color.Black
+                                containerColor = when {
+                                    isPatched && driverDisplay != null -> KleeColors.Success
+                                    driverDisplay != null -> KleeColors.Gpu
+                                    else -> KleeColors.Primary
+                                },
+                                contentColor = if (isPatched && driverDisplay != null) Color.Black else if (driverDisplay != null) Color.White else Color.Black
                             ),
                             contentPadding = PaddingValues(vertical = 9.dp)
                         ) {
                             Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                if (driverDisplay != null) "Lançar com Driver" else "Lançar com Regra",
+                                when {
+                                    isPatched && driverDisplay != null -> "Lançar (AdrenoTools)"
+                                    driverDisplay != null -> "Lançar com Driver"
+                                    else -> "Lançar com Regra"
+                                },
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -303,11 +347,107 @@ fun PerAppScreen(
                             Text("Verificar")
                         }
                     }
+
+                    // AdrenoTools (PPSSPP) Inject / Restore Action Row
+                    if (!isPatched) {
+                        FilledTonalButton(
+                            onClick = { confirmPatchRule = rule },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = KleeColors.Gpu.copy(alpha = 0.16f),
+                                contentColor = KleeColors.Gpu
+                            ),
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Rounded.AutoFixHigh, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Injetar AdrenoTools (PPSSPP · Sem Zygisk)", fontWeight = FontWeight.SemiBold)
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = { confirmRestoreRule = rule },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Rounded.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Restaurar APK Original (Backup Intacto)")
+                        }
+                    }
                 }
             }
         }
 
         Spacer(Modifier.height(12.dp))
+    }
+
+    confirmPatchRule?.let { targetRule ->
+        AlertDialog(
+            onDismissRequest = { confirmPatchRule = null },
+            containerColor = KleeColors.CardElevated,
+            title = { Text("Injetar AdrenoTools em ${targetRule.appLabel}?", color = KleeColors.TextPrimary) },
+            text = {
+                Text(
+                    "O KLEE vai:\n" +
+                        "1. Salvar um backup intacto do(s) APK(s) originais em /data/adb/klee_drivers/apk_backups/.\n" +
+                        "2. Injetar o carregador libadrenotools (mesmo método do PPSSPP) + hooks de Vulkan mantendo OpenGL ES / libMEOW 100% original.\n" +
+                        "3. Reassinar e instalar o app via Root (sem Zygisk e sem reiniciar).\n\n" +
+                        "Depois de injetado, você troca entre PanVK e Mali instantaneamente ao tocar em 'Lançar'. Como a assinatura muda, os dados locais do app serão resetados nesta primeira vez. Você pode restaurar o APK original a qualquer momento.",
+                    color = KleeColors.TextSecondary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val r = targetRule
+                        confirmPatchRule = null
+                        onPatchApp(r)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = KleeColors.Gpu, contentColor = Color.White)
+                ) {
+                    Text("Injetar Agora", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmPatchRule = null }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    confirmRestoreRule?.let { targetRule ->
+        AlertDialog(
+            onDismissRequest = { confirmRestoreRule = null },
+            containerColor = KleeColors.CardElevated,
+            title = { Text("Restaurar APK Original?", color = KleeColors.TextPrimary) },
+            text = {
+                Text(
+                    "Isso removerá a versão modificada de ${targetRule.appLabel} e reinstalará o(s) APK(s) originais salvos no backup do KLEE.",
+                    color = KleeColors.TextSecondary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val pkg = targetRule.packageName
+                        val lbl = targetRule.appLabel
+                        confirmRestoreRule = null
+                        onRestorePatchedApp(pkg, lbl)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = KleeColors.Primary, contentColor = Color.Black)
+                ) {
+                    Text("Restaurar Original", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRestoreRule = null }) { Text("Cancelar") }
+            }
+        )
     }
 
     if (showAppPicker) {

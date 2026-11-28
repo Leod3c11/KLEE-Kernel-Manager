@@ -1161,7 +1161,7 @@ class KernelControlRepository(private val shell: RootShell) {
         val tuning = readTuning()
 
         return buildString {
-            appendLine("=== KLEE Kernel Manager v0.6.7 - Relatório de Diagnóstico ===")
+            appendLine("=== KLEE Kernel Manager v0.7.0 - Relatório de Diagnóstico ===")
             appendLine("Modelo: ${dev.brand} ${dev.model} (${dev.device}) · HyperOS: ${dev.hyperOsVersion}")
             appendLine("SoC / Plataforma: ${dev.soc} / ${dev.hardware}")
             appendLine("Kernel: ${dev.kernelVersion}")
@@ -1307,7 +1307,9 @@ class KernelControlRepository(private val shell: RootShell) {
         perAppRules: List<PerAppRule>,
         includeDmesg: Boolean,
         lastVulkanCheck: VulkanVerificationResult? = null,
-        carrierHint: VulkanCarrierInfo? = null
+        carrierHint: VulkanCarrierInfo? = null,
+        patchedPackages: Set<String> = emptySet(),
+        lastProbe: AdrenoToolsProbeResult? = null
     ): String {
         val baseReport = buildDiagnosticReport()
         val pid = android.os.Process.myPid()
@@ -1334,7 +1336,19 @@ class KernelControlRepository(private val shell: RootShell) {
                 appendLine("Nenhuma regra configurada.")
             } else {
                 perAppRules.forEach { rule ->
-                    appendLine("  ${rule.appLabel} (${rule.packageName}): perfil=${rule.profileId}, mtk=${rule.mtkPerfPreset}, hz=${rule.refreshRateHz}, bypass=${rule.enableBypassCharging}, vulkan=${rule.vulkanDriverId}, forceAngle=${rule.forceVulkanAngle}")
+                    val patchedTag = if (patchedPackages.contains(rule.packageName)) " [ADRENOTOOLS_PATCHED]" else ""
+                    appendLine("  ${rule.appLabel} (${rule.packageName})$patchedTag: perfil=${rule.profileId}, mtk=${rule.mtkPerfPreset}, hz=${rule.refreshRateHz}, bypass=${rule.enableBypassCharging}, vulkan=${rule.vulkanDriverId}, forceAngle=${rule.forceVulkanAngle}")
+                }
+            }
+            appendLine()
+            appendLine("--- Motor AdrenoTools (PPSSPP) ---")
+            appendLine("Apps com AdrenoTools injetado (${patchedPackages.size}): ${if (patchedPackages.isEmpty()) "(nenhum)" else patchedPackages.joinToString(", ")}")
+            if (lastProbe != null) {
+                appendLine("Último Teste Nativo AdrenoTools (${lastProbe.driverLabel}): success=${lastProbe.success}")
+                if (lastProbe.success) {
+                    appendLine("  GPU=${lastProbe.deviceName} · API=${lastProbe.apiVersion} · driver=${lastProbe.driverName} (${lastProbe.driverInfo}) · exts=${lastProbe.extensionCount} · ${lastProbe.elapsedMs}ms")
+                } else {
+                    appendLine("  Erro: ${lastProbe.error}")
                 }
             }
             val vkInfo = inspectSystemVulkan(carrierHint)
@@ -1390,7 +1404,7 @@ class KernelControlRepository(private val shell: RootShell) {
                 if (dmesg.isEmpty()) appendLine("(indisponível)") else dmesg.forEach { appendLine(it) }
             }
             appendLine()
-            appendLine("=== FIM DO LOG KLEE v0.6.7 ===")
+            appendLine("=== FIM DO LOG KLEE v0.7.0 ===")
         }
     }
 
@@ -1824,19 +1838,19 @@ class KernelControlRepository(private val shell: RootShell) {
             "  cnt=0; " +
             "  for p in \$pids; do " +
             "    [ -r \"/proc/\$p/maps\" ] || continue; " +
-            "    grep -iE 'vulkan|panvk|panfrost|mali|angle|klee_drivers' \"/proc/\$p/maps\" 2>/dev/null | " +
+            "    grep -iE 'vulkan|panvk|panfrost|mali|angle|klee_drivers|klee_adrenotools|klee_vk_bridge|libhook_impl|libmain_hook' \"/proc/\$p/maps\" 2>/dev/null | " +
             "      awk 'NF>=6 { key=\$5\"|\"\$6; if (!seen[key]++) printf \"MAP|%s|%s\\n\", \$5, \$6 }'; " +
             "    cnt=\$((cnt + 1)); [ \"\$cnt\" -ge 3 ] && break; " +
             "  done; " +
             "  if [ -n \"\$main_pid\" ]; then " +
             "    logcat -d -t 1500 --pid=\"\$main_pid\" 2>/dev/null | " +
             "      grep -viE 'ViewRootImpl|BLASTBufferQueue|ImeTracker|MIUIInput|ProfileInstaller|SurfaceView|BufferQueueConsumer|VRI\\[' | " +
-            "      grep -iE 'Unload builtin|GraphicsEnvironment|updatable|vulkan|panvk|panfrost|mesa|kbase|dlopen|linker|angle|avc|denied|fatal|sigsegv|sigabrt|vkcreate|libvulkan|libEGL|Could not load|couldn.t find|VK_ERROR' | " +
+            "      grep -iE 'KLEE-Bootstrap|KLEE-Bridge|KLEE-Hooks|adrenotools|Unload builtin|GraphicsEnvironment|updatable|vulkan|panvk|panfrost|mesa|kbase|dlopen|linker|angle|avc|denied|fatal|sigsegv|sigabrt|vkcreate|libvulkan|libEGL|Could not load|couldn.t find|VK_ERROR' | " +
             "      tail -n 35 | sed 's/^/LOG|/'; " +
             "  fi; " +
             "fi; " +
             "logcat -d -t 500 2>/dev/null | " +
-            "  grep -iE 'GraphicsEnvironment.*(updatable|driver|not installed|failed|choosing)|Unload builtin Vulkan|avc:.*(vulkan|klee_drivers|panvk|panfrost|apk_data_file|system_file)|libvulkan.*(failed|error|unable|dlopen|Could not load|couldn.t find)|linker.*(vulkan|panvk|panfrost)|FATAL.*$pkgRegex|Fatal signal.*$pkgRegex' | " +
+            "  grep -iE 'KLEE-Bootstrap|KLEE-Bridge|KLEE-Hooks|GraphicsEnvironment.*(updatable|driver|not installed|failed|choosing)|Unload builtin Vulkan|avc:.*(vulkan|klee_drivers|klee_adrenotools|panvk|panfrost|apk_data_file|system_file)|libvulkan.*(failed|error|unable|dlopen|Could not load|couldn.t find)|linker.*(vulkan|panvk|panfrost)|FATAL.*$pkgRegex|Fatal signal.*$pkgRegex' | " +
             "  tail -n 20 | sed 's/^/GLOG|/' " +
             ")"
 
@@ -1893,15 +1907,22 @@ class KernelControlRepository(private val shell: RootShell) {
             it.contains("Unload builtin Vulkan driver", ignoreCase = true)
         }
 
+        val adrenoToolsActive = mappedEntries.any { (_, path) ->
+            val low = path.lowercase(Locale.US)
+            low.contains("klee_adrenotools/driver/") ||
+                (low.contains("klee_vk_bridge") && combinedLogs.any { it.contains("KLEE AdrenoTools ACTIVE", ignoreCase = true) || it.contains("adrenotools_open_libvulkan SUCCEEDED", ignoreCase = true) })
+        }
+
         val carrierPathMatched = carrierDir.isNotBlank() && mappedEntries.any { (_, path) ->
             path.startsWith(carrierDir) && path.substringAfterLast('/').lowercase(Locale.US).contains("vulkan")
         }
 
-        val hasCustomMatch = carrierPathMatched ||
+        val hasCustomMatch = adrenoToolsActive ||
+            carrierPathMatched ||
             (expectedInode.isNotBlank() && mappedEntries.any { (inode, _) -> inode == expectedInode }) ||
             mappedEntries.any { (_, path) ->
                 val low = path.lowercase(Locale.US)
-                low.contains("klee_drivers") || low.contains("panvk") || low.contains("panfrost")
+                low.contains("klee_drivers") || low.contains("klee_adrenotools/driver") || low.contains("panvk") || low.contains("panfrost")
             }
 
         val hasVulkanHalPath = mappedEntries.any { (_, path) ->
@@ -1921,6 +1942,7 @@ class KernelControlRepository(private val shell: RootShell) {
             "failed to load vulkan",
             "unable to load",
             "updatable driver package",
+            "adrenotools_open_libvulkan failed",
             "vk_error_incompatible_driver",
             "fatal signal",
             "sigsegv",
@@ -1933,13 +1955,17 @@ class KernelControlRepository(private val shell: RootShell) {
         }
 
         val formattedMaps = mappedEntries.map { (inode, path) ->
-            val isCustomLine = (carrierDir.isNotBlank() && path.startsWith(carrierDir) && path.lowercase(Locale.US).contains("vulkan")) ||
+            val low = path.lowercase(Locale.US)
+            val isAdrenoLine = low.contains("klee_adrenotools/driver") || low.contains("klee_vk_bridge") || low.contains("libhook_impl")
+            val isCustomLine = isAdrenoLine ||
+                (carrierDir.isNotBlank() && path.startsWith(carrierDir) && low.contains("vulkan")) ||
                 (expectedInode.isNotBlank() && inode == expectedInode) ||
-                path.lowercase(Locale.US).contains("panvk") || path.lowercase(Locale.US).contains("panfrost")
+                low.contains("panvk") || low.contains("panfrost")
             val tag = when {
+                isAdrenoLine -> "[ADRENOTOOLS ✓] "
                 isCustomLine -> "[CUSTOM ✓] "
                 carrierDir.isNotBlank() && path.startsWith(carrierDir) -> "[CARRIER] "
-                path.lowercase(Locale.US).contains("angle") -> "[ANGLE] "
+                low.contains("angle") -> "[ANGLE] "
                 path.substringAfterLast('/').lowercase(Locale.US).startsWith("vulkan.") -> "[STOCK HAL] "
                 else -> ""
             }
@@ -1956,6 +1982,10 @@ class KernelControlRepository(private val shell: RootShell) {
                         "Processo de $appLabel não está em execução no momento."
                 }
             }
+            driver != null && adrenoToolsActive -> {
+                VulkanLoadStatus.LOADED_CUSTOM to
+                    "Driver '${driver.name}' CARREGADO via AdrenoTools (PPSSPP) (PID $pid)${if (angleLoaded) " + ANGLE" else ""}!"
+            }
             driver != null && hasCustomMatch -> {
                 val unloadNote = if (unloadedBuiltin) " · Unload builtin ✓" else ""
                 VulkanLoadStatus.LOADED_CUSTOM to
@@ -1963,7 +1993,7 @@ class KernelControlRepository(private val shell: RootShell) {
             }
             driver != null && hasLoadError && !hasVulkanHalPath -> {
                 VulkanLoadStatus.ERROR_DETECTED to
-                    "Falha ao carregar '${driver.name}' (erro dlopen/SELinux/GraphicsEnvironment no PID $pid). Veja o logcat abaixo."
+                    "Falha ao carregar '${driver.name}' (erro dlopen/SELinux/AdrenoTools no PID $pid). Veja o logcat abaixo."
             }
             driver != null && hasVulkanHalPath -> {
                 val extra = if (hasLoadError) " Erro detectado no logcat!" else ""
